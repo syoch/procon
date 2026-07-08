@@ -6,7 +6,11 @@
  * @param {number} maxLon - 最大経度
  * @returns {Promise<App.OSMGraph>} OSM Graph
  */
-async function loadOSMMap(minLat, minLon, maxLat, maxLon) {
+export async function loadOSMMap(minLat, minLon, maxLat, maxLon) {
+  void minLat;
+  void minLon;
+  void maxLat;
+  void maxLon;
   /** @type {{ [key: string]: App.MapNode }} */
   let nodes = {};
   /** @type {{ [key: string]: App.OSMEdge }} */
