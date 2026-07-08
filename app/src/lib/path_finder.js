@@ -2,7 +2,7 @@
  * @brief 経路探索を行う
  * @param {App.OSMEdge} graph
  * @param {App.NodeId} begin 探索開始地点
- * @param {App.NodeId} end 探索開始地点
+ * @param {App.NodeId} end 探索終了地点
  * @returns {App.Coordinate[] | Error} 経路の頂点リスト
  */
 export function PathFind(graph, begin, end) {
