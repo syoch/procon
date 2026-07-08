@@ -38,6 +38,10 @@
           .bindPopup(`Edge ID: ${edge.id}`);
       }
     }
+
+    return () => {
+      map.remove();
+    };
   });
 </script>
 
