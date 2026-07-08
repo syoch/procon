@@ -1,9 +1,4 @@
 /**
- * @file osm_loader.js
- * @brief OSM データを読み込み、OSM Graph を作成する。
- */
-
-/**
  * @brief OSM データを読み込み、OSM Graph を作成する
  * @param {number} minLat - 最小緯度
  * @param {number} minLon - 最小経度

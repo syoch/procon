@@ -1,8 +1,3 @@
-/**
- * @file debug.js
- * @brief デバッグ用の地図情報を元に OSM Graph を作成する。
- */
-
 import debugMap from './debug-map.json';
 
 type GeoJSONPointGeometry = {
