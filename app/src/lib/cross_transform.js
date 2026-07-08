@@ -4,6 +4,7 @@
  * @returns {App.SearchGraph | Error} 探索用グラフ
  */
 export function TransformGraph(osm_graph) {
+  void osm_graph;
   // 実装時は以下の return 文を削除すること
   return new Error("TransformGraph 関数は未実装です");
 }
