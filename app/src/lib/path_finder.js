@@ -9,6 +9,6 @@ export function PathFind(graph, begin, end) {
   void graph;
   void begin;
   void end;
-  // 実装時は以下の return 文を削除すること
+  // 実装時は以下の return 文を削除すること。
   return new Error("PathFind 関数は未実装です");
 }
