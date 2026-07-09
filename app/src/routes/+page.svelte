@@ -5,9 +5,29 @@
   import DebugParam from "$lib/ui/debug_param.svelte";
   import LocationInput from "$lib/ui/location_input.svelte";
   import { loadDebugMap } from "$lib/map_loader/debug";
+  import { watch } from "runed";
 
   /** @type {L.Map} */
   let map;
+
+  /** @type {L.Marker | null} */
+  let selected_node_marker = null;
+
+  /** @type {App.NodeId | null} */
+  let selected_node_id = $state(null);
+
+  /** @type {App.NodeId | null} */
+  let begin_node_id = $state(null);
+
+  /** @type {App.NodeId | null} */
+  let end_node_id = $state(null);
+
+  watch(
+    () => begin_node_id,
+    (newBeginNodeId) => {
+      console.log("Begin node ID changed:", newBeginNodeId);
+    },
+  );
 
   onMount(() => {
     const debugMap = loadDebugMap();
@@ -39,6 +59,38 @@
       }
     }
 
+    map.on("click", function (e) {
+      const lat = e.latlng.lat;
+      const lng = e.latlng.lng;
+
+      const nodeId = Object.values(debugMap.nodes).toSorted((a, b) => {
+        const aDistance = Math.sqrt(
+          Math.pow(a.coordinate.lat - lat, 2) +
+            Math.pow(a.coordinate.lng - lng, 2),
+        );
+        const bDistance = Math.sqrt(
+          Math.pow(b.coordinate.lat - lat, 2) +
+            Math.pow(b.coordinate.lng - lng, 2),
+        );
+        return aDistance - bDistance;
+      })[0].id;
+      const node = debugMap.nodes[nodeId];
+
+      if (selected_node_marker) {
+        map.removeLayer(selected_node_marker);
+      }
+
+      selected_node_id = nodeId;
+      selected_node_marker = L.marker([
+        node.coordinate.lat,
+        node.coordinate.lng,
+      ])
+        .bindPopup(
+          `NodeId: ${nodeId}<br>緯度: ${node.coordinate.lat}<br>経度: ${node.coordinate.lng}`,
+        )
+        .addTo(map);
+    });
+
     return () => {
       map.remove();
     };
@@ -48,7 +100,7 @@
 <div id="map"></div>
 <div id="float-actions">
   <div id="DebugNodeIn">
-    <DebugNodeIn></DebugNodeIn>
+    <DebugNodeIn {selected_node_id} {begin_node_id} {end_node_id}></DebugNodeIn>
   </div>
   <div id="DebugParam">
     <DebugParam></DebugParam>
