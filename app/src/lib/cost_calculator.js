@@ -6,5 +6,6 @@
 export function CalculateCost(osm_edge) {
   void osm_edge;
   // 実装時は以下の return 文を削除すること
+  //あいう
   return new Error("CalculateCost 関数は未実装です");
 }
