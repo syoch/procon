@@ -32,7 +32,7 @@
             [fromNode.coordinate.lat, fromNode.coordinate.lng],
             [toNode.coordinate.lat, toNode.coordinate.lng],
           ],
-          { color: i++ % 2 == 0 ? "blue" : "red" },
+          { color: i++ % 2 === 0 ? "blue" : "red" },
         )
           .addTo(map)
           .bindPopup(`Edge ID: ${edge.id}`);

@@ -11,6 +11,7 @@ export async function loadOSMMap(minLat, minLon, maxLat, maxLon) {
   void minLon;
   void maxLat;
   void maxLon;
+
   /** @type {{ [key: string]: App.MapNode }} */
   let nodes = {};
   /** @type {{ [key: string]: App.OSMEdge }} */
