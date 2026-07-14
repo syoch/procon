@@ -1,33 +1,45 @@
-<script>
+<script lang="ts">
   import { onMount } from "svelte";
   import L from "leaflet";
   import DebugNodeIn from "$lib/ui/debug_node_in.svelte";
   import DebugParam from "$lib/ui/debug_param.svelte";
   import LocationInput from "$lib/ui/location_input.svelte";
   import { loadDebugMap } from "$lib/map_loader/debug";
-  import { watch } from "runed";
+  import ConsoleLogHook from "$lib/ui/console_log_hook.svelte";
 
-  /** @type {L.Map} */
-  let map;
+  let map: L.Map;
 
-  /** @type {L.Marker | null} */
-  let selected_node_marker = null;
+  class SelectMarker {
+    marker: L.Marker;
+    node_id: App.NodeId;
 
-  /** @type {App.NodeId | null} */
-  let selected_node_id = $state(null);
+    constructor(marker: L.Marker, node_id: App.NodeId) {
+      this.marker = marker;
+      this.node_id = node_id;
+    }
 
-  /** @type {App.NodeId | null} */
-  let begin_node_id = $state(null);
+    dispose() {
+      console.log(`Disposing marker for node ${this.node_id}`);
+      map.removeLayer(this.marker);
+    }
 
-  /** @type {App.NodeId | null} */
-  let end_node_id = $state(null);
+    toString() {
+      return `Node<${this.node_id}>`;
+    }
+  }
 
-  watch(
-    () => begin_node_id,
-    (newBeginNodeId) => {
-      console.log("Begin node ID changed:", newBeginNodeId);
-    },
-  );
+  let selected_node_marker: SelectMarker | null = $state(null);
+  let begin_node_marker: SelectMarker | null = $state(null);
+  let end_node_marker: SelectMarker | null = $state(null);
+  let consoleLogBuf: ConsoleLogHook;
+
+  $effect(() => {
+    if (begin_node_marker && end_node_marker) {
+      console.log(
+        `Selected path: ${begin_node_marker.node_id} -> ${end_node_marker.node_id}`,
+      );
+    }
+  });
 
   onMount(() => {
     const debugMap = loadDebugMap();
@@ -77,20 +89,17 @@
       const node = debugMap.nodes[nodeId];
 
       if (selected_node_marker) {
-        map.removeLayer(selected_node_marker);
+        selected_node_marker.dispose();
       }
-
-      selected_node_id = nodeId;
-      selected_node_marker = L.marker([
-        node.coordinate.lat,
-        node.coordinate.lng,
-      ])
-        .bindPopup(
-          `NodeId: ${nodeId}<br>緯度: ${node.coordinate.lat}<br>経度: ${node.coordinate.lng}`,
-        )
-        .addTo(map);
+      selected_node_marker = new SelectMarker(
+        L.marker([node.coordinate.lat, node.coordinate.lng])
+          .addTo(map)
+          .bindPopup(`Node ID: ${node.id}`),
+        node.id,
+      );
     });
 
+    consoleLogBuf.patch_console_log();
     return () => {
       map.remove();
     };
@@ -100,7 +109,11 @@
 <div id="map"></div>
 <div id="float-actions">
   <div id="DebugNodeIn">
-    <DebugNodeIn {selected_node_id} {begin_node_id} {end_node_id}></DebugNodeIn>
+    <DebugNodeIn
+      bind:selected_node_id={selected_node_marker}
+      bind:begin_node_id={begin_node_marker}
+      bind:end_node_id={end_node_marker}
+    ></DebugNodeIn>
   </div>
   <div id="DebugParam">
     <DebugParam></DebugParam>
@@ -108,6 +121,10 @@
   <div id="LocationInput">
     <LocationInput></LocationInput>
   </div>
+</div>
+
+<div id="debug-log">
+  <ConsoleLogHook bind:this={consoleLogBuf}></ConsoleLogHook>
 </div>
 
 <style>
@@ -135,5 +152,16 @@
       padding-top: 10px;
       border-top: 1px solid #ccc;
     }
+  }
+
+  #debug-log {
+    position: absolute;
+    bottom: 10px;
+    right: 10px;
+    background-color: rgba(0, 0, 0, 0.6);
+    color: rgba(255, 255, 255, 0.8);
+    padding: 10px;
+    border-radius: 10px;
+    font-family: monospace;
   }
 </style>
