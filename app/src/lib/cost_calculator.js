@@ -9,10 +9,13 @@ export function CalculateCost(osm_edge) {
     id: osm_edge.id,
     highway: osm_edge.highway,
     width: osm_edge.width,
-    sidewalk: osm_edge.sidewalk
+    sidewalk: osm_edge.sidewalk,    
   });
-
-
-
+  if (osm_edge.width !== -1) {
+    console.log("widthデータが存在します。");
+  }
+  if (osm_edge.sidewalk !== null) {
+    console.log("sidewalkデータが存在します。");
+  }
   return new Error("CalculateCost 関数は未実装です");
 }
