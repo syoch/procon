@@ -171,7 +171,7 @@ declare global {
 		 */
 		type SearchGraph = {
 			nodes: { [key: NodeId]: MapVCrossNode };
-			edges: { [key: EdgeId]: FoldedEdge | ComputedEdge };
+			edges: { [key: EdgeId]: MapVCrossEdge | FoldedEdge | ComputedEdge };
 		};
 	}
 }
