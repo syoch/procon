@@ -1,0 +1,105 @@
+export const debugMapOSMMap: App.OSMGraph = {
+  nodes: {
+    node1: { type: "MapNode", id: "node1", coordinate: { lat: 0, lng: 0, }, edges: ["edge1"], },
+    node2: { type: "MapNode", id: "node2", coordinate: { lat: 0.0, lng: 0.0007, }, edges: ["edge1"], },
+    node3: { type: "MapNode", id: "node3", coordinate: { lat: 0.0, lng: 0.002, }, edges: ["edge2"], },
+    node4: { type: "MapNode", id: "node4", coordinate: { lat: -0.001, lng: 0.0, }, edges: ["edge3"], },
+    node5: { type: "MapNode", id: "node5", coordinate: { lat: -0.001, lng: 0.001, }, edges: [], },
+    node6: { type: "MapNode", id: "node6", coordinate: { lat: -0.001, lng: 0.002, }, edges: [], },
+    node7: { type: "MapNode", id: "node7", coordinate: { lat: -0.002, lng: 0.0, }, edges: [], },
+    node8: { type: "MapNode", id: "node8", coordinate: { lat: -0.002, lng: 0.0015, }, edges: [], },
+    node9: { type: "MapNode", id: "node9", coordinate: { lat: -0.002, lng: 0.002, }, edges: [], },
+  },
+  edges: {
+    edge1: { type: "OSMEdge", id: "edge1", begin: "node1", end: "node2", highway: "residential", sidewalk: "both", width: 3.0, },
+    edge2: { type: "OSMEdge", id: "edge2", begin: "node2", end: "node3", highway: "residential", sidewalk: "both", width: 3.0, },
+    edge3: { type: "OSMEdge", id: "edge3", begin: "node1", end: "node4", highway: "residential", sidewalk: "both", width: 3.0, },
+    edge4: { type: "OSMEdge", id: "edge4", begin: "node3", end: "node5", highway: "residential", sidewalk: "both", width: 3.0, },
+    edge5: { type: "OSMEdge", id: "edge5", begin: "node6", end: "node3", highway: "residential", sidewalk: "both", width: 3.0, },
+    edge6: { type: "OSMEdge", id: "edge6", begin: "node7", end: "node4", highway: "residential", sidewalk: "both", width: 3.0, },
+    edge7: { type: "OSMEdge", id: "edge7", begin: "node8", end: "node7", highway: "residential", sidewalk: "both", width: 3.0, },
+    edge8: { type: "OSMEdge", id: "edge8", begin: "node9", end: "node8", highway: "residential", sidewalk: "both", width: 3.0, },
+    edge9: { type: "OSMEdge", id: "edge9", begin: "node9", end: "node6", highway: "residential", sidewalk: "both", width: 3.0, },
+    edge10: { type: "OSMEdge", id: "edge10", begin: "node5", end: "node8", highway: "residential", sidewalk: "both", width: 3.0, },
+  },
+};
+
+export const debugMapCCMap: App.CrossConvertedGraph = {
+  nodes: {
+    node1: { type: "MapNode", id: "node1", coordinate: { lat: 0, lng: 0, }, edges: ["edge1", "edge3"], },
+    node2: { type: "MapNode", id: "node2", coordinate: { lat: 0.0, lng: 0.0007, }, edges: ["edge1", "edge2"], },
+    node4: { type: "MapNode", id: "node4", coordinate: { lat: -0.001, lng: 0.0, }, edges: ["edge3", "edge6"], },
+    node5: { type: "MapNode", id: "node5", coordinate: { lat: -0.001, lng: 0.001, }, edges: ["edge4", "edge10"], },
+    node6: { type: "MapNode", id: "node6", coordinate: { lat: -0.001, lng: 0.002, }, edges: ["edge5", "edge9"], },
+    node7: { type: "MapNode", id: "node7", coordinate: { lat: -0.002, lng: 0.0, }, edges: ["edge6", "edge7"], },
+    node9: { type: "MapNode", id: "node9", coordinate: { lat: -0.002, lng: 0.002, }, edges: ["edge8", "edge9"], },
+    node3_2: { type: "MapVCrossNode", id: "node3_2", coordinate: { lat: 0.0, lng: 0.002, }, edges: ["edge2", "node3_25", "node3_62"], group_nodes: ["node3_2", "node3_5", "node3_6"] },
+    node3_5: { type: "MapVCrossNode", id: "node3_5", coordinate: { lat: 0.0, lng: 0.002, }, edges: ["edge4", "node3_25", "node3_56"], group_nodes: ["node3_2", "node3_5", "node3_6"] },
+    node3_6: { type: "MapVCrossNode", id: "node3_6", coordinate: { lat: 0.0, lng: 0.002, }, edges: ["edge5", "node3_56", "node3_62"], group_nodes: ["node3_2", "node3_5", "node3_6"] },
+    node8_5: { type: "MapVCrossNode", id: "node8_5", coordinate: { lat: -0.002, lng: 0.0015, }, edges: ["edge10", "node8_57", "node8_95"], group_nodes: ["node8_5", "node8_7", "node8_9"] },
+    node8_7: { type: "MapVCrossNode", id: "node8_7", coordinate: { lat: -0.002, lng: 0.0015, }, edges: ["edge7", "node8_79", "node8_57"], group_nodes: ["node8_5", "node8_7", "node8_9"] },
+    node8_9: { type: "MapVCrossNode", id: "node8_9", coordinate: { lat: -0.002, lng: 0.0015, }, edges: ["edge8", "node8_95", "node8_79"], group_nodes: ["node8_5", "node8_7", "node8_9"] },
+  },
+  edges: {
+    edge1: { type: "OSMEdge", id: "edge1", begin: "node1", end: "node2", highway: "residential", sidewalk: "both", width: 3.0, },
+    edge2: { type: "OSMEdge", id: "edge2", begin: "node2", end: "node3_2", highway: "residential", sidewalk: "both", width: 3.0, },
+    edge3: { type: "OSMEdge", id: "edge3", begin: "node1", end: "node4", highway: "residential", sidewalk: "both", width: 3.0, },
+    edge4: { type: "OSMEdge", id: "edge4", begin: "node3_5", end: "node5", highway: "residential", sidewalk: "both", width: 3.0, },
+    edge5: { type: "OSMEdge", id: "edge5", begin: "node6", end: "node3_6", highway: "residential", sidewalk: "both", width: 3.0, },
+    edge6: { type: "OSMEdge", id: "edge6", begin: "node7", end: "node4", highway: "residential", sidewalk: "both", width: 3.0, },
+    edge9: { type: "OSMEdge", id: "edge9", begin: "node9", end: "node6", highway: "residential", sidewalk: "both", width: 3.0, },
+    edge7: { type: "OSMEdge", id: "edge7", begin: "node8_7", end: "node7", highway: "residential", sidewalk: "both", width: 3.0, },
+    edge8: { type: "OSMEdge", id: "edge8", begin: "node9", end: "node8_9", highway: "residential", sidewalk: "both", width: 3.0, },
+    edge10: { type: "OSMEdge", id: "edge10", begin: "node5", end: "node8_5", highway: "residential", sidewalk: "both", width: 3.0, },
+    node3_25: { type: "MapVCrossEdge", id: "node3_25", begin: "node3_2", end: "node3_5", view_score: 1 },
+    node3_56: { type: "MapVCrossEdge", id: "node3_56", begin: "node3_5", end: "node3_6", view_score: 1 },
+    node3_62: { type: "MapVCrossEdge", id: "node3_62", begin: "node3_6", end: "node3_2", view_score: 1 },
+    node8_79: { type: "MapVCrossEdge", id: "node8_79", begin: "node8_7", end: "node8_9", view_score: 1 },
+    node8_95: { type: "MapVCrossEdge", id: "node8_95", begin: "node8_9", end: "node8_5", view_score: 1 },
+    node8_57: { type: "MapVCrossEdge", id: "node8_57", begin: "node8_5", end: "node8_7", view_score: 1 },
+  },
+};
+
+export const debugMapSearchMap: App.SearchGraph = {
+  nodes: {
+    node3_2: { type: "MapVCrossNode", id: "node3_2", coordinate: { lat: 0.0, lng: 0.002, }, edges: ["fold_1", "node3_25", "node3_62"], group_nodes: ["node3_2", "node3_5", "node3_6"] },
+    node3_5: { type: "MapVCrossNode", id: "node3_5", coordinate: { lat: 0.0, lng: 0.002, }, edges: ["fold_2", "node3_25", "node3_56"], group_nodes: ["node3_2", "node3_5", "node3_6"] },
+    node3_6: { type: "MapVCrossNode", id: "node3_6", coordinate: { lat: 0.0, lng: 0.002, }, edges: ["fold_3", "node3_56", "node3_62"], group_nodes: ["node3_2", "node3_5", "node3_6"] },
+    node8_5: { type: "MapVCrossNode", id: "node8_5", coordinate: { lat: -0.002, lng: 0.0015, }, edges: ["fold_2", "node8_57", "node8_95"], group_nodes: ["node8_5", "node8_7", "node8_9"] },
+    node8_7: { type: "MapVCrossNode", id: "node8_7", coordinate: { lat: -0.002, lng: 0.0015, }, edges: ["fold_1", "node8_79", "node8_57"], group_nodes: ["node8_5", "node8_7", "node8_9"] },
+    node8_9: { type: "MapVCrossNode", id: "node8_9", coordinate: { lat: -0.002, lng: 0.0015, }, edges: ["fold_3", "node8_95", "node8_79"], group_nodes: ["node8_5", "node8_7", "node8_9"] },
+  },
+  edges: {
+    node3_25: { type: "MapVCrossEdge", id: "node3_25", begin: "node3_2", end: "node3_5", view_score: 1 },
+    node3_56: { type: "MapVCrossEdge", id: "node3_56", begin: "node3_5", end: "node3_6", view_score: 1 },
+    node3_62: { type: "MapVCrossEdge", id: "node3_62", begin: "node3_6", end: "node3_2", view_score: 1 },
+    node8_79: { type: "MapVCrossEdge", id: "node8_79", begin: "node8_7", end: "node8_9", view_score: 1 },
+    node8_95: { type: "MapVCrossEdge", id: "node8_95", begin: "node8_9", end: "node8_5", view_score: 1 },
+    node8_57: { type: "MapVCrossEdge", id: "node8_57", begin: "node8_5", end: "node8_7", view_score: 1 },
+    fold_1: {
+      type: "FoldedEdge", id: "fold_1", begin: "node8_7", end: "node3_2",
+      segments: [
+        { begin_coordinate: { lat: -0.002, lng: 0.0015 }, end_coordinate: { lat: -0.002, lng: 0.0 }, highway: "residential", sidewalk: "both", width: 3.0 },
+        { begin_coordinate: { lat: -0.002, lng: 0.0 }, end_coordinate: { lat: -0.001, lng: 0.0 }, highway: "residential", sidewalk: "both", width: 3.0 },
+        { begin_coordinate: { lat: -0.001, lng: 0.0 }, end_coordinate: { lat: 0, lng: 0 }, highway: "residential", sidewalk: "both", width: 3.0 },
+        { begin_coordinate: { lat: 0, lng: 0 }, end_coordinate: { lat: 0.0, lng: 0.0007 }, highway: "residential", sidewalk: "both", width: 3.0 },
+        { begin_coordinate: { lat: 0.0, lng: 0.0007 }, end_coordinate: { lat: 0.0, lng: 0.002 }, highway: "residential", sidewalk: "both", width: 3.0 },
+      ],
+    },
+    fold_2: {
+      type: "FoldedEdge", id: "fold_2", begin: "node3_5", end: "node8_5",
+      segments: [
+        { begin_coordinate: { lat: 0.0, lng: 0.002 }, end_coordinate: { lat: -0.001, lng: 0.001 }, highway: "residential", sidewalk: "both", width: 3.0 },
+        { begin_coordinate: { lat: -0.001, lng: 0.001 }, end_coordinate: { lat: -0.002, lng: 0.0015 }, highway: "residential", sidewalk: "both", width: 3.0 },
+      ],
+    },
+    fold_3: {
+      type: "FoldedEdge", id: "fold_3", begin: "node8_9", end: "node3_6",
+      segments: [
+        { begin_coordinate: { lat: -0.002, lng: 0.0015 }, end_coordinate: { lat: -0.002, lng: 0.002 }, highway: "residential", sidewalk: "both", width: 3.0 },
+        { begin_coordinate: { lat: -0.002, lng: 0.002 }, end_coordinate: { lat: -0.001, lng: 0.002 }, highway: "residential", sidewalk: "both", width: 3.0 },
+        { begin_coordinate: { lat: -0.001, lng: 0.002 }, end_coordinate: { lat: 0.0, lng: 0.002 }, highway: "residential", sidewalk: "both", width: 3.0 },
+      ],
+    },
+  },
+};
