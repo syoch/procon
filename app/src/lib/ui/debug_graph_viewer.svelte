@@ -20,7 +20,7 @@
       return;
     }
     new Network(
-      document.getElementById("graph")!,
+      graphDivElement,
       {
         nodes: Object.values(mapData.nodes).map((node, i) => ({
           id: node.id,
