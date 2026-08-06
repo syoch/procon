@@ -86,4 +86,4 @@
     $buf = "";
   }}>Clear</button
 >
-{@html $buf.replace(/\n/g, "<br />")}
+<pre style="white-space: pre-wrap; margin: 0">{$buf}</pre>
