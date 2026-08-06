@@ -189,6 +189,16 @@ declare global {
 				| App.ComputedEdge;
 			};
 		};
+
+		/**
+		 * 経路探索パラメーター
+		 */
+		type SearchParameters = {
+			mix_score_weight: number;
+			view_score_weight: number;
+			width_score_weight: number;
+			lambda: number;
+		};
 	}
 }
 
