@@ -5,12 +5,18 @@
   import DebugParam from "$lib/ui/debug_param.svelte";
   import LocationInput from "$lib/ui/location_input.svelte";
   import { loadDebugMap } from "$lib/map_loader/debug";
+  import { CalculateCost } from "$lib/cost_calculator";//追加
 
   /** @type {L.Map} */
   let map;
 
   onMount(() => {
     const debugMap = loadDebugMap();
+
+    //追加
+    Object.values(debugMap.edges).forEach(edge=>{
+      CalculateCost(edge);
+    });
 
     map = L.map("map").setView([37.4379, 138.8795], 18);
 
@@ -54,7 +60,10 @@
     <DebugParam></DebugParam>
   </div>
   <div id="LocationInput">
-    <LocationInput></LocationInput>
+    <LocationInput></LocationInput><br>
+    <input type="text" style="width:80px;" name="start">
+    <input type="text" style="width:80px;" mane="finish">
+    <input type="submit" value="決定">
   </div>
 </div>
 

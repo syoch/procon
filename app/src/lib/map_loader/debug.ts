@@ -113,8 +113,8 @@ export function loadDebugMap(): App.OSMGraph {
         begin: beginNodeId,
         end: endNodeId,
         highway: tags.highway ?? '',
-        width: 5,
-        sidewalk: tags.sidewalk ?? 'both',
+        width: tags.width ? Number(tags.width) : -1,
+        sidewalk: tags.sidewalk ?? null,
       };
 
       nodes[beginNodeId].edges.push(edgeId);
