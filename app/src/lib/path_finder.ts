@@ -105,9 +105,9 @@ export function step_search(
   };
 }
 
-export function generateInitSearchState(beignNodes: App.NodeId[]): SearchState {
+export function generateInitSearchState(beginNodes: App.NodeId[]): SearchState {
   let paths: SearchPath[] = [];
-  for (const node of beignNodes) {
+  for (const node of beginNodes) {
     paths.push({
       cost: 0,
       base_node: node,
