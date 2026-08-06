@@ -15,10 +15,10 @@
   }
 
   function detectMapBoundingRectangle(mapData: App.GenericMap) {
-    let mapMinLat = 0;
-    let mapMaxLat = 0;
-    let mapMinLng = 0;
-    let mapMaxLng = 0;
+    let mapMinLat = Number.POSITIVE_INFINITY;
+    let mapMaxLat = Number.NEGATIVE_INFINITY;
+    let mapMinLng = Number.POSITIVE_INFINITY;
+    let mapMaxLng = Number.NEGATIVE_INFINITY;
 
     for (const node of Object.values(mapData.nodes)) {
       if (node.coordinate.lat < mapMinLat) {
