@@ -25,13 +25,6 @@
     }
   }
 
-  const params: App.SearchParameters = {
-    lambda: 1,
-    mix_score_weight: 0.3,
-    view_score_weight: 0.3,
-    width_score_weight: 0.3,
-  };
-
   let mapViewer: DebugMapViewer | undefined = $state(undefined);
 </script>
 
