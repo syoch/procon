@@ -11,8 +11,25 @@ type SearchState = {
   min_cost: number;
 };
 
+
+function calculateEdgeCost(edge: App.ComputedEdge | App.MapVCrossEdge, params: App.SearchParameters): number {
+  let view_score = edge.type === "ComputedEdge" ? edge.view_score : edge.type == "MapVCrossEdge" ? edge.view_score : 0;
+  let width_score = edge.type === "ComputedEdge" ? edge.width_score : edge.type == "MapVCrossEdge" ? 0 : 0;
+  let mix_score = edge.type === "ComputedEdge" ? edge.mix_score : edge.type == "MapVCrossEdge" ? 0 : 0;
+  let distance = 100; // Issue #17 により定数としている
+
+  const lambda = params.lambda;
+  const a1 = params.view_score_weight;
+  const a2 = params.width_score_weight;
+  const a3 = params.mix_score_weight;
+
+  let score = a1 * view_score + a2 * width_score + a3 * mix_score;
+  let cost = distance * (1 - score * lambda);
+  return cost;
+}
 export function step_search(
   map: App.SearchGraph,
+  params: App.SearchParameters,
   state: SearchState,
   endNodes: App.NodeId[],
 ): SearchState {
@@ -58,22 +75,7 @@ export function step_search(
     for (const neighbor of neighbors_calculated) {
       if (old_path.path.includes(neighbor.id)) continue;
 
-      let view_score = 0;
-      let width_score =
-        0;
-      let mix_score =
-        neighbor.type === "ComputedEdge" ? neighbor.mix_score : 0;
-      let distance = 100; // Issue #17 により定数としている
-      // TODO(syoch): 定数定義の繰り上げ
-      const lambda = 0.2;
-      const a1 = 0.3;
-      const a2 = 0.3;
-      const a3 = 0.3;
-
-      let score = a1 * view_score + a2 * width_score + a3 * mix_score;
-      let cost = distance * (1 - score * lambda);
-
-      let new_cost = old_path.cost + cost;
+      const new_cost = old_path.cost + calculateEdgeCost(neighbor, params);
       if (new_cost > state.min_cost) continue;
 
       new_paths.push({
