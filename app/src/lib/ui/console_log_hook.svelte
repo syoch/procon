@@ -49,11 +49,13 @@
   let f = (...args: any[]) => {
     clog(...args);
     const time = timestamp();
-    const _data = args[0].toString().includes("%c")
-      ? [...args.shift().match(/(%C)?[^%]*/gi)]
+    const first = args[0];
+    const hasCss = typeof first === "string" && first.includes("%c");
+    const _data = hasCss
+      ? [...(String(args.shift()).match(/(%C)?[^%]*/gi) ?? [])]
           .map((x) =>
             x.match(/^%C/i)
-              ? `<span style="${args.shift()}">${x.slice(2)}</span>`
+              ? `<span style="${String(args.shift() ?? "")}">${x.slice(2)}</span>`
               : x,
           )
           .join(" ")
