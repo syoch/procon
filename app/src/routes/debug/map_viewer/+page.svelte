@@ -24,6 +24,9 @@
       alert("Invalid JSON");
     }
   }
+  const startNode: string[] = [];
+  const endNode: string[] = [];
+  const travelingNodes: string[] = [];
 
   let mapViewer: DebugMapViewer | undefined = $state(undefined);
 </script>
@@ -31,7 +34,7 @@
 {#if activeTab === "map"}
   <DebugMapViewer {mapData} bind:this={mapViewer} />
 {:else if activeTab === "graph"}
-  <DebugGraphViewer {mapData} startNode={[]} endNode={[]} travelingNodes={[]}
+  <DebugGraphViewer {mapData} {startNode} {endNode} {travelingNodes}
   ></DebugGraphViewer>
 {/if}
 
