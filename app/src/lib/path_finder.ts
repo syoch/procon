@@ -128,12 +128,15 @@ export function generateInitSearchState(beginNodes: App.NodeId[]): SearchState {
  * @param graph 探索対象のグラフ
  * @param begin 探索開始地点
  * @param end 探索終了地点
- * @returns 経路の頂点リスト
+ * @returns 経路の辺リスト
  */
-export function PathFind(graph: App.SearchGraph, begin: App.NodeId, end: App.NodeId) {
-  void graph;
-  void begin;
-  void end;
-  // 実装時は以下の return 文を削除すること。
-  return new Error("PathFind 関数は未実装です");
+export function pathFind(graph: App.SearchGraph, params: App.SearchParameters, begin: App.NodeId[], end: App.NodeId[]): App.EdgeId[] {
+  let state = generateInitSearchState(begin);
+  while (state.paths.length > 1) {
+    state = step_search(graph, params, state, end);
+  }
+  if (state.paths.length === 0) {
+    return [];
+  }
+  return state.paths[0].path;
 }
