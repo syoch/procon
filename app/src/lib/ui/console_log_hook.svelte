@@ -6,7 +6,7 @@
       typeof v === "bigint" ? v.toString() : v,
     );
   }
-  eval("globalThis.my_stringify = my_stringify");
+  (globalThis as any).my_stringify = my_stringify;
 
   function timestamp(): string {
     return new Date().toISOString().slice(11, -2);
