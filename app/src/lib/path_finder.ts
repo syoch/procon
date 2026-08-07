@@ -137,7 +137,7 @@ export function pathFind(graph: App.SearchGraph, params: App.SearchParameters, b
     }
     state = result.state;
 
-    if (state.paths.length === 1 && end.includes(state.paths[0].node)) {
+    if (state.paths.every(p => end.includes(p.node) && p.cost == state.min_cost)) {
       return state.paths[0].path;
     }
   }
