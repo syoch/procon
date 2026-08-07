@@ -14,12 +14,13 @@
   } = $props();
 
   let graphDivElement: HTMLDivElement | undefined = $state(undefined);
+  let network: Network | undefined = $state(undefined);
 
   $effect(() => {
     if (!graphDivElement) {
       return;
     }
-    new Network(
+    network = new Network(
       graphDivElement,
       {
         nodes: Object.values(mapData.nodes).map((node, i) => ({
@@ -55,6 +56,11 @@
         },
       },
     );
+
+    return () => {
+      network?.destroy();
+      network = undefined;
+    };
   });
 </script>
 
