@@ -13,9 +13,9 @@ type SearchState = {
 
 
 function calculateEdgeCost(edge: App.ComputedEdge | App.MapVCrossEdge, params: App.SearchParameters): number {
-  let view_score = edge.type === "ComputedEdge" ? edge.view_score : edge.type == "MapVCrossEdge" ? edge.view_score : 0;
-  let width_score = edge.type === "ComputedEdge" ? edge.width_score : edge.type == "MapVCrossEdge" ? 0 : 0;
-  let mix_score = edge.type === "ComputedEdge" ? edge.mix_score : edge.type == "MapVCrossEdge" ? 0 : 0;
+  let view_score = edge.type === "ComputedEdge" ? edge.view_score : edge.type === "MapVCrossEdge" ? edge.view_score : 0;
+  let width_score = edge.type === "ComputedEdge" ? edge.width_score : edge.type === "MapVCrossEdge" ? 0 : 0;
+  let mix_score = edge.type === "ComputedEdge" ? edge.mix_score : edge.type === "MapVCrossEdge" ? 0 : 0;
   let distance = 100; // Issue #17 により定数としている
 
   const lambda = params.lambda;
@@ -128,6 +128,9 @@ export function generateInitSearchState(beginNodes: App.NodeId[]): SearchState {
  * @returns 経路の辺リスト
  */
 export function pathFind(graph: App.SearchGraph, params: App.SearchParameters, begin: App.NodeId[], end: App.NodeId[]): App.EdgeId[] {
+  if (begin.length === 0 || end.length === 0) {
+    return [];
+  }
   let state = generateInitSearchState(begin);
   while (true) {
     const result = step_search(graph, params, state, end);
@@ -137,7 +140,10 @@ export function pathFind(graph: App.SearchGraph, params: App.SearchParameters, b
     }
     state = result.state;
 
-    if (state.paths.every(p => end.includes(p.node) && p.cost == state.min_cost)) {
+    if (state.paths.length === 0) {
+      return [];
+    }
+    if (state.paths.every(p => end.includes(p.node) && p.cost === state.min_cost)) {
       return state.paths[0].path;
     }
   }
