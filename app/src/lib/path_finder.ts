@@ -59,7 +59,7 @@ export function step_search(
           `Error calculating cost for edge ${to_compute.id}:`,
           new_edge.message,
         );
-        continue;
+        return state;
       }
       console.log(`Calculated cost for edge ${to_compute.id}:`, new_edge);
       map.edges[new_edge.id] = new_edge;
