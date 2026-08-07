@@ -32,7 +32,7 @@ export function step_search(
   params: App.SearchParameters,
   state: SearchState,
   endNodes: App.NodeId[],
-): SearchState {
+): { success: true, state: SearchState } | { success: false, error: string } {
   state.min_cost = Math.min(
     ...state.paths
       .filter((p) => endNodes.includes(p.node))
@@ -55,11 +55,7 @@ export function step_search(
     )) {
       let new_edge = CalculateCost(to_compute);
       if (new_edge instanceof Error) {
-        console.error(
-          `Error calculating cost for edge ${to_compute.id}:`,
-          new_edge.message,
-        );
-        return state;
+        return { success: false, error: "error calculating cost for edge " + to_compute.id };
       }
       console.log(`Calculated cost for edge ${to_compute.id}:`, new_edge);
       map.edges[new_edge.id] = new_edge;
@@ -102,8 +98,11 @@ export function step_search(
   new_paths = Array.from(unique_nodes.values());
 
   return {
-    paths: new_paths,
-    min_cost: state.min_cost,
+    success: true,
+    state: {
+      paths: new_paths,
+      min_cost: state.min_cost,
+    },
   };
 }
 
@@ -133,7 +132,12 @@ export function generateInitSearchState(beginNodes: App.NodeId[]): SearchState {
 export function pathFind(graph: App.SearchGraph, params: App.SearchParameters, begin: App.NodeId[], end: App.NodeId[]): App.EdgeId[] {
   let state = generateInitSearchState(begin);
   while (state.paths.length > 1) {
-    state = step_search(graph, params, state, end);
+    const result = step_search(graph, params, state, end);
+    if (!result.success) {
+      console.error(result.error);
+      return [];
+    }
+    state = result.state;
   }
   if (state.paths.length === 0) {
     return [];
