@@ -27,6 +27,7 @@ function calculateEdgeCost(edge: App.ComputedEdge | App.MapVCrossEdge, params: A
   let cost = distance * (1 - score * lambda);
   return cost;
 }
+
 export function step_search(
   map: App.SearchGraph,
   params: App.SearchParameters,
@@ -47,28 +48,25 @@ export function step_search(
       continue;
     }
 
-    let neighbors = Object.entries(map.edges)
-      .filter(([edgeId, edge]) => edge.begin === old_path.node || edge.end === old_path.node)
-      .map(([edgeId, edge]) => edge);
-    for (const to_compute of neighbors.filter(
-      (x) => x.type == "FoldedEdge",
-    )) {
-      let new_edge = CalculateCost(to_compute);
-      if (new_edge instanceof Error) {
-        return { success: false, error: "error calculating cost for edge " + to_compute.id };
+    const neighbors = Object.values(map.edges)
+      .filter((edge) => edge.begin === old_path.node || edge.end === old_path.node);
+
+    for (const edge of neighbors) {
+      // 隣接エッジについて、 FoldedEdge の場合コスト計算を行う。
+      // それ以外のエッジはそのまま使用する。
+      let neighbor: App.ComputedEdge | App.MapVCrossEdge;
+      if (edge.type === "FoldedEdge") {
+        let new_edge = CalculateCost(edge);
+        if (new_edge instanceof Error) {
+          return { success: false, error: `Error calculating cost for edge ${edge.id}: ${new_edge.message}` };
+        }
+        map.edges[new_edge.id] = new_edge;
+        neighbor = new_edge;
+      } else {
+        neighbor = edge;
       }
-      console.log(`Calculated cost for edge ${to_compute.id}:`, new_edge);
-      map.edges[new_edge.id] = new_edge;
-    }
 
-    let neighbors_calculated = Object.entries(map.edges)
-      .filter(([edgeId, edge]) => edge.begin === old_path.node || edge.end === old_path.node)
-      .map(([edgeId, edge]) => edge) as (
-        | App.MapVCrossEdge
-        | App.ComputedEdge
-      )[];
-
-    for (const neighbor of neighbors_calculated) {
+      // 閉路を避けるために、すでに通ったエッジを再度通らないようにする
       if (old_path.path.includes(neighbor.id)) continue;
 
       const new_cost = old_path.cost + calculateEdgeCost(neighbor, params);
@@ -131,16 +129,16 @@ export function generateInitSearchState(beginNodes: App.NodeId[]): SearchState {
  */
 export function pathFind(graph: App.SearchGraph, params: App.SearchParameters, begin: App.NodeId[], end: App.NodeId[]): App.EdgeId[] {
   let state = generateInitSearchState(begin);
-  while (state.paths.length > 1) {
+  while (true) {
     const result = step_search(graph, params, state, end);
     if (!result.success) {
       console.error(result.error);
       return [];
     }
     state = result.state;
+
+    if (state.paths.length === 1 && end.includes(state.paths[0].node)) {
+      return state.paths[0].path;
+    }
   }
-  if (state.paths.length === 0) {
-    return [];
-  }
-  return state.paths[0].path;
 }
