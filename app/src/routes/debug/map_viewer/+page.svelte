@@ -13,7 +13,7 @@
       [key: App.EdgeId]:
         | App.OSMEdge
         | App.MapVCrossEdge
-        | App.FoldedEdge
+        | App.edEdge
         | App.ComputedEdge;
     };
   };
