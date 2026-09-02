@@ -6,15 +6,15 @@
   import LocationInput from "$lib/ui/location_input.svelte";
   import { loadDebugMap } from "$lib/map_loader/debug";
   import { CalculateCost } from "$lib/cost_calculator";//追加
-
+  import { fold2DegreeEdges } from "$lib/fold2degree";
   /** @type {L.Map} */
   let map;
 
   onMount(() => {
     const debugMap = loadDebugMap();
-
+    const searchGraph = fold2DegreeEdges(debugMap);
     //追加
-    Object.values(debugMap.edges).forEach(edge=>{
+    Object.values(searchGraph.edges).forEach(edge=>{
       CalculateCost(edge);
     });
 
