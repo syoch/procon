@@ -6,8 +6,6 @@
   import LocationInput from "$lib/ui/location_input.svelte";
   import { loadDebugMap } from "$lib/map_loader/debug";
   import { CalculateCost } from "$lib/cost_calculator";//追加
-  import { FoldedEdge } from "$lib/types/edge";
-
 
   /** @type {L.Map} */
   let map;
@@ -17,7 +15,7 @@
 
     //追加
     Object.values(debugMap.edges).forEach(edge=>{
-      CalculateCost(folded_edge);
+      CalculateCost(edge);
     });
 
     map = L.map("map").setView([37.4379, 138.8795], 18);

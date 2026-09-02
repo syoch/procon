@@ -4,9 +4,6 @@
  * @returns {App.ComputedEdge | Error} コスト計算後のエッジ
  */
 export function CalculateCost(folded_edge) {
-  if (!folded_edge || !folded_edge.segments) {
-    console.log("配列が存在しないfolded_edgeを発見:", folded_edge);
-  }
   /*道路座標とhighway属性，width属性，sidewalk属性を表示 */
   console.log({
     id: folded_edge.id,
