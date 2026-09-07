@@ -31,7 +31,7 @@ export function CalculateCost(folded_edge) {
     );
 
     /*視界スコアの計算 */
-    viewScore = calculateViewScore(folded_edge.segments[0]?.highway);
+    viewScore = calculateViewScore(folded_edge.type);
 
     /*合計スコアの計算 */
     totalScore = widthScore + mixScore + viewScore;
@@ -61,13 +61,22 @@ function calculateWidthScore(width, highway) {
   if (!width) {
     // widthが未定義の場合はhighway属性から推定
     switch (highway) {
-      case "residential":
-        return 0.5; // 住宅街の道路
+      case "motorway":
+        return 1.2; // 高速道路
+      case "trunk":
+        return 1.0; // 幹線道路
       case "primary":
+        return 0.8; // 主要国道
       case "secondary":
-        return 0.3; // 交通量の多い幹線道路
+        return 0.6; // 国道・主要地方道
+      case "tertiary":
+        return 0.4; // 一般主要道
+      case "unclassified":
+        return 0.3; // 一般道
+      case "residential":
+        return 0.1; // 住宅街の道路
       default:
-        return 0.5; // 不明な場合は中間値
+        return 0.3; // 不明な場合(遊歩道も考慮したほうがいいかも)
     }
   }
   if (width >= 6.0) {
@@ -77,6 +86,9 @@ function calculateWidthScore(width, highway) {
     return 0.7;
   } // 3m以上：普通
   return 0.1; // 狭い
+
+  /*lanes属性（車線数）というデータがあるらしい。
+  そこから予測もできるかも。 */
 }
 
 /**
@@ -89,24 +101,29 @@ function calculateMixScore(sidewalk, highway) {
   if (!sidewalk) {
     // sidewalkが未定義の場合はhighway属性から推定
     switch (highway) {
-      case "residential":
-        return 0.5; // 住宅街の道路
+      case "motorway":
+        return 1.2; // 高速道路(歩行者・自転車禁止)
+      case "trunk":
       case "primary":
       case "secondary":
-        return 0.3; // 交通量の多い幹線道路
+      case "tertiary":
+        return 0.8; // 一般主要道(歩道あり・自転車通行可)
+      case "unclassified":
+      case "residential":
+        return 0.3; // 一般道・住宅街の道路(路側帯があることが多い道路)
       default:
-        return 0.5; // 不明な場合は中間値
+        return 0.1; // 不明な場合
     }
   }
   switch (sidewalk) {
     case "both":
-      return 1.0; // 両側に歩道あり
+      return 0.8; // 両側に歩道あり
     case "left":
     case "right":
     case "separate":
-      return 0.8; // 片側または独立歩道
+      return 0.6; // 片側または独立歩道
     case "none":
-      return 0.2; // 歩道なし
+      return 0.3; // 歩道なし
     default:
       return 0.5;
   }
@@ -114,11 +131,11 @@ function calculateMixScore(sidewalk, highway) {
 
 /**
  * 視界スコアの計算
- * @param {string | undefined} highway
+ * @param {string | undefined} mapEdge
  * @returns {number}
  */
-function calculateViewScore(highway) {
-  switch (highway) {
+function calculateViewScore(mapEdge) {
+  switch (mapEdge) {
     case "pedestrian":
     case "footway":
       return 1.0; // 歩行者専用道路
