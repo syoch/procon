@@ -173,6 +173,32 @@ declare global {
 			nodes: { [key: NodeId]: MapVCrossNode };
 			edges: { [key: EdgeId]: MapVCrossEdge | FoldedEdge | ComputedEdge };
 		};
+
+		/**
+		 * (デバッグ用途) 任意のノードとエッジを持つグラフ
+		 *
+		 * 主に DebugMapData/DebugGraphData で使用する。
+		 */
+		type GenericMap = {
+			nodes: { [key: App.NodeId]: App.MapVCrossNode | App.MapNode };
+			edges: {
+				[key: App.EdgeId]:
+				| App.OSMEdge
+				| App.MapVCrossEdge
+				| App.FoldedEdge
+				| App.ComputedEdge;
+			};
+		};
+
+		/**
+		 * 経路探索パラメーター
+		 */
+		type SearchParameters = {
+			mix_score_weight: number;
+			view_score_weight: number;
+			width_score_weight: number;
+			lambda: number;
+		};
 	}
 }
 
