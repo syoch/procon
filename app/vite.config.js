@@ -16,5 +16,23 @@ export default defineConfig({
 	],
 	server: {
 		allowedHosts: true
+	},
+	build: {
+		// SMUI の生成 CSS に不正な変数名 (空白入り ident) が含まれており、
+		// lightningcss の minify が厳格に失敗するため esbuild を使う。
+		// 根本原因は @smui 側の CSS 生成バグ (別途対応)。
+		cssMinify: 'esbuild'
+	},
+	environments: {
+		ssr: {
+			build: {
+				cssMinify: 'esbuild'
+			}
+		},
+		client: {
+			build: {
+				cssMinify: 'esbuild'
+			}
+		}
 	}
 });
