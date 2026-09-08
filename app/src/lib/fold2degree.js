@@ -1,16 +1,16 @@
 /**
- * @brief 交差点変換後のグラフを探索用のグラフに変換する
+ * @brief 安全に2度ノードを畳み込んで連結する修正版プログラム
  * @param {App.CrossConvertedGraph} graph
  * @returns {App.SearchGraph | Error} 探索用グラフ
  */
 export function fold2DegreeEdges(graph) {
-  if (!graph || !graph.nodes || !graph.edges) {
+ if (!graph || !graph.nodes || !graph.edges) {
     console.error("無効なグラフデータです。", graph);
     return new Error("無効なグラフデータです。");
   }
 
   // -------------------------------------------------------------
-  // 【ステップ1】元のプログラムと同じ初期処理（ベースの生成）
+  // 【ステップ1】初期処理（ベースの生成）
   // -------------------------------------------------------------
   /** @type {App.SearchGraph} */
   const searchGraph = {
@@ -25,7 +25,7 @@ export function fold2DegreeEdges(graph) {
     }
   }
 
-  // エッジの初期変換 (OSMEdge -> FoldedEdge, MapVCrossEdge はそのまま保持)
+  // エッジの初期変換
   for (const [edgeId, edge] of Object.entries(graph.edges)) {
     if (edge.type === "OSMEdge") {
       /** @type {App.FoldedEdge} */
@@ -51,88 +51,93 @@ export function fold2DegreeEdges(graph) {
   }
 
   // -------------------------------------------------------------
-  // 【ステップ2】交差点以外の点（2度のノード）を通るエッジの畳み込み・連結処理
+  // 【ステップ2】動的な畳み込み・連結処理
   // -------------------------------------------------------------
 
-  // 2-1. 各ノードに接続している「OSM由来エッジ（FoldedEdge）」をカウント・リスト化
-  /** @type {Record<string, Array<{ edgeId: string, isBegin: boolean }>>} */
-  const nodeAdjacency = {};
+  // ヘルパー関数: 現在の searchGraph における各ノードの接続エッジ一覧を取得する
+  const getAdjacency = () => {
+    /** @type {Record<string, string[]>} */
+    const adj = {};
+    for (const [edgeId, edge] of Object.entries(searchGraph.edges)) {
+      if (edge.type !== "FoldedEdge") continue;
 
-  for (const [edgeId, edge] of Object.entries(searchGraph.edges)) {
-    if (edge.type !== "FoldedEdge") continue;
+      if (!adj[edge.begin]) adj[edge.begin] = [];
+      if (!adj[edge.end]) adj[edge.end] = [];
 
-    if (!nodeAdjacency[edge.begin]) nodeAdjacency[edge.begin] = [];
-    if (!nodeAdjacency[edge.end]) nodeAdjacency[edge.end] = [];
-
-    nodeAdjacency[edge.begin].push({ edgeId, isBegin: true });
-    nodeAdjacency[edge.end].push({ edgeId, isBegin: false });
-  }
-
-  // 処理済み（連結されて削除対象となった）エッジのIDセット
-  const removedEdgeIds = new Set();
-
-  // 2-2. 接続数がちょうど2本（一本道の途中点）のノードを探して連結処理を行う
-  for (const [nodeId, connections] of Object.entries(nodeAdjacency)) {
-    // 交差点（MapVCrossNode）は絶対に消さない
-    if (graph.nodes[nodeId]?.type === "MapVCrossNode") continue;
-
-    // 接続しているエッジがちょうど2本でない場合はスキップ（端点や3差路以上など）
-    if (connections.length !== 2) continue;
-
-    const conn1 = connections[0];
-    const conn2 = connections[1];
-
-    // すでにどちらかのエッジが他の連結処理で統合・削除されている場合はスキップ
-    if (removedEdgeIds.has(conn1.edgeId) || removedEdgeIds.has(conn2.edgeId)) continue;
-    if (conn1.edgeId === conn2.edgeId) continue; // 自己ループ等の防止
-
-    const edge1 = searchGraph.edges[conn1.edgeId];
-    const edge2 = searchGraph.edges[conn2.edgeId];
-
-    if (!edge1 || !edge2 || edge1.type !== "FoldedEdge" || edge2.type !== "FoldedEdge") continue;
-
-    // 2-3. edge1 の末尾に edge2 をガッチャンコ（連結）する
-    // edge1 と edge2 の向き（begin/end）がどう接しているか判定して配列を調整
-    let edge2Segments = [...edge2.segments];
-
-    // edge2 の始まりが共通ノード(nodeId)でない場合、順序を反転させる
-    const edge2StartNode = conn2.isBegin ? edge2.begin : edge2.end;
-    if (edge2StartNode !== nodeId) {
-      edge2Segments.reverse();
+      adj[edge.begin].push(edgeId);
+      adj[edge.end].push(edgeId);
     }
+    return adj;
+  };
 
-    // edge1 の終わりが共通ノード(nodeId)でない場合、edge1の既存セグメントを反転させて終点を揃える
-    const edge1EndNode = conn1.isBegin ? edge1.begin : edge1.end;
-    if (edge1EndNode !== nodeId) {
+  let adj = getAdjacency();
+
+  // 消去・連結対象となる「度数2の途中点ノード」のリストを作成
+  const candidateNodeIds = Object.keys(graph.nodes).filter((nodeId) => {
+    const isNotCross = graph.nodes[nodeId]?.type !== "MapVCrossNode";
+    const isDegreeTwo = adj[nodeId]?.length === 2;
+    return isNotCross && isDegreeTwo;
+  });
+
+  for (const nodeId of candidateNodeIds) {
+    // 常に最新の接続状態を確認（前回の合体処理で変化している可能性があるため）
+    const currentConnectedEdges = adj[nodeId];
+    if (!currentConnectedEdges || currentConnectedEdges.length !== 2) continue;
+
+    const [edgeId1, edgeId2] = currentConnectedEdges;
+
+    const edge1 = searchGraph.edges[edgeId1];
+    const edge2 = searchGraph.edges[edgeId2];
+
+    // エッジがすでに削除されているか、同じエッジ同士（ループ）ならスキップ
+    if (!edge1 || !edge2 || edgeId1 === edgeId2) continue;
+    if (edge1.type !== "FoldedEdge" || edge2.type !== "FoldedEdge") continue;
+
+    // --- 向きと端点の判定ロジック ---
+    // edge1 において nodeId が終点側になるように揃える
+    if (edge1.begin === nodeId) {
       edge1.segments.reverse();
-      edge1.begin = edge1EndNode;
+      // 各 segment 内の始点・終点座標も入れ替え
+      edge1.segments.forEach((seg) => {
+        const tmp = seg.begin_coordinate;
+        seg.begin_coordinate = seg.end_coordinate;
+        seg.end_coordinate = tmp;
+      });
+      edge1.begin = edge1.end;
+      edge1.end = nodeId;
     }
 
-    // edge1 の新しい終点を edge2 の反対側のノードに更新
-    const edge2OtherNode = conn2.isBegin ? edge2.end : edge2.begin;
+    // edge2 において nodeId が始点側になるように揃える
+    let edge2Segments = JSON.parse(JSON.stringify(edge2.segments));
+    let edge2OtherNode = edge2.end;
+
+    if (edge2.end === nodeId) {
+      edge2Segments.reverse();
+      edge2Segments.forEach((seg) => {
+        const tmp = seg.begin_coordinate;
+        seg.begin_coordinate = seg.end_coordinate;
+        seg.end_coordinate = tmp;
+      });
+      edge2OtherNode = edge2.begin;
+    }
+
+    // --- 合体処理 ---
+    // 1. edge1 の終点を edge2 の反対側のノードに伸ばす
     edge1.end = edge2OtherNode;
 
-    // セグメント配列を合体
+    // 2. edge1 のセグメント群に edge2 のセグメント群を追加
     edge1.segments.push(...edge2Segments);
 
-    // 統合された edge2 を削除対象に追加
-    removedEdgeIds.add(conn2.edgeId);
+    // 3. 吸収された edge2 をグラフから消去
+    delete searchGraph.edges[edgeId2];
 
-    // nodeAdjacency の接続情報を更新（edge2OtherNode 側の参照を edge2 から edge1 に差し替え）
-    const otherConnections = nodeAdjacency[edge2OtherNode];
-    if (otherConnections) {
-      for (const conn of otherConnections) {
-        if (conn.edgeId === conn2.edgeId) {
-          conn.edgeId = conn1.edgeId;
-          conn.isBegin = (edge1.begin === edge2OtherNode);
-        }
-      }
+    // 4. 動的追跡のため adj（隣接情報）をリアルタイム更新
+    // edge2OtherNode に繋がっていた edgeId2 を edgeId1 に置き換える
+    if (adj[edge2OtherNode]) {
+      adj[edge2OtherNode] = adj[edge2OtherNode].map((id) => (id === edgeId2 ? edgeId1 : id));
     }
-  }
-
-  // 2-4. 統合されて不要になったエッジを searchGraph.edges から除去
-  for (const edgeId of removedEdgeIds) {
-    delete searchGraph.edges[edgeId];
+    // 消去された nodeId の情報はクリア
+    delete adj[nodeId];
   }
 
   console.log("一本道への畳み込み・連結処理完了", searchGraph);
