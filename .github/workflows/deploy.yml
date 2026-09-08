@@ -1,0 +1,92 @@
+name: build-and-deploy
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  # Nix (OS 層) の変更検出 — deploy-os の実行条件
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      nix: ${{ steps.filter.outputs.nix }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            nix:
+              - 'flake.nix'
+              - 'flake.lock'
+              - 'modules/**'
+              - 'nixos/**'
+
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
+
+      - name: アプリの検証 (check)
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm check
+        working-directory: app
+
+      - uses: cachix/install-nix-action@v31
+        with:
+          github_access_token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: NixOS コンテナ tarball のビルド
+        run: nix build -L .#containerTarball
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: container-tarball
+          path: result/tarball/*.tar.xz
+          retention-days: 7
+
+  # app 層の更新 (main マージ時、毎回)
+  deploy-app:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [build]
+    runs-on: ubuntu-latest
+    steps:
+      - name: SSH 設定
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          echo "${{ secrets.VPS_HOST_KEY }}" >> ~/.ssh/known_hosts
+      - name: アプリ更新デプロイ
+        run: ssh ${{ secrets.VPS_HOST }} "sudo /usr/local/bin/procon-app-deploy.sh"
+
+  # OS 層の更新 (Nix 設定変更時のみ)
+  deploy-os:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.changes.outputs.nix == 'true'
+    needs: [changes, build]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: container-tarball
+      - name: SSH 設定
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          echo "${{ secrets.VPS_HOST_KEY }}" >> ~/.ssh/known_hosts
+      - name: コンテナ更新デプロイ
+        run: |
+          TARBALL=$(ls *.tar.xz | head -n1)
+          scp "$TARBALL" "${{ secrets.VPS_HOST }}:/tmp/"
+          ssh ${{ secrets.VPS_HOST }} "sudo /usr/local/bin/procon-container-deploy.sh /tmp/$TARBALL"

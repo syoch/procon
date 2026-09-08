@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+# WideNavi アプリ更新 (app 層デプロイ)
+#
+# VPS の /usr/local/bin/procon-app-deploy.sh に設置し、sudoers で許可する:
+#   procon ALL=(root) NOPASSWD: /usr/local/bin/procon-app-deploy.sh
+#
+# 流れ:
+#   1. VPS ホスト側の /srv/procon で git pull (deploy key はホストの procon ユーザー)
+#   2. コンテナ内 (procon@procon) で pnpm install / build
+#   3. コンテナ内で procon.service を再起動
+#
+# 前提:
+#   - /srv/procon の所有者は uid 1000 (ホストの procon ユーザーと同じ)
+#   - コンテナ procon が起動済みで /srv/app に bind mount 済み
+set -euo pipefail
+
+REPO_DIR=/srv/procon
+CONTAINER=procon
+REPO_URL="git@github.com:syoch/procon.git"
+APP_UID=1000
+
+if [ "$(id -u)" -ne 0 ]; then
+  echo "root で実行してください (sudo)" >&2
+  exit 1
+fi
+
+# 1. git (ホストの procon ユーザー権限で実行 — 所有権を uid 1000 に保つため)
+if [ ! -d "$REPO_DIR/.git" ]; then
+  mkdir -p "$REPO_DIR"
+  chown "$APP_UID:$APP_UID" "$REPO_DIR"
+  runuser -u procon -- git clone "$REPO_URL" "$REPO_DIR"
+fi
+runuser -u procon -- git -C "$REPO_DIR" pull --ff-only
+
+# 2. ビルド (コンテナ内の procon ユーザー)
+machinectl shell "procon@$CONTAINER" /run/current-system/sw/bin/bash -lc '
+  set -e
+  cd /srv/app
+  pnpm install --frozen-lockfile
+  pnpm build
+'
+
+# 3. 再起動 (コンテナ内 root)
+machinectl shell "$CONTAINER" /run/current-system/sw/bin/systemctl restart procon
+machinectl shell "$CONTAINER" /run/current-system/sw/bin/systemctl is-active procon

@@ -1,0 +1,27 @@
+# VPS の /etc/systemd/nspawn/procon.nspawn として配置するファイル
+#
+#   sudo install -m 644 procon.nspawn /etc/systemd/nspawn/procon.nspawn
+#
+# VirtualEthernet=no:
+#   ホストとネットワーク名前空間を共有する。コンテナ内 nginx が
+#   ホストの :80 / :443 を直接掴むため、netplan や firewall には
+#   一切触れる必要がなく、締め出しリスクが構造的に発生しない。
+#
+# PrivateUsers=no:
+#   user namespace を無効化し、ホストとコンテナで uid を同一視する。
+#   (bind mount した /srv/app の所有者 uid 1000 をコンテナ内の
+#    procon ユーザーと一致させるため。systemd 260+ では既定で
+#    userns が適用される環境があるため明示する)
+#
+# Bind:
+#   アプリのチェックアウト (git はホスト側で管理) と
+#   ACME の状態 (tarball 再インポートで証明書が消えないように) を共有する。
+[Network]
+VirtualEthernet=no
+
+[Exec]
+PrivateUsers=no
+
+[Files]
+Bind=/srv/procon/app:/srv/app
+Bind=/srv/procon-state/acme:/var/lib/acme
