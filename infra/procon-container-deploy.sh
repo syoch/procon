@@ -48,8 +48,8 @@ if [ -z "$TARBALL_ARG" ]; then
   runuser --login procon -c "git -C $REPO_DIR pull --ff-only"
 
   echo "== 2/4 NixOS コンテナ tarball を VPS 上でビルド =="
-  nix build -L --out-link /tmp/procon-container-tarball "${NIX_FLAGS[@]}" "$REPO_DIR/infra#containerTarball"
-  TARBALL="$(find /tmp/procon-container-tarball -name '*.tar.xz' -print -quit)"
+  OUT="$(nix build -L --no-link --print-out-paths "${NIX_FLAGS[@]}" "$REPO_DIR/infra#containerTarball")"
+  TARBALL="$(find "$OUT" -name '*.tar.xz' -print -quit)"
   [ -n "$TARBALL" ] || { echo "tarball が生成されませんでした" >&2; exit 1; }
   echo "tarball: $TARBALL"
 else
