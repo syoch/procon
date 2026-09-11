@@ -101,14 +101,15 @@ fi
 old_target="$(readlink "$MACHINE_DIR/nix/var/nix/profiles/system" 2>/dev/null || true)"
 if [ -n "$old_target" ] && [ "$old_target" != "$TOPLEVEL" ]; then
   printf '%s\n' "$old_target" > "$STATE_DIR/system.prev"
-  printf '%s\n' "$old_target" > "$GCROOT_PREV"
+  ln -sfn "$old_target" "$GCROOT_PREV"
 fi
 ln -sfn "$TOPLEVEL" "$MACHINE_DIR/nix/var/nix/profiles/system"
 ln -sfn "$TOPLEVEL/init" "$MACHINE_DIR/sbin/init"
 ln -sfn "$TOPLEVEL/etc/os-release" "$MACHINE_DIR/etc/os-release"
 ln -sfn "$SYSTEMD_STORE/lib/systemd/systemd" "$MACHINE_DIR/usr/lib/systemd/systemd"
 ln -sfn "$SYSTEMD_STORE/lib/systemd/systemd" "$MACHINE_DIR/lib/systemd/systemd"
-printf '%s\n' "$TOPLEVEL" > "$GCROOT"
+# GC root: step 2/4 の nix build --out-link "$GCROOT" が symlink として作成済み
+# (ここでは上書きしない — symlink に対するリダイレクトは "Is a directory" で失敗する)
 
 echo "== 4/4 コンテナの再起動 =="
 systemctl restart "$UNIT"
