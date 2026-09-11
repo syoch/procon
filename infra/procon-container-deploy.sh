@@ -16,8 +16,7 @@
 #   - コンテナ rootfs (/var/lib/machines/procon) は symlink だけの最小構成:
 #       nix/var/nix/profiles/system → /nix/store/<toplevel>
 #       sbin/init                   → <toplevel>/init
-#       etc/os-release              → <toplevel>/etc/os-release
-#       usr/lib/systemd/systemd     → <systemd>/lib/systemd/systemd
+#       etc/os-release              → <toplevel>/etc/os-release (実ファイルコピー)
 #         (nspawn 255 が NixOS tree を systemd 無しと誤判定して /sys/fs/cgroup に
 #          tmpfs を張り、ネスト systemd が起動に失敗するのを防ぐ検出用 symlink)
 #     /nix/store 自体は procon.nspawn の BindReadOnly でホストから共有する。
@@ -90,10 +89,6 @@ fi
 echo "toplevel: $TOPLEVEL"
 [ -d "$TOPLEVEL" ] || { echo "toplevel が存在しません: $TOPLEVEL" >&2; exit 1; }
 
-# コンテナの systemd (nspawn 255 の検出用) を GC root 付きで確保
-nix build -L --out-link "$STATE_DIR/systemd" "${NIX_FLAGS[@]}" "$REPO_DIR/infra#containerSystemd" >/dev/null
-SYSTEMD_STORE="$(readlink -f "$STATE_DIR/systemd")"
-
 echo "== 3/4 コンテナ rootfs の準備 =="
 if [ -d "$MACHINE_DIR/nix/store" ] && [ ! -L "$MACHINE_DIR/nix/store" ]; then
   echo "旧 tarball 方式 (埋め込み store) を検出 → rootfs を作り直します"
@@ -128,14 +123,12 @@ ln -sfn "$TOPLEVEL/init" "$MACHINE_DIR/sbin/init"
 # os-release は実ファイルとしてコピーする: nspawn は bind mount 設定前の
 # 事前検証で /etc/os-release を open するため、/nix/store 宛の symlink は
 # この時点では dangling になり "os-release file is missing" で起動拒否する
-# os-release は実ファイルとしてコピーする: nspawn は bind mount 設定前の
-# 事前検証で /etc/os-release を open するため、/nix/store 宛の symlink は
-# この時点では dangling になり "os-release file is missing" で起動拒否する
 mkdir -p "$MACHINE_DIR/etc" "$MACHINE_DIR/usr/lib"
 install -m 444 "$TOPLEVEL/etc/os-release" "$MACHINE_DIR/etc/os-release"
 install -m 444 "$TOPLEVEL/etc/os-release" "$MACHINE_DIR/usr/lib/os-release"
-ln -sfn "$SYSTEMD_STORE/lib/systemd/systemd" "$MACHINE_DIR/usr/lib/systemd/systemd"
-ln -sfn "$SYSTEMD_STORE/lib/systemd/systemd" "$MACHINE_DIR/lib/systemd/systemd"
+# 注意: /usr/lib/systemd/systemd など systemd 実体の symlink を rootfs に置くのは
+# NG — nspawn --boot は systemd binary 検出で迂回し、NixOS stage-2 (activation・
+# /etc/systemd/system の構築) をスキップして "default.target not found" になる。
 # GC root: step 2/4 の nix build --out-link "$GCROOT" が symlink として作成済み
 # (ここでは上書きしない — symlink に対するリダイレクトは "Is a directory" で失敗する)
 
