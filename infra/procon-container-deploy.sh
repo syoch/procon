@@ -43,7 +43,9 @@ fi
 TARBALL_ARG="${1:-}"
 if [ -z "$TARBALL_ARG" ]; then
   echo "== 1/4 git pull =="
-  runuser --login procon -- git -C "$REPO_DIR" pull --ff-only
+  # --login + -c で渡すこと (-- を付けるとシェル引数扱いになり ENOEXEC で失敗する)
+  runuser --login procon -c "git config --global --replace-all safe.directory $REPO_DIR" >/dev/null
+  runuser --login procon -c "git -C $REPO_DIR pull --ff-only"
 
   echo "== 2/4 NixOS コンテナ tarball を VPS 上でビルド =="
   nix build -L --out-link /tmp/procon-container-tarball "${NIX_FLAGS[@]}" "$REPO_DIR/infra#containerTarball"
