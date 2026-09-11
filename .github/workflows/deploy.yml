@@ -71,7 +71,7 @@ jobs:
           chmod 600 ~/.ssh/id_ed25519
           echo "${{ secrets.VPS_HOST_KEY }}" >> ~/.ssh/known_hosts
       - name: アプリ更新デプロイ
-        run: ssh ${{ secrets.VPS_HOST }} "sudo /usr/local/bin/procon-app-deploy.sh"
+        run: ssh ${{ secrets.VPS_HOST }} "sudo /srv/procon/infra/procon-app-deploy.sh"
 
   # OS 層の更新 (Nix 設定変更時のみ)
   deploy-os:
@@ -93,4 +93,4 @@ jobs:
           # 固定名で保存済み (build ジョブで cp 済み)。存在確認をしてから転送する
           [ -f procon-container.tar.xz ] || { echo "tarball artifact が見つかりません" >&2; exit 1; }
           scp procon-container.tar.xz "${{ secrets.VPS_HOST }}:/tmp/"
-          ssh ${{ secrets.VPS_HOST }} "sudo /usr/local/bin/procon-container-deploy.sh /tmp/procon-container.tar.xz"
+          ssh ${{ secrets.VPS_HOST }} "sudo /srv/procon/infra/procon-container-deploy.sh /tmp/procon-container.tar.xz"

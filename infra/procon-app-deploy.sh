@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 # WideNavi アプリ更新 (app 層デプロイ)
 #
-# VPS の /usr/local/bin/procon-app-deploy.sh に設置し、sudoers で許可する:
-#   procon ALL=(root) NOPASSWD: /usr/local/bin/procon-app-deploy.sh
+# リポジトリ clone 先 (/srv/procon/infra/procon-app-deploy.sh) から直接実行するため、
+# git pull によりこのスクリプト自体も CI/CD 経由で最新に保たれる。
+# sudoers で許可する:
+#   procon ALL=(root) NOPASSWD: /srv/procon/infra/procon-app-deploy.sh
 #
 # 流れ:
 #   1. VPS ホスト側の /srv/procon で git pull (deploy key はホストの procon ユーザー)

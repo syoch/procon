@@ -98,14 +98,16 @@ git clone git@github.com:syoch/procon.git /srv/procon
 # CI 用公開鍵もこのタイミングで authorized_keys に追記 (手動・任意)
 ```
 
-### C. 基盤の設置 (VPS 上 / sudo) — clone済みリポジトリから直接
+### C. sudoers の作成 (VPS 上 / sudo) — スクリプトは設置しない
+
+deploy スクリプトは clone されたリポジトリ (`/srv/procon/infra/`) から直接実行する。
+このため CI の `git pull` によりスクリプト群自体も自動更新される
+(`/usr/local/bin` への配置・更新は不要)。
 
 ```bash
-sudo install -m 755 /srv/procon/infra/procon-app-deploy.sh       /usr/local/bin/
-sudo install -m 755 /srv/procon/infra/procon-container-deploy.sh /usr/local/bin/
 sudo install -m 644 /srv/procon/infra/procon.nspawn /etc/systemd/nspawn/
 sudo install -d -m 755 /srv/procon-state/acme
-printf 'procon ALL=(root) NOPASSWD: /usr/local/bin/procon-app-deploy.sh, /usr/local/bin/procon-container-deploy.sh\n' \
+printf 'procon ALL=(root) NOPASSWD: /srv/procon/infra/procon-app-deploy.sh, /srv/procon/infra/procon-container-deploy.sh\n' \
   | sudo tee /etc/sudoers.d/procon-deploy
 sudo chmod 440 /etc/sudoers.d/procon-deploy
 ```
@@ -116,10 +118,10 @@ sudo chmod 440 /etc/sudoers.d/procon-deploy
 # OS 層デプロイ (マシン側で tarball をビルドして scp)
 #   マシン: nix build ./infra#containerTarball
 #   マシン: scp result/tarball/*.tar.xz procon@<VPS>:/tmp/procon.tar.xz
-sudo /usr/local/bin/procon-container-deploy.sh /tmp/procon.tar.xz
+sudo /srv/procon/infra/procon-container-deploy.sh /tmp/procon.tar.xz
 
 # app 層デプロイ初回 (clone 済みなので pull → build → 起動)
-sudo /usr/local/bin/procon-app-deploy.sh
+sudo /srv/procon/infra/procon-app-deploy.sh
 
 # 確認
 curl http://127.0.0.1/api/health
@@ -161,12 +163,12 @@ curl http://127.0.0.1/api/health
 
 ```bash
 # app 層 (数十秒)
-ssh procon@<VPS> sudo /usr/local/bin/procon-app-deploy.sh
+ssh procon@<VPS> sudo /srv/procon/infra/procon-app-deploy.sh
 
 # OS 層 (Nix 設定変更後。tarball を再ビルドして渡す)
 nix build ./infra#containerTarball
 scp result/tarball/*.tar.xz procon@<VPS>:/tmp/procon.tar.xz
-ssh procon@<VPS> sudo /usr/local/bin/procon-container-deploy.sh /tmp/procon.tar.xz
+ssh procon@<VPS> sudo /srv/procon/infra/procon-container-deploy.sh /tmp/procon.tar.xz
 ```
 
 ## 運用コマンド
