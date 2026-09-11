@@ -63,7 +63,7 @@ runuser --login procon -c "git -C $REPO_DIR pull --ff-only"
 TOPLEVEL=""
 if [ "${1:-}" = "info" ]; then
   echo "### /var/lib/machines/procon"
-  ls -laR "$MACHINE_DIR" 2>&1 | head -60
+  ls -laR "$MACHINE_DIR" 2>&1
   echo "### procon.nspawn"
   cat /etc/systemd/nspawn/procon.nspawn 2>&1
   echo "### gcroots"
