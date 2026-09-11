@@ -100,11 +100,12 @@ echo "toplevel: $TOPLEVEL"
 
 echo "== 3/4 コンテナ rootfs の準備 (常に作り直し) =="
 machinectl stop "$CONTAINER" 2>/dev/null || true
-# /var/empty (sshd 利用) と machine-id は immutable / 停止済みでも残存するため
-# 途中で失敗したら chattr -i から削除を試みる
+# var/empty (sshd) 等は 0555 のディレクトリで rm に失敗するため先に書込権を戻す
+chmod -R u+w "$MACHINE_DIR" 2>/dev/null || true
 rm -rf "$MACHINE_DIR" 2>/dev/null || true
 if [ -d "$MACHINE_DIR" ]; then
   chattr -R -i "$MACHINE_DIR" 2>/dev/null || true
+  chmod -R u+w "$MACHINE_DIR" 2>/dev/null || true
   rm -rf "$MACHINE_DIR" 2>/dev/null || true
 fi
 if [ -d "$MACHINE_DIR" ]; then
