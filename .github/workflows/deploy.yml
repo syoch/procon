@@ -47,12 +47,15 @@ jobs:
           github_access_token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: NixOS コンテナ tarball のビルド
-        run: nix build -L ./infra#containerTarball
+        run: |
+          nix build -L ./infra#containerTarball
+          # 以降のジョブで確実に取り出せるよう固定名にコピー (glob 選択を避ける)
+          cp -L result/tarball/*.tar.xz procon-container.tar.xz
 
       - uses: actions/upload-artifact@v4
         with:
           name: container-tarball
-          path: result/tarball/*.tar.xz
+          path: procon-container.tar.xz
           retention-days: 7
 
   # app 層の更新 (main マージ時、毎回)
@@ -87,6 +90,7 @@ jobs:
           echo "${{ secrets.VPS_HOST_KEY }}" >> ~/.ssh/known_hosts
       - name: コンテナ更新デプロイ
         run: |
-          TARBALL=$(ls *.tar.xz | head -n1)
-          scp "$TARBALL" "${{ secrets.VPS_HOST }}:/tmp/"
-          ssh ${{ secrets.VPS_HOST }} "sudo /usr/local/bin/procon-container-deploy.sh /tmp/$TARBALL"
+          # 固定名で保存済み (build ジョブで cp 済み)。存在確認をしてから転送する
+          [ -f procon-container.tar.xz ] || { echo "tarball artifact が見つかりません" >&2; exit 1; }
+          scp procon-container.tar.xz "${{ secrets.VPS_HOST }}:/tmp/"
+          ssh ${{ secrets.VPS_HOST }} "sudo /usr/local/bin/procon-container-deploy.sh /tmp/procon-container.tar.xz"
