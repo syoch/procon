@@ -100,7 +100,17 @@ echo "toplevel: $TOPLEVEL"
 
 echo "== 3/4 コンテナ rootfs の準備 (常に作り直し) =="
 machinectl stop "$CONTAINER" 2>/dev/null || true
-rm -rf "$MACHINE_DIR"
+# /var/empty (sshd 利用) と machine-id は immutable / 停止済みでも残存するため
+# 途中で失敗したら chattr -i から削除を試みる
+rm -rf "$MACHINE_DIR" 2>/dev/null || true
+if [ -d "$MACHINE_DIR" ]; then
+  chattr -R -i "$MACHINE_DIR" 2>/dev/null || true
+  rm -rf "$MACHINE_DIR" 2>/dev/null || true
+fi
+if [ -d "$MACHINE_DIR" ]; then
+  echo "rootfs の削除に失敗しました (immutable bit 等を確認してください): $MACHINE_DIR" >&2
+  exit 1
+fi
 
 # mount ターゲット (/proc /sys /dev) は nspawn 自動作成対象ではなく
 # 事前に存在している必要がある (旧 make-system-tarball は extraCommands で作成)。
