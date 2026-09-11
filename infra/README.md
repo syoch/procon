@@ -8,8 +8,8 @@ app 層 (SvelteKit) はコンテナ内で pnpm ビルドする。
 
 ```
 [このマシン (NixOS)]                    [GitHub Actions]
- flake.nix
-  ├ modules/procon.nix  ← 共通設定 ────→  nix build .#containerTarball
+ infra/flake.nix
+  ├ modules/procon.nix  ← 共通設定 ────→  nix build ./infra#containerTarball
   ├ nixos/vm-test.nix   → QEMU VM テスト   (push to main で自動デプロイ)
   └ nixos/container.nix → nspawn tarball
                                           │ scp
@@ -28,7 +28,7 @@ app 層 (SvelteKit) はコンテナ内で pnpm ビルドする。
 | 項目 | 内容 |
 |------|------|
 | OS 層の宣言 | 標準モジュール `lxc-container.nix` (`system.build.tarball`) を使用 |
-| テスト ≒ 本番 | `modules/procon.nix` を VM とコンテナで共有 — テストしたものを出荷 |
+| テスト ≒ 本番 | `infra/modules/procon.nix` を VM とコンテナで共有 — テストしたものを出荷 |
 | 締め出し対策 | `VirtualEthernet=no` でホスト netns 共有 → **netplan / firewall に一切触れない** |
 | 秘密鍵 | deploy key はホストのみ。tarball に秘密情報は含まない |
 | sudoers | NOPASSWD は 2 スクリプトのみ (`procon-app-deploy.sh` / `procon-container-deploy.sh`) |
@@ -38,12 +38,12 @@ app 層 (SvelteKit) はコンテナ内で pnpm ビルドする。
 
 ```bash
 # VM をビルドして起動 (headless / tmux 推奨)
-nix build .#vm
+nix build ./infra#vm
 ./result/bin/run-procon-test-vm
 # → 別ターミナルから ssh -p 2222 root@127.0.0.1 (パスワード: procontest)
 
 # コンテナ tarball をビルド
-nix build .#containerTarball
+nix build ./infra#containerTarball
 # → result/tarball/nixos-system-x86_64-linux.tar.xz
 ```
 
@@ -117,7 +117,7 @@ curl http://127.0.0.1/api/health   # nginx 経由
 ssh procon@<VPS> sudo /usr/local/bin/procon-app-deploy.sh
 
 # OS 層 (Nix 設定変更後。tarball を再ビルドして渡す)
-nix build .#containerTarball
+nix build ./infra#containerTarball
 scp result/tarball/*.tar.xz procon@<VPS>:/tmp/procon.tar.xz
 ssh procon@<VPS> sudo /usr/local/bin/procon-container-deploy.sh /tmp/procon.tar.xz
 ```

@@ -39,8 +39,8 @@
           echo "ProCon env"
           echo "Dev Server (run on <project>/app)"
           echo "  pnpm run dev --host 0.0.0.0 --port 10001"
-          echo "Test VM:    nix build .#vm  && ./result/bin/run-procon-test-vm"
-          echo "Container:  nix build .#containerTarball"
+          echo "Test VM:    nix build ./infra#vm  && ./result/bin/run-procon-test-vm"
+          echo "Container:  nix build ./infra#containerTarball"
         '';
       };
 

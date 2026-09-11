@@ -1,6 +1,6 @@
 # ローカル統合テスト用 VM
 #
-#   nix build .#vm && ./result/bin/run-procon-test-vm
+#   nix build ./infra#vm && ./result/bin/run-procon-test-vm
 #
 # - QEMU/KVM は sudo 不要で起動できる (/dev/kvm がアクセス可能な場合)
 # - ネットワークは SLiRP + ポートフォワード (tap / ブリッジ不要)
@@ -47,7 +47,7 @@
 
     # ホストのリポジトリを 9p で /mnt/repo に共有 (spike 用)
     virtualisation.sharedDirectories.repo = {
-      source = toString ./..;
+      source = toString ./../..;
       target = "/mnt/repo";
     };
   };

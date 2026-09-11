@@ -18,10 +18,10 @@ jobs:
         with:
           filters: |
             nix:
-              - 'flake.nix'
-              - 'flake.lock'
-              - 'modules/**'
-              - 'nixos/**'
+              - 'infra/flake.nix'
+              - 'infra/flake.lock'
+              - 'infra/modules/**'
+              - 'infra/nixos/**'
 
   build:
     runs-on: ubuntu-latest
@@ -47,7 +47,7 @@ jobs:
           github_access_token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: NixOS コンテナ tarball のビルド
-        run: nix build -L .#containerTarball
+        run: nix build -L ./infra#containerTarball
 
       - uses: actions/upload-artifact@v4
         with:

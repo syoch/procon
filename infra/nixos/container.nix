@@ -3,7 +3,7 @@
 # 標準モジュール nixos/modules/virtualisation/lxc-container.nix を import し、
 # systemd-nspawn 互換の rootfs tarball (system.build.tarball) を生成可能にする。
 #
-#   nix build .#containerTarball
+#   nix build ./infra#containerTarball
 #   → result/ 配下の nixos-system-x86_64-linux.tar.xz
 #
 # 導入は infra/README.md を参照 (machinectl import-tar)。
