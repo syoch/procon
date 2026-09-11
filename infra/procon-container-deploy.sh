@@ -61,6 +61,17 @@ runuser --login procon -c "git config --global --replace-all safe.directory $REP
 runuser --login procon -c "git -C $REPO_DIR pull --ff-only"
 
 TOPLEVEL=""
+if [ "${1:-}" = "info" ]; then
+  echo "### /var/lib/machines/procon"
+  ls -laR "$MACHINE_DIR" 2>&1 | head -60
+  echo "### procon.nspawn"
+  cat /etc/systemd/nspawn/procon.nspawn 2>&1
+  echo "### gcroots"
+  ls -la "$GCROOT" "$GCROOT_PREV" 2>&1
+  echo "### machine status"
+  machinectl status "$CONTAINER" 2>&1 | head -6
+  exit 0
+fi
 if [ "${1:-}" = "rollback" ]; then
   if [ ! -s "$STATE_DIR/system.prev" ]; then
     echo "ロールバック先 (.prev) がありません" >&2
