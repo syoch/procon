@@ -34,12 +34,33 @@ app 層 (SvelteKit) はコンテナ内で pnpm ビルドする。
 | sudoers | NOPASSWD は 2 スクリプトのみ (`procon-app-deploy.sh` / `procon-container-deploy.sh`) |
 | ロールバック | 以前の tarball を `procon-container-deploy.sh` に渡して再インポート |
 
+## 開発環境 (マシン側の初回セットアップ)
+
+新規マシン / 新規 clone の場合、必要なのは **Nix (flakes 有効なバージョン) のみ**:
+
+```bash
+git clone git@github.com:syoch/procon.git
+cd procon
+nix run ./infra#dev      # pnpm install 込みで開発サーバー起動 → http://localhost:10001
+```
+
+- devShell 定義 (`nodejs_26` / `pnpm`) は `infra/flake.nix` 内にあり、
+  **デプロイ基盤と同一の nixpkgs lock** を使うため、
+  dev shell とコンテナ内でツールのバージョンが一致する
+- direnv + nix-direnv を使う場合は `.envrc` (`use flake path:./infra`) で
+  `direnv allow` 以降は自動的に環境が入る
+
+| コマンド | 内容 |
+|---------|------|
+| `nix run ./infra#dev` | 依存解決 → 開発サーバー起動 (:10001) |
+| `nix run ./infra#vm` | テスト VM をビルドして QEMU で起動 |
+| `nix build ./infra#containerTarball` | 本番コンテナ tarball をビルド |
+
 ## ローカルテスト (このマシン / sudo 不要)
 
 ```bash
 # VM をビルドして起動 (headless / tmux 推奨)
-nix build ./infra#vm
-./result/bin/run-procon-test-vm
+nix run ./infra#vm
 # → 別ターミナルから ssh -p 2222 root@127.0.0.1 (パスワード: procontest)
 
 # コンテナ tarball をビルド
