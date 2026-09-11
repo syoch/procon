@@ -89,13 +89,19 @@ fi
 
 if [ ! -d "$MACHINE_DIR" ]; then
   echo "初回: 最小 rootfs を構築"
-  mkdir -p \
-    "$MACHINE_DIR/nix/var/nix/profiles" \
-    "$MACHINE_DIR/etc" \
-    "$MACHINE_DIR/sbin" \
-    "$MACHINE_DIR/usr/lib/systemd" \
-    "$MACHINE_DIR/lib/systemd"
 fi
+
+# mount ターゲット (/proc /sys /dev) は nspawn 自動作成対象ではなく
+# 事前に存在している必要がある (旧 make-system-tarball は extraCommands で作成)
+mkdir -p \
+  "$MACHINE_DIR/nix/var/nix/profiles" \
+  "$MACHINE_DIR/etc" \
+  "$MACHINE_DIR/sbin" \
+  "$MACHINE_DIR/usr/lib/systemd" \
+  "$MACHINE_DIR/lib/systemd" \
+  "$MACHINE_DIR/proc" \
+  "$MACHINE_DIR/sys" \
+  "$MACHINE_DIR/dev"
 
 # ロールバック用に現構成を退避してから symlink を最新に張り替え
 old_target="$(readlink "$MACHINE_DIR/nix/var/nix/profiles/system" 2>/dev/null || true)"
@@ -112,11 +118,16 @@ ln -sfn "$SYSTEMD_STORE/lib/systemd/systemd" "$MACHINE_DIR/lib/systemd/systemd"
 # (ここでは上書きしない — symlink に対するリダイレクトは "Is a directory" で失敗する)
 
 echo "== 4/4 コンテナの再起動 =="
-systemctl restart "$UNIT"
+if ! systemctl restart "$UNIT"; then
+  echo "コンテナユニットの起動に失敗しました。直近のログ:" >&2
+  journalctl -u "$UNIT" -n 40 --no-pager || true
+  exit 1
+fi
 
 sleep 3
 if ! systemctl is-active --quiet "$UNIT"; then
-  echo "コンテナユニットが active ではありません: journalctl -u $UNIT で確認してください" >&2
+  echo "コンテナユニットが active ではありません。直近のログ:" >&2
+  journalctl -u "$UNIT" -n 40 --no-pager || true
   exit 1
 fi
 machinectl status "$CONTAINER" --no-pager | head -n 12
