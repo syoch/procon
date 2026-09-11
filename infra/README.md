@@ -68,35 +68,61 @@ nix build ./infra#containerTarball
 # → result/tarball/nixos-system-x86_64-linux.tar.xz
 ```
 
-## 本番 VPS 初期構築 (一度だけ / 要 sudo)
+## 本番 VPS 初期構築 (一度だけ)
+
+専用スクリプトは使わない。初回も**2 回目以降と同じ deploy フロー**を踏む。
+
+### A. 依存パッケージ (VPS 上 / sudo)
 
 ```bash
-# 1. 必要パッケージ (これ以外の OS 変更はしない)
 sudo apt install -y systemd-container git
+```
 
-# 2. アプリ用ディレクトリ (uid 1000 = ssh ユーザー procon)
-sudo mkdir -p /srv/procon /srv/procon-state/acme
-sudo chown -R 1000:1000 /srv/procon
+### B. リポジトリ clone と鍵 (VPS 上 / procon ユーザー)
 
-# 3. deploy key の設置 (GitHub リポジトリ Settings > Deploy keys に公開鍵を登録)
-ssh-keygen -t ed25519 -f ~/.ssh/procon_deploy -C "procon-vps-deploy"
-#  → ~/.ssh/config に github.com 用の IdentityFile 設定を追記
+```bash
+# deploy key を生成し、出力された公開鍵を GitHub に登録 (手動)
+ssh-keygen -t ed25519 -f ~/.ssh/procon_deploy -N '' -C "procon-vps-deploy"
+cat ~/.ssh/procon_deploy.pub
+#  → GitHub > Settings > Deploy keys (read-only) に登録
 
-# 4. コンテナ tarball を導入
-scp <マシン>:procon/repo/result/tarball/*.tar.xz /tmp/procon.tar.xz
-sudo install -m 644 <repo>/infra/procon.nspawn /etc/systemd/nspawn/procon.nspawn
-sudo /usr/local/bin/procon-container-deploy.sh /tmp/procon.tar.xz   # ← 手順 5 の後
+# ~/.ssh/config に追記して deploy key を使う
+cat >> ~/.ssh/config <<'CONF'
+Host github.com
+  IdentityFile ~/.ssh/procon_deploy
+CONF
 
-# 5. デプロイスクリプトと sudoers
-sudo install -m 755 <repo>/infra/procon-app-deploy.sh /usr/local/bin/
-sudo install -m 755 <repo>/infra/procon-container-deploy.sh /usr/local/bin/
-echo 'procon ALL=(root) NOPASSWD: /usr/local/bin/procon-app-deploy.sh, /usr/local/bin/procon-container-deploy.sh' \
+sudo install -d -o procon /srv/procon
+git clone git@github.com:syoch/procon.git /srv/procon
+
+# CI 用公開鍵もこのタイミングで authorized_keys に追記 (手動・任意)
+```
+
+### C. 基盤の設置 (VPS 上 / sudo) — clone済みリポジトリから直接
+
+```bash
+sudo install -m 755 /srv/procon/infra/procon-app-deploy.sh       /usr/local/bin/
+sudo install -m 755 /srv/procon/infra/procon-container-deploy.sh /usr/local/bin/
+sudo install -m 644 /srv/procon/infra/procon.nspawn /etc/systemd/nspawn/
+sudo install -d -m 755 /srv/procon-state/acme
+printf 'procon ALL=(root) NOPASSWD: /usr/local/bin/procon-app-deploy.sh, /usr/local/bin/procon-container-deploy.sh\n' \
   | sudo tee /etc/sudoers.d/procon-deploy
 sudo chmod 440 /etc/sudoers.d/procon-deploy
+```
 
-# 6. 起動確認
-sudo machinectl start procon
-curl http://127.0.0.1/api/health   # nginx 経由
+### D. 2 回以降と同じフローで構築・起動
+
+```bash
+# OS 層デプロイ (マシン側で tarball をビルドして scp)
+#   マシン: nix build ./infra#containerTarball
+#   マシン: scp result/tarball/*.tar.xz procon@<VPS>:/tmp/procon.tar.xz
+sudo /usr/local/bin/procon-container-deploy.sh /tmp/procon.tar.xz
+
+# app 層デプロイ初回 (clone 済みなので pull → build → 起動)
+sudo /usr/local/bin/procon-app-deploy.sh
+
+# 確認
+curl http://127.0.0.1/api/health
 ```
 
 ## Cloudflare / TLS

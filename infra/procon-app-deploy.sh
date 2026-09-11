@@ -25,12 +25,13 @@ if [ "$(id -u)" -ne 0 ]; then
 fi
 
 # 1. git (ホストの procon ユーザー権限で実行 — 所有権を uid 1000 に保つため)
+# runuser --login で正しい HOME (~procon/.ssh の deploy key) を使わせる
 if [ ! -d "$REPO_DIR/.git" ]; then
   mkdir -p "$REPO_DIR"
   chown "$APP_UID:$APP_UID" "$REPO_DIR"
-  runuser -u procon -- git clone "$REPO_URL" "$REPO_DIR"
+  runuser --login procon -- git clone "$REPO_URL" "$REPO_DIR"
 fi
-runuser -u procon -- git -C "$REPO_DIR" pull --ff-only
+runuser --login procon -- git -C "$REPO_DIR" pull --ff-only
 
 # 2. ビルド (コンテナ内の procon ユーザー)
 machinectl shell "procon@$CONTAINER" /run/current-system/sw/bin/bash -lc '
