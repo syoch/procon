@@ -89,25 +89,18 @@ fi
 echo "toplevel: $TOPLEVEL"
 [ -d "$TOPLEVEL" ] || { echo "toplevel が存在しません: $TOPLEVEL" >&2; exit 1; }
 
-echo "== 3/4 コンテナ rootfs の準備 =="
-if [ -d "$MACHINE_DIR/nix/store" ] && [ ! -L "$MACHINE_DIR/nix/store" ]; then
-  echo "旧 tarball 方式 (埋め込み store) を検出 → rootfs を作り直します"
-  machinectl stop "$CONTAINER" 2>/dev/null || true
-  rm -rf "$MACHINE_DIR"
-fi
-
-if [ ! -d "$MACHINE_DIR" ]; then
-  echo "初回: 最小 rootfs を構築"
-fi
+echo "== 3/4 コンテナ rootfs の準備 (常に作り直し) =="
+machinectl stop "$CONTAINER" 2>/dev/null || true
+rm -rf "$MACHINE_DIR"
 
 # mount ターゲット (/proc /sys /dev) は nspawn 自動作成対象ではなく
-# 事前に存在している必要がある (旧 make-system-tarball は extraCommands で作成)
+# 事前に存在している必要がある (旧 make-system-tarball は extraCommands で作成)。
+# rootfs は毎回ゼロから作る (残留 symlink による nspawn の systemd 検出挙動の
+# 変化を避けるため)。app・ACME データはホスト側の bind mount にあるため消失しない。
 mkdir -p \
   "$MACHINE_DIR/nix/var/nix/profiles" \
   "$MACHINE_DIR/etc" \
   "$MACHINE_DIR/sbin" \
-  "$MACHINE_DIR/usr/lib/systemd" \
-  "$MACHINE_DIR/lib/systemd" \
   "$MACHINE_DIR/proc" \
   "$MACHINE_DIR/sys" \
   "$MACHINE_DIR/dev"
