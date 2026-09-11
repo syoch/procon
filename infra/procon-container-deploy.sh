@@ -125,7 +125,15 @@ if [ -n "$old_target" ] && [ "$old_target" != "$TOPLEVEL" ]; then
 fi
 ln -sfn "$TOPLEVEL" "$MACHINE_DIR/nix/var/nix/profiles/system"
 ln -sfn "$TOPLEVEL/init" "$MACHINE_DIR/sbin/init"
-ln -sfn "$TOPLEVEL/etc/os-release" "$MACHINE_DIR/etc/os-release"
+# os-release は実ファイルとしてコピーする: nspawn は bind mount 設定前の
+# 事前検証で /etc/os-release を open するため、/nix/store 宛の symlink は
+# この時点では dangling になり "os-release file is missing" で起動拒否する
+# os-release は実ファイルとしてコピーする: nspawn は bind mount 設定前の
+# 事前検証で /etc/os-release を open するため、/nix/store 宛の symlink は
+# この時点では dangling になり "os-release file is missing" で起動拒否する
+mkdir -p "$MACHINE_DIR/etc" "$MACHINE_DIR/usr/lib"
+install -m 444 "$TOPLEVEL/etc/os-release" "$MACHINE_DIR/etc/os-release"
+install -m 444 "$TOPLEVEL/etc/os-release" "$MACHINE_DIR/usr/lib/os-release"
 ln -sfn "$SYSTEMD_STORE/lib/systemd/systemd" "$MACHINE_DIR/usr/lib/systemd/systemd"
 ln -sfn "$SYSTEMD_STORE/lib/systemd/systemd" "$MACHINE_DIR/lib/systemd/systemd"
 # GC root: step 2/4 の nix build --out-link "$GCROOT" が symlink として作成済み
