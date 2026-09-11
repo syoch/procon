@@ -64,6 +64,9 @@ TOPLEVEL=""
 if [ "${1:-}" = "info" ]; then
   echo "### /var/lib/machines/procon"
   ls -laR "$MACHINE_DIR" 2>&1
+  echo "### os-release チェーン検証"
+  cat "$MACHINE_DIR/etc/os-release" 2>&1 || true
+  stat -c "%N => target ok" "$MACHINE_DIR/etc/os-release" "$MACHINE_DIR/sbin/init" "$MACHINE_DIR/usr/lib/systemd/systemd" 2>&1 || true
   echo "### procon.nspawn"
   cat /etc/systemd/nspawn/procon.nspawn 2>&1
   echo "### gcroots"
