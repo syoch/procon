@@ -12,10 +12,10 @@ app 層 (SvelteKit) はコンテナ内で pnpm ビルドする。
   ├ modules/procon.nix  ← 共通設定 ────→  nix build ./infra#containerTarball
   ├ nixos/vm-test.nix   → QEMU VM テスト   (push to main で自動デプロイ)
   └ nixos/container.nix → nspawn tarball
-                                          │ scp
-[本番 VPS (Ubuntu 24.04)]                 ▼
+                                          │ git pull + nix build
+[本番 VPS (Ubuntu 24.04 + Nix)]           ▼
  /etc/systemd/nspawn/procon.nspawn   (VirtualEthernet=no + Bind)
- /var/lib/machines/procon            ← machinectl import-tar
+ /var/lib/machines/procon            ← importctl import-tar
    └ NixOS コンテナ
        ├ nginx :80/:443 (security.acme)
        └ procon.service :3000 (SvelteKit adapter-node)
@@ -32,7 +32,7 @@ app 層 (SvelteKit) はコンテナ内で pnpm ビルドする。
 | 締め出し対策 | `VirtualEthernet=no` でホスト netns 共有 → **netplan / firewall に一切触れない** |
 | 秘密鍵 | deploy key はホストのみ。tarball に秘密情報は含まない |
 | sudoers | NOPASSWD は 2 スクリプトのみ (`procon-app-deploy.sh` / `procon-container-deploy.sh`) |
-| ロールバック | 以前の tarball を `procon-container-deploy.sh` に渡して再インポート |
+| ロールバック | `/srv/procon-state/tarballs/procon.tar.xz.prev` をスクリプトに渡して再インポート |
 
 ## 開発環境 (マシン側の初回セットアップ)
 
@@ -72,9 +72,11 @@ nix build ./infra#containerTarball
 
 専用スクリプトは使わない。初回も**2 回目以降と同じ deploy フロー**を踏む。
 
-### A. 依存パッケージ (VPS 上 / sudo)
+### A. 依存 (VPS 上 / sudo)
 
 ```bash
+# Nix (マルチユーザー / nix-command + flakes) が導入済みであること
+# (experimental-features はデプロイスクリプトがコマンドごとに渡すため設定不要)
 sudo apt install -y systemd-container git
 ```
 
@@ -115,10 +117,8 @@ sudo chmod 440 /etc/sudoers.d/procon-deploy
 ### D. 2 回以降と同じフローで構築・起動
 
 ```bash
-# OS 層デプロイ (マシン側で tarball をビルドして scp)
-#   マシン: nix build ./infra#containerTarball
-#   マシン: scp result/tarball/*.tar.xz procon@<VPS>:/tmp/procon.tar.xz
-sudo /srv/procon/infra/procon-container-deploy.sh /tmp/procon.tar.xz
+# OS 層デプロイ — tarball は VPS 上で Nix がビルドするので転送不要
+sudo /srv/procon/infra/procon-container-deploy.sh
 
 # app 層デプロイ初回 (clone 済みなので pull → build → 起動)
 sudo /srv/procon/infra/procon-app-deploy.sh
@@ -165,10 +165,12 @@ curl http://127.0.0.1/api/health
 # app 層 (数十秒)
 ssh procon@<VPS> sudo /srv/procon/infra/procon-app-deploy.sh
 
-# OS 層 (Nix 設定変更後。tarball を再ビルドして渡す)
-nix build ./infra#containerTarball
-scp result/tarball/*.tar.xz procon@<VPS>:/tmp/procon.tar.xz
-ssh procon@<VPS> sudo /srv/procon/infra/procon-container-deploy.sh /tmp/procon.tar.xz
+# OS 層 (Nix 設定変更後。VPS 上でビルドされるので scp は不要)
+ssh procon@<VPS> sudo /srv/procon/infra/procon-container-deploy.sh
+
+# ロールバック (直前の OS 構成へ戻す)
+ssh procon@<VPS> sudo /srv/procon/infra/procon-container-deploy.sh \
+  /srv/procon-state/tarballs/procon.tar.xz.prev
 ```
 
 ## 運用コマンド
@@ -179,6 +181,12 @@ sudo machinectl status procon         # コンテナの状態
 sudo machinectl shell procon          # コンテナに root ログイン
 sudo journalctl -M procon -u procon -f   # アプリのログ
 sudo systemctl -M procon status nginx    # コンテナ内 nginx
+
+# ロールバック用 tarball (current / prev の 2 世代保管)
+ls /srv/procon-state/tarballs/
+
+# ホスト側 Nix store の掃除 (OS デプロイを重ねると古いクロージャが溜まる)
+sudo nix-collect-garbage -d
 ```
 
 ## トラブルシューティング
