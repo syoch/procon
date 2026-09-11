@@ -7,7 +7,6 @@
     { self, nixpkgs }:
     let
       system = "x86_64-linux";
-      pkgs = import nixpkgs { inherit system; };
 
       # テスト用 VM — QEMU 上で QEMU/KVM を sudo 不要で起動
       procon-test = nixpkgs.lib.nixosSystem {
@@ -30,19 +29,7 @@
       };
     in
     {
-      devShells.${system}.default = pkgs.mkShell {
-        buildInputs = [
-          pkgs.nodejs_26
-          pkgs.pnpm
-        ];
-        shellHook = ''
-          echo "ProCon env"
-          echo "Dev Server (run on <project>/app)"
-          echo "  pnpm run dev --host 0.0.0.0 --port 10001"
-          echo "Test VM:    nix build ./infra#vm  && ./result/bin/run-procon-test-vm"
-          echo "Container:  nix build ./infra#containerTarball"
-        '';
-      };
+      # devShell の定義はリポジトリルートの flake.nix (ローカル / git 管理外) にある
 
       nixosConfigurations.procon-test = procon-test;
       nixosConfigurations.procon = procon;
