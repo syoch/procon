@@ -60,6 +60,15 @@ runuser --login procon -c "git config --global --replace-all safe.directory $REP
 runuser --login procon -c "git -C $REPO_DIR pull --ff-only"
 
 TOPLEVEL=""
+if [ "${1:-}" = "logs" ]; then
+  echo "### procon.service (直近 30 行)"
+  journalctl -M "$CONTAINER" -u procon -n 30 --no-pager 2>&1
+  echo "### nginx (直近 10 行)"
+  journalctl -M "$CONTAINER" -u nginx -n 10 --no-pager 2>&1
+  echo "### サービス状態"
+  systemctl -M "$CONTAINER" is-active nginx procon 2>&1 || true
+  exit 0
+fi
 if [ "${1:-}" = "info" ]; then
   echo "### /var/lib/machines/procon"
   ls -laR "$MACHINE_DIR" 2>&1
