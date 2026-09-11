@@ -46,17 +46,8 @@ jobs:
         with:
           github_access_token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: NixOS コンテナ tarball のビルド
-        run: |
-          nix build -L ./infra#containerTarball
-          # 検証記録として artifact に保存 (デプロイは VPS 上でのビルドが正)
-          cp -L result/tarball/*.tar.xz procon-container.tar.xz
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: container-tarball
-          path: procon-container.tar.xz
-          retention-days: 7
+      - name: NixOS コンテナクロージャのビルド (評価検証)
+        run: nix build -L ./infra#toplevel
 
   # app 層の更新 (main マージ時、毎回)
   deploy-app:
@@ -74,8 +65,8 @@ jobs:
         run: ssh ${{ secrets.VPS_HOST }} "sudo /srv/procon/infra/procon-app-deploy.sh"
 
   # OS 層の更新 (Nix 設定変更時のみ)
-  # tarball は VPS 上 (導入済み Nix) でビルドされるため転送は不要。
-  # build ジョブは flake 評価・ビルドの検証を兼ねる。
+  # クロージャは VPS 上 (導入済み Nix) でビルドされる。build ジョブは
+  # flake 評価・ビルドの検証を兼ねる。
   deploy-os:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.changes.outputs.nix == 'true'
     needs: [changes, build]

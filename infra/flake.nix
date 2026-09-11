@@ -49,7 +49,7 @@
           echo "Dev Server (run on <project>/app)"
           echo "  pnpm run dev --host 0.0.0.0 --port 10001"
           echo "Test VM:    nix build ./infra#vm  && ./result/bin/run-procon-test-vm"
-          echo "Container:  nix build ./infra#containerTarball"
+          echo "Container:  nix build ./infra#toplevel"
         '';
       };
 
@@ -58,8 +58,11 @@
 
       packages.${system} = {
         vm = procon-test.config.system.build.vm;
-        containerTarball = procon.config.system.build.tarball;
-        default = self.packages.${system}.containerTarball;
+        # コンテナの OS クロージャ — VPS 上の symlink 差し替えデプロイで使用
+        toplevel = procon.config.system.build.toplevel;
+        # コンテナの systemd (nspawn-255 の systemd 検出用 symlink 先)
+        containerSystemd = procon.config.systemd.package;
+        default = self.packages.${system}.toplevel;
       };
 
       # ワンコマンド操作 (マシン側の初回セットアップを簡潔にする)

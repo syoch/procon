@@ -16,6 +16,8 @@
 # Bind:
 #   アプリのチェックアウト (git はホスト側で管理) と
 #   ACME の状態 (tarball 再インポートで証明書が消えないように) を共有する。
+#   /nix/store はホストのものを共有する (コンテナ rootfs は symlink のみの
+#   最小構成。BindReadOnly でコンテナ側からは書き込みできない)。
 [Network]
 VirtualEthernet=no
 
@@ -25,3 +27,4 @@ PrivateUsers=no
 [Files]
 Bind=/srv/procon/app:/srv/app
 Bind=/srv/procon-state/acme:/var/lib/acme
+BindReadOnly=/nix/store:/nix/store

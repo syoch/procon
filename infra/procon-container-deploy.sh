@@ -1,30 +1,46 @@
 #!/usr/bin/env bash
-# WideNavi OS 層デプロイ (NixOS コンテナの更新)
+# WideNavi OS 層デプロイ (NixOS コンテナ / ホスト store bind-mount 方式)
 #
 # リポジトリ clone 先 (/srv/procon/infra/procon-container-deploy.sh) から直接実行する。
-# サーバーに導入した Nix を使い、tarball のビルドから import まで VPS 上で完結するので
-# マシン側からのビルド / scp は不要。
+# tarball は使わない: VPS 上で nix build したクロージャをホストの /nix/store から
+# コンテナに bind mount し、rootfs は symlink 3 本だけの最小構成にする。
 #
 # sudoers で許可する:
 #   procon ALL=(root) NOPASSWD: /srv/procon/infra/procon-container-deploy.sh
 #
 # 使い方:
-#   procon-container-deploy.sh            # git pull → nix build → import → 起動 (通常フロー)
-#   procon-container-deploy.sh <tarball>  # 任意の tarball を import (ロールバック / 手動)
+#   procon-container-deploy.sh            # 通常デプロイ (初回は rootfs を自動 bootstrap)
+#   procon-container-deploy.sh rollback   # 直前の構成へ戻す
 #
-# 注意: コンテナイメージは削除して作り直すが、
+# 仕組み:
+#   - コンテナ rootfs (/var/lib/machines/procon) は symlink だけの最小構成:
+#       nix/var/nix/profiles/system → /nix/store/<toplevel>
+#       sbin/init                   → <toplevel>/init
+#       etc/os-release              → <toplevel>/etc/os-release
+#       usr/lib/systemd/systemd     → <systemd>/lib/systemd/systemd
+#         (nspawn 255 が NixOS tree を systemd 無しと誤判定して /sys/fs/cgroup に
+#          tmpfs を張り、ネスト systemd が起動に失敗するのを防ぐ検出用 symlink)
+#     /nix/store 自体は procon.nspawn の BindReadOnly でホストから共有する。
+#   - nix build したクロージャは GC root (gcroots/auto) に登録して保護する。
+#   - 現構成はロールバック用に /srv/procon-state/system.prev に退避する。
+#   - 旧 tarball 方式のレガシー rootfs (埋め込み store) を検出したら作り直す。
+#
+# 注意: コンテナは毎回作り直されるが、
 #   - アプリのチェックアウト  (/srv/procon/app)  はホスト側
 #   - ACME の証明書・アカウント (/srv/procon-state/acme)
 # は bind mount なので消えない。
-# 成功した tarball は /srv/procon-state/tarballs/ に current / prev の 2 世代保存する。
 set -euo pipefail
 
 CONTAINER=procon
 REPO_DIR=/srv/procon
-TAR_DIR=/srv/procon-state/tarballs
+STATE_DIR=/srv/procon-state
+MACHINE_DIR=/var/lib/machines/procon
+GCROOT_DIR=/nix/var/nix/gcroots/auto
+GCROOT="$GCROOT_DIR/procon-container"
+GCROOT_PREV="$GCROOT_DIR/procon-container.prev"
+UNIT="systemd-nspawn@$CONTAINER.service"
 
 # sudo の非対話環境では Nix が PATH に無いため明示的に追加する
-# (多ユーザー install の既定位置 + シングルユーザー導入のパターン)
 for p in /nix/var/nix/profiles/default/bin /root/.nix-profile/bin; do
   [ -d "$p" ] && PATH="$p:$PATH"
 done
@@ -40,45 +56,66 @@ if [ "$(id -u)" -ne 0 ]; then
   exit 1
 fi
 
-TARBALL_ARG="${1:-}"
-if [ -z "$TARBALL_ARG" ]; then
-  echo "== 1/4 git pull =="
-  # --login + -c で渡すこと (-- を付けるとシェル引数扱いになり ENOEXEC で失敗する)
-  runuser --login procon -c "git config --global --replace-all safe.directory $REPO_DIR" >/dev/null
-  runuser --login procon -c "git -C $REPO_DIR pull --ff-only"
+echo "== 1/4 git pull =="
+runuser --login procon -c "git config --global --replace-all safe.directory $REPO_DIR" >/dev/null
+runuser --login procon -c "git -C $REPO_DIR pull --ff-only"
 
-  echo "== 2/4 NixOS コンテナ tarball を VPS 上でビルド =="
-  OUT="$(nix build -L --no-link --print-out-paths "${NIX_FLAGS[@]}" "$REPO_DIR/infra#containerTarball")"
-  TARBALL="$(find "$OUT" -name '*.tar.xz' -print -quit)"
-  [ -n "$TARBALL" ] || { echo "tarball が生成されませんでした" >&2; exit 1; }
-  echo "tarball: $TARBALL"
+TOPLEVEL=""
+if [ "${1:-}" = "rollback" ]; then
+  if [ ! -s "$STATE_DIR/system.prev" ]; then
+    echo "ロールバック先 (.prev) がありません" >&2
+    exit 1
+  fi
+  TOPLEVEL="$(cat "$STATE_DIR/system.prev")"
+  echo "== 2/4 ロールバック: 直前の構成に戻す =="
 else
-  echo "== tarball を指定してビルドをスキップ =="
-  TARBALL="$TARBALL_ARG"
+  echo "== 2/4 NixOS クロージャを VPS 上でビルド =="
+  nix build -L --out-link "$GCROOT" "${NIX_FLAGS[@]}" "$REPO_DIR/infra#toplevel"
+  TOPLEVEL="$(readlink -f "$GCROOT")"
+fi
+echo "toplevel: $TOPLEVEL"
+[ -d "$TOPLEVEL" ] || { echo "toplevel が存在しません: $TOPLEVEL" >&2; exit 1; }
+
+# コンテナの systemd (nspawn 255 の検出用) を GC root 付きで確保
+nix build -L --out-link "$STATE_DIR/systemd" "${NIX_FLAGS[@]}" "$REPO_DIR/infra#containerSystemd" >/dev/null
+SYSTEMD_STORE="$(readlink -f "$STATE_DIR/systemd")"
+
+echo "== 3/4 コンテナ rootfs の準備 =="
+if [ -d "$MACHINE_DIR/nix/store" ] && [ ! -L "$MACHINE_DIR/nix/store" ]; then
+  echo "旧 tarball 方式 (埋め込み store) を検出 → rootfs を作り直します"
+  machinectl stop "$CONTAINER" 2>/dev/null || true
+  rm -rf "$MACHINE_DIR"
 fi
 
-echo "== 3/4 コンテナの import と起動 =="
-machinectl stop "$CONTAINER" 2>/dev/null || true
-machinectl remove "$CONTAINER" 2>/dev/null || true
-
-# systemd 256+ では import-tar が importctl に移行されている
-# (Ubuntu 24.04 = systemd 255 は machinectl、それ以降は importctl)
-if command -v importctl >/dev/null 2>&1; then
-  importctl -m import-tar "$TARBALL" "$CONTAINER"
-else
-  machinectl import-tar "$TARBALL" "$CONTAINER"
+if [ ! -d "$MACHINE_DIR" ]; then
+  echo "初回: 最小 rootfs を構築"
+  mkdir -p \
+    "$MACHINE_DIR/nix/var/nix/profiles" \
+    "$MACHINE_DIR/etc" \
+    "$MACHINE_DIR/sbin" \
+    "$MACHINE_DIR/usr/lib/systemd" \
+    "$MACHINE_DIR/lib/systemd"
 fi
 
-machinectl start "$CONTAINER"
+# ロールバック用に現構成を退避してから symlink を最新に張り替え
+old_target="$(readlink "$MACHINE_DIR/nix/var/nix/profiles/system" 2>/dev/null || true)"
+if [ -n "$old_target" ] && [ "$old_target" != "$TOPLEVEL" ]; then
+  printf '%s\n' "$old_target" > "$STATE_DIR/system.prev"
+  printf '%s\n' "$old_target" > "$GCROOT_PREV"
+fi
+ln -sfn "$TOPLEVEL" "$MACHINE_DIR/nix/var/nix/profiles/system"
+ln -sfn "$TOPLEVEL/init" "$MACHINE_DIR/sbin/init"
+ln -sfn "$TOPLEVEL/etc/os-release" "$MACHINE_DIR/etc/os-release"
+ln -sfn "$SYSTEMD_STORE/lib/systemd/systemd" "$MACHINE_DIR/usr/lib/systemd/systemd"
+ln -sfn "$SYSTEMD_STORE/lib/systemd/systemd" "$MACHINE_DIR/lib/systemd/systemd"
+printf '%s\n' "$TOPLEVEL" > "$GCROOT"
 
-echo "== 4/4 tarball の保存 (ロールバック用 2 世代) =="
-mkdir -p "$TAR_DIR"
-if [ -f "$TAR_DIR/procon.tar.xz" ]; then
-  mv -f "$TAR_DIR/procon.tar.xz" "$TAR_DIR/procon.tar.xz.prev"
-fi
-if [ "$TARBALL" != "$TAR_DIR/procon.tar.xz" ]; then
-  cp "$TARBALL" "$TAR_DIR/procon.tar.xz"
-fi
+echo "== 4/4 コンテナの再起動 =="
+systemctl restart "$UNIT"
 
 sleep 3
+if ! systemctl is-active --quiet "$UNIT"; then
+  echo "コンテナユニットが active ではありません: journalctl -u $UNIT で確認してください" >&2
+  exit 1
+fi
 machinectl status "$CONTAINER" --no-pager | head -n 12

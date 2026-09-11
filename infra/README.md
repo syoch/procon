@@ -9,30 +9,37 @@ app 層 (SvelteKit) はコンテナ内で pnpm ビルドする。
 ```
 [このマシン (NixOS)]                    [GitHub Actions]
  infra/flake.nix
-  ├ modules/procon.nix  ← 共通設定 ────→  nix build ./infra#containerTarball
+  ├ modules/procon.nix  ← 共通設定 ────→  nix build ./infra#toplevel (評価検証)
   ├ nixos/vm-test.nix   → QEMU VM テスト   (push to main で自動デプロイ)
-  └ nixos/container.nix → nspawn tarball
-                                          │ git pull + nix build
-[本番 VPS (Ubuntu 24.04 + Nix)]           ▼
+  └ nixos/container.nix → コンテナ toplevel
+                                           │ git pull + nix build
+[本番 VPS (Ubuntu 24.04 + Nix)]            ▼
  /etc/systemd/nspawn/procon.nspawn   (VirtualEthernet=no + Bind)
- /var/lib/machines/procon            ← importctl import-tar
-   └ NixOS コンテナ
-       ├ nginx :80/:443 (security.acme)
-       └ procon.service :3000 (SvelteKit adapter-node)
+ /var/lib/machines/procon            最小 rootfs (symlink 3 本)
+    └ NixOS コンテ纳
+        ├ /nix/store ──BindReadOnly── ホストの store (nix build 済みクロージャ)
+        ├ nginx :80/:443 (security.acme)
+        └ procon.service :3000 (SvelteKit adapter-node)
  /srv/procon/    git チェックアウト (deploy key はホストのみ)
    └ app/ ──Bind──→ コンテナ /srv/app (pnpm build はコンテナ内)
 ```
+
+デプロイは **tarball を経由しない**: VPS 上で `nix build` したクロージャを
+`/nix/var/nix/profiles/system` の symlink 貼り替えで切り替え、
+コンテナを restart する。
 
 ### 設計上のポイント
 
 | 項目 | 内容 |
 |------|------|
-| OS 層の宣言 | 標準モジュール `lxc-container.nix` (`system.build.tarball`) を使用 |
+| OS 層の宣言 | 標準モジュール `lxc-container.nix` を使用 (コンテナを nixpkgs **24.11 / systemd 256** に固定 — Ubuntu 24.04 の nspawn 255 は NixOS tree を systemd 無しと誤判定し `/sys/fs/cgroup` に tmpfs を張るため、cgroup v1 削除済みの systemd 257+ は起動に失敗する) |
 | テスト ≒ 本番 | `infra/modules/procon.nix` を VM とコンテナで共有 — テストしたものを出荷 |
 | 締め出し対策 | `VirtualEthernet=no` でホスト netns 共有 → **netplan / firewall に一切触れない** |
-| 秘密鍵 | deploy key はホストのみ。tarball に秘密情報は含まない |
+| コンテナ rootfs | symlink のみの最小構成。`/nix/store` は `BindReadOnly` でホストと共有 |
+| GC 管理 | クロージャは `/nix/var/nix/gcroots/auto/procon-container` に登録して保護 (直前構成は `.prev`) |
+| 秘密鍵 | deploy key はホストのみ。rootfs に秘密情報は含まない |
 | sudoers | NOPASSWD は 2 スクリプトのみ (`procon-app-deploy.sh` / `procon-container-deploy.sh`) |
-| ロールバック | `/srv/procon-state/tarballs/procon.tar.xz.prev` をスクリプトに渡して再インポート |
+| ロールバック | `procon-container-deploy.sh rollback` — 直前の構成 (`system.prev`) に戻す |
 
 ## 開発環境 (マシン側の初回セットアップ)
 
@@ -54,7 +61,7 @@ nix run ./infra#dev      # pnpm install 込みで開発サーバー起動 → ht
 |---------|------|
 | `nix run ./infra#dev` | 依存解決 → 開発サーバー起動 (:10001) |
 | `nix run ./infra#vm` | テスト VM をビルドして QEMU で起動 |
-| `nix build ./infra#containerTarball` | 本番コンテナ tarball をビルド |
+| `nix build ./infra#toplevel` | 本番コンテナの OS クロージャをビルド |
 
 ## ローカルテスト (このマシン / sudo 不要)
 
@@ -63,9 +70,8 @@ nix run ./infra#dev      # pnpm install 込みで開発サーバー起動 → ht
 nix run ./infra#vm
 # → 別ターミナルから ssh -p 2222 root@127.0.0.1 (パスワード: procontest)
 
-# コンテナ tarball をビルド
-nix build ./infra#containerTarball
-# → result/tarball/nixos-system-x86_64-linux.tar.xz
+# コンテナクロージャをビルド (コンテナ本体の評価検証)
+nix build ./infra#toplevel
 ```
 
 ## 本番 VPS 初期構築 (一度だけ)
@@ -117,7 +123,7 @@ sudo chmod 440 /etc/sudoers.d/procon-deploy
 ### D. 2 回以降と同じフローで構築・起動
 
 ```bash
-# OS 層デプロイ — tarball は VPS 上で Nix がビルドするので転送不要
+# OS 層デプロイ — クロージャは VPS 上でビルドされ symlink 貼り替えで反映
 sudo /srv/procon/infra/procon-container-deploy.sh
 
 # app 層デプロイ初回 (clone 済みなので pull → build → 起動)
@@ -148,7 +154,7 @@ curl http://127.0.0.1/api/health
 
 | イベント | ジョブ |
 |---------|--------|
-| PR 作成・更新 | build のみ (pnpm check + tarball ビルド) |
+| PR 作成・更新 | build のみ (pnpm check + toplevel ビルドで flake 検証) |
 | main へのマージ (push) | build + deploy-app (常時) + deploy-os (Nix 設定変更時のみ) |
 
 ## 日常のデプロイフロー
@@ -169,8 +175,7 @@ ssh procon@<VPS> sudo /srv/procon/infra/procon-app-deploy.sh
 ssh procon@<VPS> sudo /srv/procon/infra/procon-container-deploy.sh
 
 # ロールバック (直前の OS 構成へ戻す)
-ssh procon@<VPS> sudo /srv/procon/infra/procon-container-deploy.sh \
-  /srv/procon-state/tarballs/procon.tar.xz.prev
+ssh procon@<VPS> sudo /srv/procon/infra/procon-container-deploy.sh rollback
 ```
 
 ## 運用コマンド
@@ -182,10 +187,10 @@ sudo machinectl shell procon          # コンテナに root ログイン
 sudo journalctl -M procon -u procon -f   # アプリのログ
 sudo systemctl -M procon status nginx    # コンテナ内 nginx
 
-# ロールバック用 tarball (current / prev の 2 世代保管)
-ls /srv/procon-state/tarballs/
+# 現在.AppendLineと直前の OS 構成 (GC root)
+ls -la /nix/var/nix/gcroots/auto/procon-container* /srv/procon-state/system.prev
 
-# ホスト側 Nix store の掃除 (OS デプロイを重ねると古いクロージャが溜まる)
+# ホスト側 Nix store の掃除 (GC root で現構成・直前構成は保護される)
 sudo nix-collect-garbage -d
 ```
 
@@ -196,11 +201,13 @@ sudo nix-collect-garbage -d
 | 502 Bad Gateway | `sudo systemctl -M procon status procon` — ビルド成果物 (`/srv/app/build`) の有無 |
 | 証明書が取れない | Cloudflare SSL モードが Full (strict) か。`journalctl -M procon -u acme-procon.syoch.org` |
 | git pull 失敗 | deploy key の登録と `~/.ssh/config`、`sudo machinectl shell procon@procon` の権限 |
-| コンテナが起動しない | `sudo machinectl status procon`、`journalctl -u systemd-nspawn@procon` |
-| OS デプロイ後 502 | bind mount 確認 (`procon.nspawn` の Bind 行) — app の再ビルドが必要 |
+| コンテナが起動しない | `sudo machinectl status procon`、`journalctl -u systemd-nspawn@procon` — "legacy cgroup hierarchy" が出る場合は `procon.nspawn` の `[Exec] PrivateUsers=no` と rootfs の `usr/lib/systemd/systemd` symlink を確認 |
+| OS デプロイ後 502 | bind mount 確認 (`procon.nspawn` の Bind 行) — app の再ビルドが必要 (`sudo /srv/procon/infra/procon-app-deploy.sh`) |
 | コンテナ内で /srv/app の書き込みができない | `procon.nspawn` の `[Exec] PrivateUsers=no` があるか (userns で uid がずれる) |
+| nix build でstore path が消えた | GC root (`gcroots/auto/procon-container`) が消えていないか。再デプロイで作り直される |
 
 ## 注意事項
 
 - **firewall / netplan はこの構成では一切扱わない。** UFW 等を VPS 上で手動設定する場合は、作業前に**別セッションで SSH を開いたまま**にすること。
-- `machinectl remove procon` はコンテナイメージ内のみ消す。app (`/srv/procon`) と証明書 (`/srv/procon-state/acme`) はホスト側なので消失しない。
+- コンテナ rootfs は symlink のみ。app (`/srv/procon`) と証明書 (`/srv/procon-state/acme`) はホスト側なので、rootfs の作り直しで消失しない。
+- **`/nix/store` はホストとの共有**: ホストで `nix-collect-garbage` を実行した場合も GC root に登録された現行・直前のクロージャは保護されるが、rootfs の再作成はデプロイスクリプトで簡単にできる。。
