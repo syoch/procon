@@ -1,37 +1,15 @@
 /**
- * @typedef {Object} Segment
- * @property {{lat: number, lng: number}} [begin_coordinate]
- * @property {{lat: number, lng: number}} [end_coordinate]
- * @property {Segment} [highway]
- * @property {Segment} [width]
- * @property {Segment} [sidewalk]
- */
-
-/**
- * @typedef {App.FoldedEdge & {
- *   primaryHighway?: string,
- *   primarySidewalk?: string,
- *   averageWidth?: number,
- *   widthScore: number,
- *   mixScore: number,
- *   viewScore: number,
- *   totalScore: number
- * }} ComputedEdge
- */
-
-/**
  * @brief コスト計算を行う
  * @param {App.FoldedEdge} folded_edge
- * @returns {ComputedEdge | Error} //コスト計算後のエッジ
+ * @returns {App.ComputedEdge | Error} //コスト計算後のエッジ
  */
 export function CalculateCost(folded_edge) {
   let widthScore = 0; // 幅員スコア
   let mixScore = 0; // 混在スコア(歩行者と自転車の混在度)
   let viewScore = 0; // 視界スコア
-  let totalScore = 0;
 
   if (folded_edge.type === "FoldedEdge") {
-    /** @type {Segment[]} */
+    /** @type {App.Segment[]} */
     const segments = folded_edge.segments || [];
 
     // --- 1. 各属性の統計（代表値・平均値）を計算 ---
@@ -59,46 +37,49 @@ export function CalculateCost(folded_edge) {
     mixScore = calculateMixScore(primarySidewalk, primaryHighway);
 
     /* 視界スコアの計算 */
-    viewScore = calculateViewScore(primaryHighway);
-
-    /* 合計スコアの計算 */
-    totalScore = widthScore + mixScore + viewScore;
+    viewScore = calculateViewScore(folded_edge)+calculateCrossScore(folded_edge); // folded_edge.cross_node は MapVCrossNode 型であることを想定
 
     /* 計算結果を表示 */
-    console.log({
-      "FoldedEdge.Calculated": true,
+    console.log("scores",{
       id: folded_edge.id,
       widthScore: widthScore,
       mixScore: mixScore,
       viewScore: viewScore,
-      totalScore: totalScore,
+    });
+    /*folded_edgeの表示*/
+    console.log("FoldedEdge", {
+      id: folded_edge.id, 
+      begin: folded_edge.begin,
+      end: folded_edge.end,
+      first_segments_begin: folded_edge.segments[0].begin_coordinate,
+      first_segments_end: folded_edge.segments[0].end_coordinate,
+      last_segments_begin: folded_edge.segments[folded_edge.segments.length - 1].begin_coordinate,
+      last_segments_end: folded_edge.segments[folded_edge.segments.length - 1].end_coordinate,
     });
 
+
     // --- 3. computedEdge の生成 ---
-    // 元の folded_edge (id, begin, end, segments/座標) を保持しつつ、計算結果を追加した新しいオブジェクトを作成
-    // --- 3. computedEdge の生成 ---
-    /** @type {ComputedEdge} */
+    /** @type {App.ComputedEdge} */
     const computedEdge = {
       type: "ComputedEdge",
+      id: folded_edge.id,
+			begin: folded_edge.begin,
+			end: folded_edge.end,
       width_score: widthScore,
       view_score: viewScore,
       mix_score: mixScore,
     };
 
     /* ComputedEdgeを表示 */
-    /* 
-    console.log("ComputedEdge Result:", {
-    id: computedEdge.id,
-    begin: computedEdge.begin,
-    end: computedEdge.end,
+    /*
+    console.log("ComputedEdge", {
     type: computedEdge.type,
-    primaryHighway: computedEdge.primaryHighway, 
-    primarySidewalk: computedEdge.primarySidewalk,
-    averageWidth: computedEdge.averageWidth,
-    widthScore: computedEdge.widthScore,
-    mixScore: computedEdge.mixScore,
-    viewScore: computedEdge.viewScore,
-    segments: computedEdge.segments,
+          id: computedEdge.id,
+			begin: computedEdge.begin,
+			end: computedEdge.end,
+    width_score: computedEdge.width_score,
+    mix_score: computedEdge.mix_score,
+    view_score: computedEdge.view_score,
     });
     */
 
@@ -114,8 +95,8 @@ export function CalculateCost(folded_edge) {
 
 /**
  * segments 配列の中から指定キーの「最も出現頻度が高い値（最頻値）」を取得する
- * @param {Segment[]} segments
- * @param {keyof Segment} key
+ * @param {App.Segment[]} segments
+ * @param {keyof App.Segment} key
  * @returns {string | undefined}
  */
 function getMostFrequentAttribute(segments, key) {
@@ -144,7 +125,7 @@ function getMostFrequentAttribute(segments, key) {
 
 /**
  * segments 配列の中から数値形式の width の平均値を計算する
- * @param {Segment[]} segments
+ * @param {App.Segment[]} segments
  * @returns {number | undefined}
  */
 function calculateAverageWidth(segments) {
@@ -172,9 +153,9 @@ function calculateWidthScore(width, highway) {
     // widthが未定義の場合はhighway属性から推定
     switch (highway) {
       case "motorway":
-        return 1.2; // 高速道路
+        return 1.0; // 高速道路
       case "trunk":
-        return 1.0; // 幹線道路
+        return 0.9; // 幹線道路
       case "primary":
         return 0.8; // 主要国道
       case "secondary":
@@ -209,7 +190,7 @@ function calculateMixScore(sidewalk, highway) {
     // sidewalkが未定義の場合はhighway属性から推定
     switch (highway) {
       case "motorway":
-        return 1.2; // 高速道路(歩行者・自転車禁止)
+        return 1.0; // 高速道路(歩行者・自転車禁止)
       case "trunk":
       case "primary":
       case "secondary":
@@ -237,21 +218,66 @@ function calculateMixScore(sidewalk, highway) {
 }
 
 /**
- * 視界スコアの計算
- * @param {string | undefined} mapEdge
+ * 視界スコア・道の曲率計算
+ * @param {App.FoldedEdge} folded_edge
  * @returns {number}
  */
-function calculateViewScore(mapEdge) {
-  switch (mapEdge) {
-    case "pedestrian":
-    case "footway":
-      return 1.0;
-    case "residential":
-      return 0.8;
-    case "primary":
-    case "secondary":
-      return 0.4;
-    default:
-      return 0.5;
+function calculateViewScore(folded_edge) {
+  if(folded_edge.segments.length < 2){
+    return 1.0; // 直線道路の場合は視界スコアを最大値に設定
   }
+  let score = 0;
+  for(let i=0;i<folded_edge.segments.length-1;i++){
+    const vector1=new Vector(folded_edge.segments[i].end_coordinate.lat - folded_edge.segments[i].begin_coordinate.lat, folded_edge.segments[i].end_coordinate.lng - folded_edge.segments[i].begin_coordinate.lng);
+    const vector2=new Vector(folded_edge.segments[i+1].end_coordinate.lat - folded_edge.segments[i+1].begin_coordinate.lat, folded_edge.segments[i+1].end_coordinate.lng - folded_edge.segments[i+1].begin_coordinate.lng);
+
+    score+=calculateAngle(vector1, vector2);
+  }
+    return score;
+}
+
+
+
+/**
+ * 視界スコア・交差点の角度計算
+ * @param {App.FoldedEdge} folded_edge
+ * @returns {number}
+ */
+function calculateCrossScore(folded_edge) {
+
+
+return 0;
+}
+
+/*2次元ベクトルクラス*/
+class Vector {
+  /**
+   * @param {number} x
+   * @param {number} y
+   */
+  constructor(x, y) {
+    this.x = x;
+    this.y = y;
+  }
+}
+
+/*内積から角度を計算 */
+  /**
+   * @param {Vector} Vector1
+   * @param {Vector} Vector2
+   * @returns {number} // 角度（ラジアン）
+   */
+function calculateAngle(Vector1, Vector2) {
+  const dotProduct = Vector1.x * Vector2.x + Vector1.y * Vector2.y;
+  const magnitude1 = Math.sqrt(Vector1.x * Vector1.x + Vector1.y * Vector1.y);
+  const magnitude2 = Math.sqrt(Vector2.x * Vector2.x + Vector2.y * Vector2.y);
+
+  if (magnitude1 === 0 || magnitude2 === 0) {
+    return 0;
+  }
+
+  const cosAngle = dotProduct / (magnitude1 * magnitude2);
+  const angle = Math.acos(Math.min(Math.max(cosAngle, -1), 1)); // Clamp the value to [-1, 1] to avoid numerical errors
+
+  return angle;
 }
