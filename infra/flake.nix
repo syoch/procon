@@ -2,12 +2,17 @@
   description = "WideNavi — 走りやすく安全な経路を探索する Web アプリ";
 
   inputs.nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
+  # 本番ホスト (Ubuntu 24.04 / systemd-nspawn 255) のネスト起動と互換のある
+  # systemd (256) を持つリリース。cgroup v1 サポート削除 (systemd 257+) の
+  # nspawn 255 側マウントとの相互作用での起動失敗を避ける。
+  inputs.nixpkgs-2411.url = "github:nixos/nixpkgs/nixos-24.11";
 
   outputs =
-    { self, nixpkgs }:
+    { self, nixpkgs, nixpkgs-2411 }:
     let
       system = "x86_64-linux";
       pkgs = import nixpkgs { inherit system; };
+      pkgs2411 = import nixpkgs-2411 { inherit system; };
 
       # テスト用 VM — QEMU 上で QEMU/KVM を sudo 不要で起動
       procon-test = nixpkgs.lib.nixosSystem {
@@ -19,13 +24,14 @@
       };
 
       # 本番用コンテナ — Ubuntu VPS 上の systemd-nspawn で稼働
-      procon = nixpkgs.lib.nixosSystem {
+      # nixpkgs 24.11 (systemd 256) を使用 (詳細は container.nix のコメントを参照)
+      procon = nixpkgs-2411.lib.nixosSystem {
         inherit system;
         modules = [
           ./modules/procon.nix
           ./nixos/container.nix
           # 標準の LXC/nspawn コンテナモジュール (system.build.tarball を提供)
-          (nixpkgs + "/nixos/modules/virtualisation/lxc-container.nix")
+          (nixpkgs-2411 + "/nixos/modules/virtualisation/lxc-container.nix")
         ];
       };
     in

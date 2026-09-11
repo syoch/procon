@@ -7,6 +7,13 @@
 #   → result/ 配下の nixos-system-x86_64-linux.tar.xz
 #
 # 導入は infra/README.md を参照 (machinectl import-tar)。
+#
+# NOTE: nixpkgs 24.11 (systemd 256) を使用。
+#   Ubuntu 24.04 ホスト (systemd-nspawn 255) では NixOS のツリーが
+#   systemd 非搭載と判定され /sys/fs/cgroup に tmpfs が張られ、
+#   cgroup v1 サポートが削除された systemd 257+ (unstable) は起動直後に
+#   "Detected unsupported legacy cgroup hierarchy, refusing execution" で死ぬ。
+#   systemd 256 は Ubuntu ネスティング環境と同等の組み合わせで動作する。
 {
   config,
   lib,
@@ -26,14 +33,10 @@
   # ホスト側のパケットフィルタと衝突するため無効化する。
   networking.firewall.enable = false;
 
-  documentation.enable = false;
+  documentation.enable = lib.mkForce false;
 
-  # コンテナ内で nixos-rebuild した後も /sbin/init が新世代を指すようにする
-  # (tfc/nspawn-nixos と同じ標準的なパターン)
-  system.activationScripts.installInitScript = lib.mkForce ''
-    ${pkgs.coreutils}/bin/ln -fs $systemConfig/init /sbin/init
-  '';
-
+  # (24.11 の標準モジュールは installInitScript activation script を
+  #  既に提供するため、留意のみ。25.11 系では lib.mkForce での再定義が必要だった)
   # tarball 再インポート (machinectl remove + import-tar) でコンテナ内の
   # /var/lib/acme が消え、証明書が毎回再発行されるのを防ぐため、
   # ホストの /srv/procon-state/acme を bind mount する前提の所有権調整。
@@ -48,5 +51,5 @@
     };
   };
 
-  system.stateVersion = "25.11";
+  system.stateVersion = "24.11";
 }
