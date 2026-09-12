@@ -99,6 +99,15 @@ echo "toplevel: $TOPLEVEL"
 [ -d "$TOPLEVEL" ] || { echo "toplevel が存在しません: $TOPLEVEL" >&2; exit 1; }
 
 echo "== 3/4 コンテナ rootfs の準備 (常に作り直し) =="
+# rootfs 削除の前に現構成を退避する (rootfs は削除されるため .prev は STATE_DIR に保存)
+previous_system_target="$(readlink "$MACHINE_DIR/nix/var/nix/profiles/system" 2>/dev/null || true)"
+if [ -z "$previous_system_target" ] && [ -s "$STATE_DIR/system" ] && [ -e "$STATE_DIR/system" ]; then
+  previous_system_target="$(readlink "$STATE_DIR/system" 2>/dev/null || true)"
+fi
+if [ -n "$previous_system_target" ] && [ "$previous_system_target" != "$TOPLEVEL" ]; then
+  printf '%s\n' "$previous_system_target" > "$STATE_DIR/system.prev"
+  ln -sfn "$previous_system_target" "$GCROOT_PREV"
+fi
 machinectl stop "$CONTAINER" 2>/dev/null || true
 # var/empty (sshd) 等は 0555 のディレクトリで rm に失敗するため先に書込権を戻す
 chmod -R u+w "$MACHINE_DIR" 2>/dev/null || true
@@ -125,13 +134,9 @@ mkdir -p \
   "$MACHINE_DIR/sys" \
   "$MACHINE_DIR/dev"
 
-# ロールバック用に現構成を退避してから symlink を最新に張り替え
-old_target="$(readlink "$MACHINE_DIR/nix/var/nix/profiles/system" 2>/dev/null || true)"
-if [ -n "$old_target" ] && [ "$old_target" != "$TOPLEVEL" ]; then
-  printf '%s\n' "$old_target" > "$STATE_DIR/system.prev"
-  ln -sfn "$old_target" "$GCROOT_PREV"
-fi
+# 現構成を STATE_DIR にも記録し symlink を最新に張り替え
 ln -sfn "$TOPLEVEL" "$MACHINE_DIR/nix/var/nix/profiles/system"
+ln -sfn "$TOPLEVEL" "$STATE_DIR/system"
 ln -sfn "$TOPLEVEL/init" "$MACHINE_DIR/sbin/init"
 # os-release は実ファイルとしてコピーする: nspawn は bind mount 設定前の
 # 事前検証で /etc/os-release を open するため、/nix/store 宛の symlink は
