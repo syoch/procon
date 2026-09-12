@@ -48,11 +48,15 @@ machinectl shell "procon@$CONTAINER" /run/current-system/sw/bin/bash -lc '
   set -e
   cd /srv/app
   {
+    echo "== pnpm =="
+    pnpm --version || true
+    echo "== install =="
     pnpm install --frozen-lockfile
+    echo "== build =="
     pnpm build
   } > /srv/app/deploy-build.log 2>&1
 '
-tail -n 20 "/srv/app/deploy-build.log"
+tail -n 20 "/srv/procon/app/deploy-build.log"
 
 # 3. 再起動 (コンテナ内 root)
 machinectl shell "$CONTAINER" /run/current-system/sw/bin/systemctl restart procon
