@@ -46,6 +46,8 @@ runuser --login procon -c "git -C $REPO_DIR pull --ff-only"
 # ログファイルに書き出してから表示する
 machinectl shell "procon@$CONTAINER" /run/current-system/sw/bin/bash -lc '
   set -e
+  # CI=true: pnpm の modules directory purge 確認 (TTY なし) を抑制
+  export CI=true
   cd /srv/app
   {
     echo "== pnpm =="
