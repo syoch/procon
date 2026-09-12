@@ -42,12 +42,17 @@ fi
 runuser --login procon -c "git -C $REPO_DIR pull --ff-only"
 
 # 2. ビルド (コンテナ内の procon ユーザー)
+# machinectl shell の PTY 出力は非対話環境では失われるため、
+# ログファイルに書き出してから表示する
 machinectl shell "procon@$CONTAINER" /run/current-system/sw/bin/bash -lc '
   set -e
   cd /srv/app
-  pnpm install --frozen-lockfile
-  pnpm build
+  {
+    pnpm install --frozen-lockfile
+    pnpm build
+  } > /srv/app/deploy-build.log 2>&1
 '
+tail -n 20 "/srv/app/deploy-build.log"
 
 # 3. 再起動 (コンテナ内 root)
 machinectl shell "$CONTAINER" /run/current-system/sw/bin/systemctl restart procon
