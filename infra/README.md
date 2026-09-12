@@ -21,3 +21,17 @@
 # デプロイ操作
 [procon@vm20025:~]$ sudo nix --extra-experimental-features nix-command --extra-experimental-features flakes run .#setup
 ```
+
+## デプロイ (CI / 運用)
+
+```shell
+# VPS 上のリポジトリを同期して再実行
+[procon@vm20025:~]$ git -C /srv/procon pull --ff-only
+[procon@vm20025:~]$ sudo nix --extra-experimental-features nix-command --extra-experimental-features flakes run .#setup
+```
+
+また、main への push では GitHub Actions が自動で `git pull` + `nix run .#setup` を実行します (`deploy.yml`)。自動実行を NOPASSWD で通す場合のみ sudoers を設定:
+
+```
+procon ALL=(root) NOPASSWD: /nix/var/nix/profiles/default/bin/nix run --extra-experimental-features *
+```

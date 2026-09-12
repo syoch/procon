@@ -6,23 +6,7 @@ on:
   pull_request:
 
 jobs:
-  # Nix (OS 層) の変更検出 — deploy-os の実行条件
-  changes:
-    runs-on: ubuntu-latest
-    outputs:
-      nix: ${{ steps.filter.outputs.nix }}
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dorny/paths-filter@v3
-        id: filter
-        with:
-          filters: |
-            nix:
-              - 'infra/flake.nix'
-              - 'infra/flake.lock'
-              - 'infra/modules/**'
-              - 'infra/nixos/**'
-
+  # PR / main のチェック: アプリ検証 + procon-server の Nix ビルド検証
   build:
     runs-on: ubuntu-latest
     steps:
@@ -37,20 +21,20 @@ jobs:
           version: 11
 
       - name: アプリの検証 (check)
+        working-directory: app
         run: |
           pnpm install --frozen-lockfile
           pnpm check
-        working-directory: app
 
       - uses: cachix/install-nix-action@v31
         with:
           github_access_token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: NixOS コンテナクロージャのビルド (評価検証)
-        run: nix build -L ./infra#toplevel
+      - name: procon-server の Nix ビルド検証
+        run: nix build -L .#procon-server
 
-  # app 層の更新 (main マージ時、毎回)
-  deploy-app:
+  # main への push: VPS 上で同期 + nix run .#setup (nginx・unit・アプリを一括反映)
+  deploy:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     needs: [build]
     runs-on: ubuntu-latest
@@ -61,22 +45,15 @@ jobs:
           echo "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
           echo "${{ secrets.VPS_HOST_KEY }}" >> ~/.ssh/known_hosts
-      - name: アプリ更新デプロイ
-        run: ssh ${{ secrets.VPS_HOST }} "sudo /srv/procon/infra/procon-app-deploy.sh"
 
-  # OS 層の更新 (Nix 設定変更時のみ)
-  # クロージャは VPS 上 (導入済み Nix) でビルドされる。build ジョブは
-  # flake 評価・ビルドの検証を兼ねる。
-  deploy-os:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.changes.outputs.nix == 'true'
-    needs: [changes, build]
-    runs-on: ubuntu-latest
-    steps:
-      - name: SSH 設定
-        run: |
-          mkdir -p ~/.ssh
-          echo "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/id_ed25519
-          chmod 600 ~/.ssh/id_ed25519
-          echo "${{ secrets.VPS_HOST_KEY }}" >> ~/.ssh/known_hosts
-      - name: コンテナ更新デプロイ (VPS 上で git pull + Nix ビルド + import)
-        run: ssh ${{ secrets.VPS_HOST }} "sudo /srv/procon/infra/procon-container-deploy.sh"
+      - name: VPS 上のリポジトリを同期
+        run: ssh ${{ secrets.VPS_HOST }} "git -C /srv/procon pull --ff-only"
+
+      - name: nix run .#setup
+        run: >
+          ssh ${{ secrets.VPS_HOST }}
+          "sudo -n /nix/var/nix/profiles/default/bin/nix
+          run
+          --extra-experimental-features nix-command
+          --extra-experimental-features flakes
+          /srv/procon#setup"
