@@ -25,8 +25,11 @@
 
       # 本番用コンテナ — Ubuntu VPS 上の systemd-nspawn で稼働
       # nixpkgs 24.11 (systemd 256) を使用 (詳細は container.nix のコメントを参照)
+      # pnpm だけはローカル/CI と同一の unstable 版 (11.x) を渡す (lockfile と
+      # pnpm-workspace.yaml の読み方を揃えるため)
       procon = nixpkgs-2411.lib.nixosSystem {
         inherit system;
+        specialArgs.pnpmPkg = pkgs.pnpm;
         modules = [
           ./modules/procon.nix
           ./nixos/container.nix

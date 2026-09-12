@@ -7,12 +7,17 @@
   config,
   lib,
   pkgs,
+  pnpmPkg ? null,
   ...
 }:
 
 let
   cfg = config.procon;
   nodePkg = pkgs.nodejs_22;
+  # コンテナ (24.11) のみ flake から unstable の pnpm (11.x) を渡す。
+  # ローカル/CI の pnpm 11 と lockfile・pnpm-workspace.yaml (allowBuilds) の
+  # 解釈を揃えるため。
+  pnpm = if pnpmPkg == null then pkgs.pnpm else pnpmPkg;
 in
 {
   options.procon = {
@@ -55,9 +60,9 @@ in
     };
     users.groups.procon.gid = 1000;
 
-    environment.systemPackages = with pkgs; [
-      curl
-      git
+    environment.systemPackages = [
+      pkgs.curl
+      pkgs.git
       nodePkg
       pnpm
     ];
