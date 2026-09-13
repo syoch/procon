@@ -9,19 +9,19 @@
 ```shell
 [procon@vm20025:~]$ sudo apt update
 [procon@vm20025:~]$ sudo apt upgrade
-[procon@vm20025:~]$ sudo apt install -y certbot nginx git nix
+[procon@vm20025:~]$ sudo apt install -y certbot nginx git nix python3-certbot-nginx
 ```
 
 ### sudoers 更新
 
 ```shell
-[procon@vm20025:~]$ sudo echo 'procon ALL=(root) NOPASSWD: /usr/bin/nix' | sudo tee /etc/sudoers.d/procon-deploy
+[procon@vm20025:~]$ echo 'procon ALL=(root) NOPASSWD: /usr/bin/nix' | sudo tee /etc/sudoers.d/procon-deploy
 ```
 
 ### 証明書の取得
 
 ```shell
-[procon@vm20025:~]$ sudo certbot certonly --standalone -d procon.syoch.org
+[procon@vm20025:~]$ sudo certbot certonly --nginx -d procon.syoch.org
 ```
 
 ### サーバーリポジトリのクローン
