@@ -3,7 +3,19 @@
 	import "leaflet/dist/leaflet.css";
 	import "svelte-material-ui/bare.css";
 
+	import L from "leaflet";
+
+	import markerIcon2x from "leaflet/dist/images/marker-icon-2x.png";
+	import markerIcon from "leaflet/dist/images/marker-icon.png";
+	import markerShadow from "leaflet/dist/images/marker-shadow.png";
+
 	let { children } = $props();
+
+	L.Icon.Default.mergeOptions({
+		iconUrl: markerIcon,
+		iconRetinaUrl: markerIcon2x,
+		shadowUrl: markerShadow,
+	});
 </script>
 
 <svelte:head>

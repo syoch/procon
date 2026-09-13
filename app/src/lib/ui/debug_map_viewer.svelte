@@ -145,9 +145,7 @@
   });
 
   $effect(() => {
-    map = L.map("map");
-
-    map.on("click", (e) => {
+    map = L.map("map").on("click", (e) => {
       on_map_click?.(e.latlng);
     });
 

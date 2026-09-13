@@ -72,6 +72,7 @@
           sudo ln -sf $(readlink -f "$0") /nix/var/nix/gcroots/auto/procon-setup.sh
 
           sudo ln -sf ${./infra/procon-site.conf} /etc/nginx/sites-enabled/procon-site.conf
+          sudo rm -f /etc/nginx/sites-enabled/default
           sudo ln -sf ${self.packages.${system}.procon-service-unit} /etc/systemd/system/procon-app.service
 
           sudo systemctl daemon-reload
