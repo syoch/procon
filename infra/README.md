@@ -35,5 +35,5 @@
 ### デプロイ操作
 
 ```shell
-[procon@vm20025:~]$ sudo nix --extra-experimental-features nix-command --extra-experimental-features flakes run .#setup
+[procon@vm20025:~]$ sudo nix --extra-experimental-features nix-command --extra-experimental-features flakes run /srv/procon#setup
 ```
