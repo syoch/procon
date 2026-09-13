@@ -10,6 +10,9 @@
 [procon@vm20025:~]$ sudo apt upgrade
 [procon@vm20025:~]$ sudo apt install -y certbot nginx git nix
 
+# sudoers 更新
+[procon@vm20025:~]$ sudo echo 'procon ALL=(root) NOPASSWD: /usr/bin/nix' | sudo tee /etc/sudoers.d/procon-deploy
+
 # 証明書の取得
 [procon@vm20025:~]$ sudo certbot certonly --standalone -d procon.syoch.org
 
