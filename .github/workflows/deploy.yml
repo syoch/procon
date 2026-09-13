@@ -52,7 +52,7 @@ jobs:
       - name: nix run .#setup
         run: >
           ssh ${{ secrets.VPS_HOST }}
-          "sudo -n /nix/var/nix/profiles/default/bin/nix
+          "sudo -n /usr/bin/nix
           run
           --extra-experimental-features nix-command
           --extra-experimental-features flakes
