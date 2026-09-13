@@ -15,6 +15,7 @@
 		iconUrl: markerIcon,
 		iconRetinaUrl: markerIcon2x,
 		shadowUrl: markerShadow,
+		imagePath: location.origin,
 	});
 </script>
 
