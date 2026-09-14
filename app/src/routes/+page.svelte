@@ -14,7 +14,7 @@
     const debugMap = loadDebugMap();
     const searchGraph = fold2DegreeEdges(debugMap);
     //追加
-    Object.values(searchGraph.edges).forEach(edge=>{
+    Object.values(searchGraph).forEach(edge=>{
       CalculateCost(edge);
     });
 

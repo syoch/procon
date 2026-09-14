@@ -37,7 +37,7 @@ export function CalculateCost(folded_edge) {
     mixScore = calculateMixScore(primarySidewalk, primaryHighway);
 
     /* 視界スコアの計算 */
-    viewScore = calculateViewScore(folded_edge)+calculateCrossScore(folded_edge); // folded_edge.cross_node は MapVCrossNode 型であることを想定
+    viewScore = calculateViewScore(folded_edge, primaryHighway); // folded_edge.cross_node は MapVCrossNode 型であることを想定
 
     /* 計算結果を表示 */
     console.log("scores",{
@@ -176,7 +176,7 @@ function calculateWidthScore(width, highway) {
     return 0.7; // 3m以上：普通
   } else {
     return 0.1; // 狭い
-  } /*lanes属性（車線数）というデータがあるらしい。そこから予測もできるかも。 */
+  }
 }
 
 /**
@@ -222,31 +222,70 @@ function calculateMixScore(sidewalk, highway) {
  * @param {App.FoldedEdge} folded_edge
  * @returns {number}
  */
-function calculateViewScore(folded_edge) {
+import L from "leaflet";
+function calculateViewScore(folded_edge, highway) {
   if(folded_edge.segments.length < 2){
+    console.log("folded_edgeのセグメントが1つしかないため、視界スコアを最大値に設定します。");
     return 1.0; // 直線道路の場合は視界スコアを最大値に設定
   }
-  let score = 0;
+  let angle = 0,distance = 0,score =0;
   for(let i=0;i<folded_edge.segments.length-1;i++){
-    const vector1=new Vector(folded_edge.segments[i].end_coordinate.lat - folded_edge.segments[i].begin_coordinate.lat, folded_edge.segments[i].end_coordinate.lng - folded_edge.segments[i].begin_coordinate.lng);
-    const vector2=new Vector(folded_edge.segments[i+1].end_coordinate.lat - folded_edge.segments[i+1].begin_coordinate.lat, folded_edge.segments[i+1].end_coordinate.lng - folded_edge.segments[i+1].begin_coordinate.lng);
-
-    score+=calculateAngle(vector1, vector2);
+    let vector1,vector2;
+    const firstSeg = folded_edge.segments[i];
+    const nextSeg = folded_edge.segments[i + 1];
+    if(firstSeg.end_coordinate.lng === nextSeg.begin_coordinate.lng && firstSeg.end_coordinate.lat === nextSeg.begin_coordinate.lat){
+      vector1=new Vector(firstSeg.begin_coordinate.lng - firstSeg.end_coordinate.lng, firstSeg.begin_coordinate.lat - firstSeg.end_coordinate.lat);
+      vector2=new Vector(nextSeg.end_coordinate.lng - nextSeg.begin_coordinate.lng, nextSeg.end_coordinate.lat - nextSeg.begin_coordinate.lat);
+    } else if(firstSeg.begin_coordinate.lng === nextSeg.begin_coordinate.lng && firstSeg.begin_coordinate.lat === nextSeg.begin_coordinate.lat){
+      vector1=new Vector(firstSeg.end_coordinate.lng - firstSeg.begin_coordinate.lng, firstSeg.end_coordinate.lat - firstSeg.begin_coordinate.lat);
+      vector2=new Vector(nextSeg.end_coordinate.lng - nextSeg.begin_coordinate.lng, nextSeg.end_coordinate.lat - nextSeg.begin_coordinate.lat);
+    } else if(firstSeg.begin_coordinate.lng === nextSeg.end_coordinate.lng && firstSeg.begin_coordinate.lat === nextSeg.end_coordinate.lat){
+      vector1=new Vector(firstSeg.end_coordinate.lng - firstSeg.begin_coordinate.lng, firstSeg.end_coordinate.lat - firstSeg.begin_coordinate.lat);
+      vector2=new Vector(nextSeg.begin_coordinate.lng - nextSeg.end_coordinate.lng, nextSeg.begin_coordinate.lat - nextSeg.end_coordinate.lat);
+    } else if(firstSeg.end_coordinate.lng === nextSeg.end_coordinate.lng && firstSeg.end_coordinate.lat === nextSeg.end_coordinate.lat){
+      vector1=new Vector(firstSeg.begin_coordinate.lng - firstSeg.end_coordinate.lng, firstSeg.begin_coordinate.lat - firstSeg.end_coordinate.lat);
+      vector2=new Vector(nextSeg.begin_coordinate.lng - nextSeg.end_coordinate.lng, nextSeg.begin_coordinate.lat - nextSeg.end_coordinate.lat);
+    } else {
+      console.log("folded_edgeのセグメントが連結されていません。");
+      return 0; //セグメントが連結されていない場合は視界スコアを0に設定
+    }
+    angle+=calculateAngle(vector1, vector2);
+    const node1 = L.latLng(firstSeg.begin_coordinate.lat, firstSeg.begin_coordinate.lng);
+    const node2 = L.latLng(nextSeg.end_coordinate.lat, nextSeg.end_coordinate.lng);
+    distance+=node1.distanceTo(node2);
+    //score+=curvature_ratio(vector1, vector2,highway);
   }
-    return score;
+  const node1 = L.latLng(folded_edge.segments[folded_edge.segments.length - 1].begin_coordinate.lat, folded_edge.segments[folded_edge.segments.length - 1].begin_coordinate.lng);
+  const node2 = L.latLng(folded_edge.segments[folded_edge.segments.length - 1].end_coordinate.lat, folded_edge.segments[folded_edge.segments.length - 1].end_coordinate.lng); 
+  distance+=node1.distanceTo(node2); 
+  
+  if(distance === 0){
+    console.warn("距離が0のため、視界スコアを最大値に設定します。");
+    return 1.0; //距離が0の場合は視界スコアを最大値に設定
+  }
+  return 1.0 - (angle / distance); //後に日本の道路設計基準よりスコア調整する予定
 }
 
+//曲率計算
+/*function curvature_ratio(vector1, vector2, highway) {
+
+  return 0;
+}*/
 
 
 /**
  * 視界スコア・交差点の角度計算
  * @param {App.FoldedEdge} folded_edge
+ * @param {App.SearchGraph} search_graph
  * @returns {number}
  */
-function calculateCrossScore(folded_edge) {
+function calculateCrossScore(folded_edge, search_graph) {
 
+  console.log("エッジの終端", folded_edge.segments[folded_edge.segments.length - 1].end_coordinate);
 
-return 0;
+  console.log("隣接するノード:", search_graph.edges[folded_edge.end]);
+
+return 0;//多分なしでOK
 }
 
 /*2次元ベクトルクラス*/
