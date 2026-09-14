@@ -11,6 +11,7 @@
   import { CrossConvert } from "$lib/cross_transform";
   import { fold2DegreeEdges } from "$lib/fold2degree";
   import { derived } from "svelte/store";
+  import { SelectMarker, updateMarker } from "./page-helper";
 
   let map: L.Map;
 
@@ -19,44 +20,12 @@
   let minLng = $state(138.8795);
   let maxLng = $state(138.8805);
 
-  let mapData = $state<App.SearchGraph>({ nodes: {}, edges: {} });
-
   let selectedMarker: SelectMarker | null = $state(null);
   let beginMarker: SelectMarker | null = $state(null);
   let endMarker: SelectMarker | null = $state(null);
   let consoleLogBuf: ConsoleLogHook;
 
-  const updateMarker = (
-    oldMarker: SelectMarker | null,
-    newMapData: App.SearchGraph,
-  ): [SelectMarker | null, App.SearchGraph] => {
-    if (!oldMarker) {
-      return [oldMarker, newMapData];
-    }
-    const nodeId = oldMarker.node_id;
-    if (newMapData.nodes[nodeId]) {
-      return [oldMarker, newMapData];
-    }
-
-    const [newMapDataAfterSplit, newNodeId] = transientSplit(
-      newMapData,
-      mapData.nodes[oldMarker.node_id].coordinate,
-      map,
-    );
-    oldMarker.dispose();
-    const newMarker = new SelectMarker(
-      L.marker([
-        newMapDataAfterSplit.nodes[newNodeId].coordinate.lat,
-        newMapDataAfterSplit.nodes[newNodeId].coordinate.lng,
-      ])
-        .addTo(map)
-        .bindPopup(`Node ID: ${newNodeId}`),
-      newNodeId,
-    );
-
-    return [newMarker, newMapDataAfterSplit];
-  };
-
+  let fetchedGraph = $state<App.SearchGraph>({ edges: {}, nodes: {} });
   $effect(() => {
     (() => {
       // await loadOSMMap(minLat, minLng, maxLat, maxLng)
@@ -70,39 +39,21 @@
         throw { stage: "CrossConvert", error: foldGraph };
       }
 
-      let newMapData = foldGraph;
-
-      [selectedMarker, newMapData] = updateMarker(selectedMarker, newMapData);
-      [beginMarker, newMapData] = updateMarker(beginMarker, newMapData);
-      [endMarker, newMapData] = updateMarker(endMarker, newMapData);
-
-      mapData = newMapData;
+      fetchedGraph = foldGraph;
     })();
   });
 
-  class SelectMarker {
-    marker: L.Marker;
-    node_id: App.NodeId;
-
-    constructor(marker: L.Marker, node_id: App.NodeId) {
-      this.marker = marker;
-      this.node_id = node_id;
-    }
-
-    dispose() {
-      console.log(`Disposing marker for node ${this.node_id}`);
-      map.removeLayer(this.marker);
-    }
-
-    toString() {
-      return `Node<${this.node_id}>`;
-    }
-  }
+  let mapData = $derived(
+    updateMarker(
+      selectedMarker,
+      updateMarker(beginMarker, updateMarker(endMarker, fetchedGraph)),
+    ),
+  );
 
   $effect(() => {
     if (beginMarker && endMarker) {
       console.log(
-        `Selected path: ${beginMarker.node_id} -> ${endMarker.node_id}`,
+        `Selected path: ${beginMarker.nodeId} -> ${endMarker.nodeId}`,
       );
     }
   });
@@ -174,21 +125,16 @@
     map.on("click", function (e) {
       const lat = e.latlng.lat;
       const lng = e.latlng.lng;
+      const nodeId = `ts-${lat},${lng}`;
 
-      let [newMapData, nodeId] = transientSplit(mapData, { lat, lng }, map);
-      mapData = newMapData;
+      mapData = transientSplit(mapData, nodeId, { lat, lng }, map);
 
       const node = mapData.nodes[nodeId];
 
       if (selectedMarker) {
         selectedMarker.dispose();
       }
-      selectedMarker = new SelectMarker(
-        L.marker([node.coordinate.lat, node.coordinate.lng])
-          .addTo(map)
-          .bindPopup(`Node ID: ${node.id}`),
-        node.id,
-      );
+      selectedMarker = new SelectMarker(map, node.coordinate, node.id);
     });
 
     consoleLogBuf.patch_console_log();
