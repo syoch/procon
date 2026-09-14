@@ -7,11 +7,10 @@
   import { loadDebugMap } from "$lib/map_loader/debug";
   import ConsoleLogHook from "$lib/ui/console_log_hook.svelte";
   import { findNearestEdge, transientSplit } from "$lib/transient-split";
-  import { loadOSMMap } from "$lib/map_loader/osm";
   import { CrossConvert } from "$lib/cross_transform";
   import { fold2DegreeEdges } from "$lib/fold2degree";
-  import { derived } from "svelte/store";
-  import { SelectMarker, updateMarker } from "./page-helper";
+  import Button from "@smui/button";
+  import { generateInitSearchState } from "$lib/path_finder";
 
   let map: L.Map;
 
@@ -20,16 +19,63 @@
   let minLng = $state(138.8795);
   let maxLng = $state(138.8805);
 
+  class SelectMarker {
+    public point = $state<App.Coordinate>({ lat: 0, lng: 0 });
+    public projectedPoint = $state<App.Coordinate>({ lat: 0, lng: 0 });
+    private marker: L.Marker = L.marker([0, 0]);
+
+    constructor(map: L.Map) {
+      $effect(() => {
+        if (!this.projectedPoint) {
+          return;
+        }
+        this.marker
+          .setLatLng([this.projectedPoint.lat, this.projectedPoint.lng])
+          .addTo(map)
+          .bindPopup(
+            `Projected Node at ${this.projectedPoint.lat}, ${this.projectedPoint.lng}`,
+          );
+      });
+    }
+
+    public setCoordinate(
+      point: App.Coordinate,
+      projectedPoint: App.Coordinate,
+    ) {
+      this.point = point;
+      this.projectedPoint = projectedPoint;
+    }
+
+    public moveFrom(other: SelectMarker) {
+      this.point = other.point;
+      this.projectedPoint = other.projectedPoint;
+
+      other.point = { lat: 0, lng: 0 };
+      other.projectedPoint = { lat: 0, lng: 0 };
+    }
+
+    toString() {
+      return `SelectMarker(point: ${JSON.stringify(
+        this.point,
+      )}, projectedPoint: ${JSON.stringify(this.projectedPoint)})`;
+    }
+  }
+
   let selectedMarker: SelectMarker | null = $state(null);
   let beginMarker: SelectMarker | null = $state(null);
   let endMarker: SelectMarker | null = $state(null);
   let consoleLogBuf: ConsoleLogHook;
 
-  let fetchedGraph = $state<App.SearchGraph>({ edges: {}, nodes: {} });
+  let mapData = $state<App.SearchGraph>({ edges: {}, nodes: {} });
   $effect(() => {
     (() => {
       // await loadOSMMap(minLat, minLng, maxLat, maxLng)
-      const osmGraph = loadDebugMap();
+
+      const osmGraph =
+        minLat + minLng + maxLat + maxLng
+          ? JSON.parse(JSON.stringify(loadDebugMap()))
+          : 0;
+
       const ccGraph = CrossConvert(osmGraph);
       if (ccGraph instanceof Error) {
         throw { stage: "CrossConvert", error: ccGraph };
@@ -39,34 +85,23 @@
         throw { stage: "CrossConvert", error: foldGraph };
       }
 
-      fetchedGraph = foldGraph;
+      mapData = foldGraph;
     })();
   });
 
-  let mapData = $derived(
-    updateMarker(
-      selectedMarker,
-      updateMarker(beginMarker, updateMarker(endMarker, fetchedGraph)),
-    ),
-  );
-
   $effect(() => {
-    if (beginMarker && endMarker) {
-      console.log(
-        `Selected path: ${beginMarker.nodeId} -> ${endMarker.nodeId}`,
-      );
+    if (!mapData) {
+      return;
     }
-  });
+    if (!map) {
+      return;
+    }
 
-  onMount(() => {
-    map = L.map("map").setView([37.4379, 138.8795], 18);
-
-    // タイルレイヤの追加
-    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-      attribution:
-        'Map data &copy; <a href="https://www.openstreetmap.org/">OpenStreetMap</a> contributors',
-      maxZoom: 18,
-    }).addTo(map);
+    map.eachLayer((layer) => {
+      if (layer instanceof L.Polyline || layer instanceof L.CircleMarker) {
+        map.removeLayer(layer);
+      }
+    });
 
     let i = 0;
     for (const edge of Object.values(mapData.edges)) {
@@ -121,27 +156,86 @@
         .addTo(map)
         .bindPopup(`Edge ID: ${edge.id} (one node missing)`);
     }
+  });
 
-    map.on("click", function (e) {
-      const lat = e.latlng.lat;
-      const lng = e.latlng.lng;
-      const nodeId = `ts-${lat},${lng}`;
+  onMount(() => {
+    map = L.map("map")
+      .setView([37.4379, 138.8795], 18)
+      .on("click", function (e) {
+        const lat = e.latlng.lat;
+        const lng = e.latlng.lng;
 
-      mapData = transientSplit(mapData, nodeId, { lat, lng }, map);
+        const res = findNearestEdge(mapData, { lat, lng }, map);
+        if (!res) {
+          console.error("No edge found");
+          return;
+        }
 
-      const node = mapData.nodes[nodeId];
+        selectedMarker?.setCoordinate({ lat, lng }, res.projection);
+      })
+      .on("moveend", () => {
+        const bound = map.getBounds();
+        minLng = bound.getWest();
+        maxLng = bound.getEast();
+        maxLat = bound.getNorth();
+        minLat = bound.getSouth();
+      });
 
-      if (selectedMarker) {
-        selectedMarker.dispose();
-      }
-      selectedMarker = new SelectMarker(map, node.coordinate, node.id);
-    });
+    selectedMarker = new SelectMarker(map);
+    beginMarker = new SelectMarker(map);
+    endMarker = new SelectMarker(map);
+
+    // タイルレイヤの追加
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      attribution:
+        'Map data &copy; <a href="https://www.openstreetmap.org/">OpenStreetMap</a> contributors',
+      maxZoom: 18,
+    }).addTo(map);
 
     consoleLogBuf.patch_console_log();
     return () => {
       map.remove();
     };
   });
+
+  function doFindPath() {
+    if (!beginMarker || !endMarker) {
+      console.error("Begin or end marker is not set");
+      return;
+    }
+    if (
+      beginMarker.projectedPoint.lat === 0 &&
+      beginMarker.projectedPoint.lng === 0
+    ) {
+      console.error("Begin marker is not set");
+      return;
+    }
+    if (
+      endMarker.projectedPoint.lat === 0 &&
+      endMarker.projectedPoint.lng === 0
+    ) {
+      console.error("End marker is not set");
+      return;
+    }
+
+    const beginNodeId = `begin`;
+    const endNodeId = `end`;
+    let searchGraph = mapData;
+    searchGraph = transientSplit(
+      searchGraph,
+      beginNodeId,
+      beginMarker.projectedPoint,
+      map,
+    );
+    searchGraph = transientSplit(
+      searchGraph,
+      endNodeId,
+      endMarker.projectedPoint,
+      map,
+    );
+
+    let searchState = generateInitSearchState([beginNodeId]);
+  }
 </script>
 
 <div id="map"></div>
@@ -159,6 +253,7 @@
   <div id="LocationInput">
     <LocationInput></LocationInput>
   </div>
+  <Button onclick={doFindPath}>Find path</Button>
 </div>
 
 <div id="debug-log">
