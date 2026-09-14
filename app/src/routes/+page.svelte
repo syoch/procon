@@ -6,8 +6,79 @@
   import LocationInput from "$lib/ui/location_input.svelte";
   import { loadDebugMap } from "$lib/map_loader/debug";
   import ConsoleLogHook from "$lib/ui/console_log_hook.svelte";
+  import { findNearestEdge, transientSplit } from "$lib/transient-split";
+  import { loadOSMMap } from "$lib/map_loader/osm";
+  import { CrossConvert } from "$lib/cross_transform";
+  import { fold2DegreeEdges } from "$lib/fold2degree";
+  import { derived } from "svelte/store";
 
   let map: L.Map;
+
+  let minLat = $state(37.4379);
+  let maxLat = $state(37.4389);
+  let minLng = $state(138.8795);
+  let maxLng = $state(138.8805);
+
+  let mapData = $state<App.SearchGraph>({ nodes: {}, edges: {} });
+
+  let selectedMarker: SelectMarker | null = $state(null);
+  let beginMarker: SelectMarker | null = $state(null);
+  let endMarker: SelectMarker | null = $state(null);
+  let consoleLogBuf: ConsoleLogHook;
+
+  const updateMarker = (
+    oldMarker: SelectMarker | null,
+    newMapData: App.SearchGraph,
+  ): [SelectMarker | null, App.SearchGraph] => {
+    if (!oldMarker) {
+      return [oldMarker, newMapData];
+    }
+    const nodeId = oldMarker.node_id;
+    if (newMapData.nodes[nodeId]) {
+      return [oldMarker, newMapData];
+    }
+
+    const [newMapDataAfterSplit, newNodeId] = transientSplit(
+      newMapData,
+      mapData.nodes[oldMarker.node_id].coordinate,
+      map,
+    );
+    oldMarker.dispose();
+    const newMarker = new SelectMarker(
+      L.marker([
+        newMapDataAfterSplit.nodes[newNodeId].coordinate.lat,
+        newMapDataAfterSplit.nodes[newNodeId].coordinate.lng,
+      ])
+        .addTo(map)
+        .bindPopup(`Node ID: ${newNodeId}`),
+      newNodeId,
+    );
+
+    return [newMarker, newMapDataAfterSplit];
+  };
+
+  $effect(() => {
+    (() => {
+      // await loadOSMMap(minLat, minLng, maxLat, maxLng)
+      const osmGraph = loadDebugMap();
+      const ccGraph = CrossConvert(osmGraph);
+      if (ccGraph instanceof Error) {
+        throw { stage: "CrossConvert", error: ccGraph };
+      }
+      const foldGraph = fold2DegreeEdges(ccGraph);
+      if (foldGraph instanceof Error) {
+        throw { stage: "CrossConvert", error: foldGraph };
+      }
+
+      let newMapData = foldGraph;
+
+      [selectedMarker, newMapData] = updateMarker(selectedMarker, newMapData);
+      [beginMarker, newMapData] = updateMarker(beginMarker, newMapData);
+      [endMarker, newMapData] = updateMarker(endMarker, newMapData);
+
+      mapData = newMapData;
+    })();
+  });
 
   class SelectMarker {
     marker: L.Marker;
@@ -28,22 +99,15 @@
     }
   }
 
-  let selected_node_marker: SelectMarker | null = $state(null);
-  let begin_node_marker: SelectMarker | null = $state(null);
-  let end_node_marker: SelectMarker | null = $state(null);
-  let consoleLogBuf: ConsoleLogHook;
-
   $effect(() => {
-    if (begin_node_marker && end_node_marker) {
+    if (beginMarker && endMarker) {
       console.log(
-        `Selected path: ${begin_node_marker.node_id} -> ${end_node_marker.node_id}`,
+        `Selected path: ${beginMarker.node_id} -> ${endMarker.node_id}`,
       );
     }
   });
 
   onMount(() => {
-    const debugMap = loadDebugMap();
-
     map = L.map("map").setView([37.4379, 138.8795], 18);
 
     // タイルレイヤの追加
@@ -54,44 +118,72 @@
     }).addTo(map);
 
     let i = 0;
-    for (const edge of Object.values(debugMap.edges)) {
-      const fromNode = debugMap.nodes[edge.begin];
-      const toNode = debugMap.nodes[edge.end];
+    for (const edge of Object.values(mapData.edges)) {
+      const fromNode = mapData.nodes[edge.begin];
+      const toNode = mapData.nodes[edge.end];
+
+      if (edge.type === "FoldedEdge") {
+        const nodes = [
+          fromNode?.coordinate,
+          ...edge.segments
+            .map((seg) => [seg.begin_coordinate, seg.end_coordinate])
+            .flat(),
+          toNode?.coordinate,
+        ].filter(Boolean);
+        L.polyline(nodes, { color: "green" })
+          .addTo(map)
+          .bindPopup(`Folded Edge ID: ${edge.id}`);
+        continue;
+      }
+      if (edge.type === "MapVCrossEdge") {
+        L.circleMarker([fromNode.coordinate.lat, fromNode.coordinate.lng], {
+          color: "red",
+          radius: 2,
+        })
+          .addTo(map)
+          .bindPopup(`MapVCrossEdge ID: ${edge.id}`);
+        continue;
+      }
 
       if (fromNode && toNode) {
-        L.polyline(
-          [
-            [fromNode.coordinate.lat, fromNode.coordinate.lng],
-            [toNode.coordinate.lat, toNode.coordinate.lng],
-          ],
-          { color: i++ % 2 === 0 ? "blue" : "red" },
-        )
+        const nodes = [fromNode.coordinate, toNode.coordinate];
+        console.log(
+          `Drawing edge ${edge.id} between nodes ${fromNode.id} and ${toNode.id}`,
+        );
+        L.polyline(nodes, { color: i++ % 2 === 0 ? "blue" : "red" })
           .addTo(map)
           .bindPopup(`Edge ID: ${edge.id}`);
+        continue;
       }
+      console.warn(
+        `Edge ${edge.id} has missing nodes: fromNode=${fromNode?.id}, toNode=${toNode?.id}`,
+      );
+
+      if (!fromNode && !toNode) {
+        console.warn(`Edge ${edge.id} has no valid nodes.`);
+      }
+
+      const validNode = fromNode || toNode;
+      L.circleMarker([validNode.coordinate.lat, validNode.coordinate.lng], {
+        color: "orange",
+      })
+        .addTo(map)
+        .bindPopup(`Edge ID: ${edge.id} (one node missing)`);
     }
 
     map.on("click", function (e) {
       const lat = e.latlng.lat;
       const lng = e.latlng.lng;
 
-      const nodeId = Object.values(debugMap.nodes).toSorted((a, b) => {
-        const aDistance = Math.sqrt(
-          Math.pow(a.coordinate.lat - lat, 2) +
-            Math.pow(a.coordinate.lng - lng, 2),
-        );
-        const bDistance = Math.sqrt(
-          Math.pow(b.coordinate.lat - lat, 2) +
-            Math.pow(b.coordinate.lng - lng, 2),
-        );
-        return aDistance - bDistance;
-      })[0].id;
-      const node = debugMap.nodes[nodeId];
+      let [newMapData, nodeId] = transientSplit(mapData, { lat, lng }, map);
+      mapData = newMapData;
 
-      if (selected_node_marker) {
-        selected_node_marker.dispose();
+      const node = mapData.nodes[nodeId];
+
+      if (selectedMarker) {
+        selectedMarker.dispose();
       }
-      selected_node_marker = new SelectMarker(
+      selectedMarker = new SelectMarker(
         L.marker([node.coordinate.lat, node.coordinate.lng])
           .addTo(map)
           .bindPopup(`Node ID: ${node.id}`),
@@ -110,9 +202,9 @@
 <div id="float-actions">
   <div id="DebugNodeIn">
     <DebugNodeIn
-      bind:selected_node_id={selected_node_marker}
-      bind:begin_node_id={begin_node_marker}
-      bind:end_node_id={end_node_marker}
+      bind:selected_node_id={selectedMarker}
+      bind:begin_node_id={beginMarker}
+      bind:end_node_id={endMarker}
     ></DebugNodeIn>
   </div>
   <div id="DebugParam">
@@ -163,5 +255,6 @@
     padding: 10px;
     border-radius: 10px;
     font-family: monospace;
+    max-width: 300px;
   }
 </style>
