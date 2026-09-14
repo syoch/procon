@@ -1,4 +1,4 @@
-<script lang="ts">
+<script lang="ts">/*JavaScript*/
   import { onMount } from "svelte";
   import L from "leaflet";
   import DebugNodeIn from "$lib/ui/debug_node_in.svelte";
@@ -104,23 +104,38 @@
       map.remove();
     };
   });
+
+  function toggleMenu() {
+    alert("Pushed!");
+  }
 </script>
 
+<!--HTML-->
 <div id="map"></div>
-
-<div id="float-actions">
-  <div id="DebugNodeIn">
+<div id="option">
+  <!-- ヘッダー（タイトルと3点リーダーボタン） -->
+	<div class="option-header">
+		<button type="button" class="menu-btn" onclick={toggleMenu} aria-label="詳細メニュー">
+			⋮
+		</button>
+	</div>
+</div>
+<div id="float-actions"><!--白枠-->
+  <!--<div id="DebugNodeIn">
     <DebugNodeIn
       bind:selected_node_id={selected_node_marker}
       bind:begin_node_id={begin_node_marker}
       bind:end_node_id={end_node_marker}
     ></DebugNodeIn>
-  </div>
+  </div>-->
   <div id="DebugParam">
     <DebugParam></DebugParam>
   </div>
   <div id="LocationInput">
-    <LocationInput></LocationInput>
+        <LocationInput></LocationInput><br>
+    <input type="text" style="width:80px;" name="start">
+    <input type="text" style="width:80px;" name="finish">
+    <input type="submit" value="決定">
   </div>
 </div>
 
@@ -128,7 +143,7 @@
   <ConsoleLogHook bind:this={consoleLogBuf}></ConsoleLogHook>
 </div>
 
-<style>
+<style>/* CSS */
   #map {
     height: 100vh;
     width: 100vw;
@@ -164,5 +179,15 @@
     padding: 10px;
     border-radius: 10px;
     font-family: monospace;
+  }
+  
+  #option {
+    position: absolute;
+    top: 10px;
+    left: 40px;
+    background-color: rgba(255, 255, 255, 0.7);
+    border-radius: 10px;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+    padding: 10px;
   }
 </style>
