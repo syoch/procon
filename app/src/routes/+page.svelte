@@ -10,7 +10,8 @@
   import { CrossConvert } from "$lib/cross_transform";
   import { fold2DegreeEdges } from "$lib/fold2degree";
   import Button from "@smui/button";
-  import { generateInitSearchState } from "$lib/path_finder";
+  import { generateInitSearchState, pathFind } from "$lib/path_finder";
+  import Slider from "@smui/slider";
 
   let map: L.Map;
 
@@ -220,22 +221,32 @@
 
     const beginNodeId = `begin`;
     const endNodeId = `end`;
-    let searchGraph = mapData;
-    searchGraph = transientSplit(
-      searchGraph,
+    mapData = transientSplit(
+      mapData,
       beginNodeId,
       beginMarker.projectedPoint,
       map,
     );
-    searchGraph = transientSplit(
-      searchGraph,
-      endNodeId,
-      endMarker.projectedPoint,
-      map,
-    );
+    mapData = transientSplit(mapData, endNodeId, endMarker.projectedPoint, map);
 
-    let searchState = generateInitSearchState([beginNodeId]);
+    console.log("finding path...");
+    const result = pathFind(mapData, params, [beginNodeId], [endNodeId]);
+    console.log("path found");
+    const pathNodes = result
+      .map((x) => [mapData.edges[x].begin, mapData.edges[x].end])
+      .flat()
+      .map((nodeId) => mapData.nodes[nodeId]?.coordinate)
+      .filter(Boolean);
+    L.polyline(pathNodes, { color: "purple", weight: 5 })
+      .addTo(map)
+      .bindPopup(`Found path with ${result.length} edges`);
   }
+  let params = $state<App.SearchParameters>({
+    lambda: 1,
+    mix_score_weight: 0.3,
+    view_score_weight: 0.3,
+    width_score_weight: 0.3,
+  });
 </script>
 
 <div id="map"></div>
@@ -248,7 +259,15 @@
     ></DebugNodeIn>
   </div>
   <div id="DebugParam">
-    <DebugParam></DebugParam>
+    <Slider min={0} max={1} step={0.01} bind:value={params.mix_score_weight}
+    ></Slider>
+    <span>Mix Score Weight: {params.mix_score_weight}</span>
+    <Slider min={0} max={1} step={0.01} bind:value={params.view_score_weight}
+    ></Slider>
+    <span>View Score Weight: {params.view_score_weight}</span>
+    <Slider min={0} max={1} step={0.01} bind:value={params.width_score_weight}
+    ></Slider>
+    <span>Width Score Weight: {params.width_score_weight}</span>
   </div>
   <div id="LocationInput">
     <LocationInput></LocationInput>

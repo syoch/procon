@@ -2,7 +2,7 @@
   import Button from "@smui/button";
 
   interface SelectMarker {
-    dispose(): void;
+    moveFrom(other: SelectMarker): void;
   }
 
   let {
@@ -24,12 +24,8 @@
 <Button
   variant="outlined"
   onclick={() => {
-    if (begin_node_id) {
-      begin_node_id.dispose();
-    }
-    if (selected_node_id) {
-      begin_node_id = selected_node_id;
-      selected_node_id = null;
+    if (begin_node_id && selected_node_id) {
+      begin_node_id.moveFrom(selected_node_id);
     }
   }}
 >
@@ -38,12 +34,8 @@
 <Button
   variant="outlined"
   onclick={() => {
-    if (end_node_id) {
-      end_node_id.dispose();
-    }
-    if (selected_node_id) {
-      end_node_id = selected_node_id;
-      selected_node_id = null;
+    if (end_node_id && selected_node_id) {
+      end_node_id.moveFrom(selected_node_id);
     }
   }}
 >
