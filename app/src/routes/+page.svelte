@@ -55,8 +55,8 @@
       this.marker = other.marker;
 
       other.marker = null;
-      other.point = { lat: 0, lng: 0 };
-      other.projectedPoint = { lat: 0, lng: 0 };
+      other.point = null;
+      other.projectedPoint = null;
     }
 
     toString() {
@@ -167,7 +167,8 @@
     try {
       const osmGraph = loadDebugMap();
       if (osmGraph instanceof Error) {
-        throw { stage: "loadDebugMap", error: osmGraph.message };
+        error = `loadDebugMap - osmGraph.message`;
+        throw osmGraph.message;
       }
       assertGraph("Retrieved OSM graph", osmGraph);
 
@@ -175,7 +176,8 @@
       const ccGraph = CrossConvert(osmGraph);
       console.timeEnd("CrossConvert");
       if (ccGraph instanceof Error) {
-        throw { stage: "CrossConvert", error: ccGraph };
+        error = `CrossConvert - ccGraph.message`;
+        throw ccGraph.message;
       }
       assertGraph("CrossConverted graph", ccGraph);
 
@@ -183,14 +185,14 @@
       const foldGraph = fold2DegreeEdges(ccGraph);
       console.timeEnd("fold2DegreeEdges");
       if (foldGraph instanceof Error) {
-        throw { stage: "Fold2DegreeEdges", error: foldGraph };
+        error = `Fold2DegreeEdges - foldGraph.message`;
+        throw foldGraph.message;
       }
       assertGraph("Folded graph", foldGraph);
 
       mapData = foldGraph;
     } catch (e) {
-      console.error("Error during map update", e);
-      error = `Error during map update: ${JSON.stringify(e)}`;
+      console.error("Error loading map:", e);
     }
   }
 
@@ -204,6 +206,9 @@
         onClick(lat, lng);
       })
       .on("moveend", async () => {
+        await loadMap();
+      })
+      .whenReady(async () => {
         await loadMap();
       });
 
