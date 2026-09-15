@@ -276,10 +276,8 @@
       return;
     }
 
-    const beginNodeId = `begin`;
-    const endNodeId = `end`;
-    transientSplit(mapData, beginNodeId, beginMarker.projectedPoint, map);
-    transientSplit(mapData, endNodeId, endMarker.projectedPoint, map);
+    transientSplit(mapData, beginMarker.projectedPoint, map);
+    transientSplit(mapData, endMarker.projectedPoint, map);
 
     console.time("pathFind");
     const result = pathFind(mapData, params, [beginNodeId], [endNodeId]);
