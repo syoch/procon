@@ -61,7 +61,7 @@ function distance_point_to_edge(point: App.Coordinate, edge: [App.Coordinate, Ap
 
 export function findNearestEdge(graph: App.SearchGraph, point: App.Coordinate, map?: L.Map): {
   edgeId: App.EdgeId;
-  segment_index: number;
+  segment_index: number; // ComputedEdge の場合は -1 となる
   distance: number;
   projection: App.Coordinate;
 } | null {
@@ -86,7 +86,7 @@ export function findNearestEdge(graph: App.SearchGraph, point: App.Coordinate, m
       continue;
     }
     if (edge.type === "ComputedEdge") {
-      console.warn(`最近傍エッジの探索中に ComputedEdge が見つかりました: edgeId === ${edgeId}`);
+      updateNearestEdge(graph.nodes[edge.begin].coordinate, graph.nodes[edge.end].coordinate, edgeId, -1);
       continue;
     }
 
@@ -117,8 +117,40 @@ export function transientSplit(graph: App.SearchGraph, point: App.Coordinate, ma
 
   const { edgeId, projection } = nearestEdge;
   const edge = graph.edges[edgeId];
-  if (edge.type !== "FoldedEdge") {
-    throw new Error(`最近傍エッジが FoldedEdge ではありません: edge.type === ${edge.type}`);
+  if (edge.type === "ComputedEdge") {
+    removeEdge(graph, edgeId);
+    const newEdge1: App.ComputedEdge = {
+      type: "ComputedEdge",
+      id: `${edgeId}-t1`,
+      begin: edge.begin,
+      end: nodeId,
+      width_score: edge.width_score,
+      view_score: edge.view_score,
+      mix_score: edge.mix_score,
+    };
+    const newEdge2: App.ComputedEdge = {
+      type: "ComputedEdge",
+      id: `${edgeId}-t2`,
+      begin: nodeId,
+      end: edge.end,
+      width_score: edge.width_score,
+      view_score: edge.view_score,
+      mix_score: edge.mix_score,
+    };
+    addNode(graph, {
+      type: "MapVCrossNode",
+      id: nodeId,
+      coordinate: projection,
+      edges: [],
+      group_nodes: [],
+    });
+    addEdge(graph, newEdge1);
+    addEdge(graph, newEdge2);
+    return nodeId;
+  }
+
+  if (edge.type === "MapVCrossEdge") {
+    throw new Error("MapVCrossEdge は分割できません");
   }
 
   const segmentToSplit = edge.segments[nearestEdge.segment_index];
