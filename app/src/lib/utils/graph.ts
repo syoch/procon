@@ -1,10 +1,10 @@
-type Node = App.MapVCrossNode | App.MapNode;
-type Edge = App.OSMEdge
+export type Node = App.MapVCrossNode | App.MapNode;
+export type Edge = App.OSMEdge
   | App.MapVCrossEdge
   | App.FoldedEdge
   | App.ComputedEdge;
 
-type Graph<NodeType extends Node, EdgeType extends Edge> = {
+export type Graph<NodeType extends Node, EdgeType extends Edge> = {
   nodes: Record<App.NodeId, NodeType>,
   edges: Record<App.EdgeId, EdgeType>,
 };
@@ -42,7 +42,11 @@ export function assertGraph<N extends Node, E extends Edge>(assertTag: string, g
 
 export function removeNode<N extends Node, E extends Edge>(graph: Graph<N, E>, nodeId: App.NodeId) {
   assertGraph("Before removeNode", graph);
-  for (const edgeId of graph.nodes[nodeId].edges) {
+  const node = graph.nodes[nodeId];
+  if (!node) {
+    throw new Error(`removeNode: Node ${nodeId} does not exist in graph`);
+  }
+  for (const edgeId of node.edges) {
     removeEdge(graph, edgeId);
   }
   delete graph.nodes[nodeId];
@@ -61,6 +65,9 @@ export function removeEdge<N extends Node, E extends Edge>(graph: Graph<N, E>, e
 }
 
 export function addNode<N extends Node, E extends Edge>(graph: Graph<N, E>, node: N) {
+  if (graph.nodes[node.id]) {
+    throw new Error(`addNode: Node ${node.id} already exists in graph`);
+  }
   assertGraph("Before addNode", graph);
   graph.nodes[node.id] = node;
   assertGraph("After addNode", graph);
@@ -74,6 +81,9 @@ export function addEdge<N extends Node, E extends Edge>(graph: Graph<N, E>, edge
   if (!graph.nodes[edge.end]) {
     throw new Error(`addEdge: Edge ${edge.id} has missing toNode: ${edge.end}`);
   }
+  if (graph.edges[edge.id]) {
+    throw new Error(`addEdge: Edge ${edge.id} already exists in graph`);
+  }
 
   assertGraph("Before addEdge", graph);
 
@@ -82,7 +92,12 @@ export function addEdge<N extends Node, E extends Edge>(graph: Graph<N, E>, edge
 
   graph.edges[edge.id] = edge;
   fromNode.edges.push(edge.id);
-  toNode.edges.push(edge.id);
+
+  // ループ時でない場合にのみ toNode にエッジを追加する
+  // ループ時においては fromNode, toNode の区別はないため、どちらでも良いが片方にのみ追加するようにする
+  if (edge.begin !== edge.end) {
+    toNode.edges.push(edge.id);
+  }
 
   assertGraph("After addEdge", graph);
 
@@ -95,8 +110,8 @@ export function transformGraph<
   assertGraph("Before transformGraph", graph);
 
   const newGraph: Graph<N2, E2> = {
-    nodes: Object.fromEntries(Object.entries(graph.nodes).map(([nodeId, node]) => [nodeId, nodeTransformer(structuredClone(node))])),
-    edges: Object.fromEntries(Object.entries(graph.edges).map(([edgeId, edge]) => [edgeId, edgeTransformer(structuredClone(edge))])),
+    nodes: Object.fromEntries(Object.entries(graph.nodes).map(([nodeId, node]) => [nodeId, nodeTransformer(node)])),
+    edges: Object.fromEntries(Object.entries(graph.edges).map(([edgeId, edge]) => [edgeId, edgeTransformer(edge)])),
   };
 
   assertGraph("After transformGraph", newGraph);
