@@ -2,29 +2,28 @@
   import { onMount } from "svelte";
   import L from "leaflet";
   import DebugNodeIn from "$lib/ui/debug_node_in.svelte";
-  import DebugParam from "$lib/ui/debug_param.svelte";
   import LocationInput from "$lib/ui/location_input.svelte";
   import { loadDebugMap } from "$lib/map_loader/debug";
-  import ConsoleLogHook from "$lib/ui/console_log_hook.svelte";
   import { findNearestEdge, transientSplit } from "$lib/transient-split";
   import { CrossConvert } from "$lib/cross_transform";
   import { fold2DegreeEdges } from "$lib/fold2degree";
   import Button from "@smui/button";
-  import { generateInitSearchState, pathFind } from "$lib/path_finder";
+  import { pathFind } from "$lib/path_finder";
   import Slider from "@smui/slider";
   import { assertGraph } from "$lib/utils/graph";
-  import { loadOSMMap } from "$lib/map_loader/osm";
 
   let map: L.Map | undefined = $state(undefined);
+  let error: string | null = $state(null);
 
+  // #12 交差点変換が実装されたときに使う状態
   let minLat = $state(37.4379);
   let maxLat = $state(37.4389);
   let minLng = $state(138.8795);
   let maxLng = $state(138.8805);
 
   class SelectMarker {
-    public point = $state<App.Coordinate>({ lat: 0, lng: 0 });
-    public projectedPoint = $state<App.Coordinate>({ lat: 0, lng: 0 });
+    public point = $state<App.Coordinate | null>(null);
+    public projectedPoint = $state<App.Coordinate | null>(null);
     private marker: L.Marker | null = null;
 
     constructor(map: L.Map) {
@@ -56,6 +55,10 @@
     }
 
     public moveFrom(other: SelectMarker) {
+      if (this.marker) {
+        this.marker.remove();
+      }
+
       this.point = other.point;
       this.projectedPoint = other.projectedPoint;
       this.marker = other.marker;
@@ -78,6 +81,7 @@
 
   let mapData = $state<App.SearchGraph>({ edges: {}, nodes: {} });
   let isLoading = $state(false);
+  // #12 交差点変換が実装されたときに使う状態
   let lastLoadedRange: {
     minLat: number;
     maxLat: number;
@@ -261,6 +265,10 @@
       console.error("Begin or end marker is not set");
       return;
     }
+    if (!beginMarker.projectedPoint || !endMarker.projectedPoint) {
+      console.error("Begin or end marker projected point is not set");
+      return;
+    }
     if (
       beginMarker.projectedPoint.lat === 0 &&
       beginMarker.projectedPoint.lng === 0
@@ -276,8 +284,12 @@
       return;
     }
 
-    transientSplit(mapData, beginMarker.projectedPoint, map);
-    transientSplit(mapData, endMarker.projectedPoint, map);
+    const beginNodeId = transientSplit(
+      mapData,
+      beginMarker.projectedPoint,
+      map,
+    );
+    const endNodeId = transientSplit(mapData, endMarker.projectedPoint, map);
 
     console.time("pathFind");
     const result = pathFind(mapData, params, [beginNodeId], [endNodeId]);
@@ -341,6 +353,10 @@
     <LocationInput></LocationInput>
   </div>
   <Button onclick={doFindPath}>Find path</Button>
+
+  {#if error}
+    <div style="color: red;">Error: {error}</div>
+  {/if}
 </div>
 
 <style>
