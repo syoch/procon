@@ -1,4 +1,4 @@
-export type Node = App.MapVCrossNode | App.MapNode;
+export type Node = App.MapVCrossNode | App.MapNode | App.SplittedNode;
 export type Edge = App.OSMEdge
   | App.MapVCrossEdge
   | App.FoldedEdge

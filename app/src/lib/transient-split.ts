@@ -138,11 +138,10 @@ export function transientSplit(graph: App.SearchGraph, point: App.Coordinate, ma
       mix_score: edge.mix_score,
     };
     addNode(graph, {
-      type: "MapVCrossNode",
+      type: "SplittedNode",
       id: nodeId,
       coordinate: projection,
-      edges: [],
-      group_nodes: [],
+      edges: []
     });
     addEdge(graph, newEdge1);
     addEdge(graph, newEdge2);
@@ -158,12 +157,11 @@ export function transientSplit(graph: App.SearchGraph, point: App.Coordinate, ma
   const newEdgeId1 = `${nodeId}-t1`;
   const newEdgeId2 = `${nodeId}-t2`;
 
-  const newNode: App.MapVCrossNode = { // TODO: これを表す型が必要。本来 VCrossNode ではない。
-    type: "MapVCrossNode",
+  const newNode: App.SplittedNode = {
+    type: "SplittedNode",
     id: nodeId,
     coordinate: projection,
-    edges: [],
-    group_nodes: [],
+    edges: []
   };
   const newSegment1: App.Segment = {
     begin_coordinate: segmentToSplit.begin_coordinate,

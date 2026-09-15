@@ -144,6 +144,17 @@ declare global {
 			mix_score: number;
 		};
 
+		type SplittedNode = {
+			/** 型を識別するための固定値 */
+			type: "SplittedNode",
+			/** ノード識別子 */
+			id: NodeId,
+			/** 座標 */
+			coordinate: Coordinate,
+			/** 隣接するエッジの参照リスト */
+			edges: EdgeId[],
+		};
+
 		// Graph Types
 		/** OSM から取得したグラフ */
 		type OSMGraph = {
@@ -170,7 +181,7 @@ declare global {
 		 * fold2DegreeEdges: CrossConvertedGraph -> SearchGraph
 		 */
 		type SearchGraph = {
-			nodes: { [key: NodeId]: MapVCrossNode };
+			nodes: { [key: NodeId]: MapVCrossNode | SplittedNode };
 			edges: { [key: EdgeId]: MapVCrossEdge | FoldedEdge | ComputedEdge };
 		};
 
