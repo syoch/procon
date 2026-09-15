@@ -11,8 +11,7 @@ export type Graph<NodeType extends Node, EdgeType extends Edge> = {
 
 
 export function assertGraph<N extends Node, E extends Edge>(assertTag: string, graph: Graph<N, E>) {
-  // @ts-ignore
-  if (!import.meta.env?.DEV ?? true) return;
+  if (import.meta.env?.DEV === false) return;
 
   for (const edge of Object.values(graph.edges)) {
     const fromNode = graph.nodes[edge.begin];
