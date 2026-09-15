@@ -167,7 +167,7 @@
     try {
       const osmGraph = loadDebugMap();
       if (osmGraph instanceof Error) {
-        error = `loadDebugMap - osmGraph.message`;
+        error = `loadDebugMap - ${osmGraph.message}`;
         throw osmGraph.message;
       }
       assertGraph("Retrieved OSM graph", osmGraph);
@@ -176,7 +176,7 @@
       const ccGraph = CrossConvert(osmGraph);
       console.timeEnd("CrossConvert");
       if (ccGraph instanceof Error) {
-        error = `CrossConvert - ccGraph.message`;
+        error = `CrossConvert - ${ccGraph.message}`;
         throw ccGraph.message;
       }
       assertGraph("CrossConverted graph", ccGraph);
@@ -185,7 +185,7 @@
       const foldGraph = fold2DegreeEdges(ccGraph);
       console.timeEnd("fold2DegreeEdges");
       if (foldGraph instanceof Error) {
-        error = `Fold2DegreeEdges - foldGraph.message`;
+        error = `Fold2DegreeEdges - ${foldGraph.message}`;
         throw foldGraph.message;
       }
       assertGraph("Folded graph", foldGraph);
