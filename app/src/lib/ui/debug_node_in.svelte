@@ -19,6 +19,8 @@
 (デバッグ用) 始点/終点 <br />
 {#if selected_node_id}
   選択されているノード: {selected_node_id} <br />
+{:else}
+  地図をクリックしてノードを選択してください。 <br />
 {/if}
 
 <Button
