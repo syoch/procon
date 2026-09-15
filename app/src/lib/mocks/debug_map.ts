@@ -1,14 +1,14 @@
 export const debugMapOSMMap: App.OSMGraph = {
   nodes: {
-    node1: { type: "MapNode", id: "node1", coordinate: { lat: 0, lng: 0, }, edges: ["edge1"], },
-    node2: { type: "MapNode", id: "node2", coordinate: { lat: 0.0, lng: 0.0007, }, edges: ["edge1"], },
-    node3: { type: "MapNode", id: "node3", coordinate: { lat: 0.0, lng: 0.002, }, edges: ["edge2"], },
+    node1: { type: "MapNode", id: "node1", coordinate: { lat: 0, lng: 0, }, edges: ["edge1", "edge3"], },
+    node2: { type: "MapNode", id: "node2", coordinate: { lat: 0.0, lng: 0.0007, }, edges: ["edge1", "edge2"], },
+    node3: { type: "MapNode", id: "node3", coordinate: { lat: 0.0, lng: 0.002, }, edges: ["edge2", "edge4", "edge5"], },
     node4: { type: "MapNode", id: "node4", coordinate: { lat: -0.001, lng: 0.0, }, edges: ["edge3"], },
-    node5: { type: "MapNode", id: "node5", coordinate: { lat: -0.001, lng: 0.001, }, edges: [], },
-    node6: { type: "MapNode", id: "node6", coordinate: { lat: -0.001, lng: 0.002, }, edges: [], },
-    node7: { type: "MapNode", id: "node7", coordinate: { lat: -0.002, lng: 0.0, }, edges: [], },
-    node8: { type: "MapNode", id: "node8", coordinate: { lat: -0.002, lng: 0.0015, }, edges: [], },
-    node9: { type: "MapNode", id: "node9", coordinate: { lat: -0.002, lng: 0.002, }, edges: [], },
+    node5: { type: "MapNode", id: "node5", coordinate: { lat: -0.001, lng: 0.001, }, edges: ["edge4", "edge10"], },
+    node6: { type: "MapNode", id: "node6", coordinate: { lat: -0.001, lng: 0.002, }, edges: ["edge6", "edge9"], },
+    node7: { type: "MapNode", id: "node7", coordinate: { lat: -0.002, lng: 0.0, }, edges: ["edge7"], },
+    node8: { type: "MapNode", id: "node8", coordinate: { lat: -0.002, lng: 0.0015, }, edges: ["edge7", "edge8", "edge10"], },
+    node9: { type: "MapNode", id: "node9", coordinate: { lat: -0.002, lng: 0.002, }, edges: ["edge8", "edge9"], },
   },
   edges: {
     edge1: { type: "OSMEdge", id: "edge1", begin: "node1", end: "node2", highway: "residential", sidewalk: "both", width: 3.0, },
