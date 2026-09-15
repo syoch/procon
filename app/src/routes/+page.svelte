@@ -13,6 +13,7 @@
   import { generateInitSearchState, pathFind } from "$lib/path_finder";
   import Slider from "@smui/slider";
   import { assertGraph } from "$lib/utils/graph";
+  import { loadOSMMap } from "$lib/map_loader/osm";
 
   let map: L.Map;
 
@@ -69,14 +70,8 @@
 
   let mapData = $state<App.SearchGraph>({ edges: {}, nodes: {} });
   $effect(() => {
-    (() => {
-      // await loadOSMMap(minLat, minLng, maxLat, maxLng)
-
-      const osmGraph =
-        minLat + minLng + maxLat + maxLng
-          ? JSON.parse(JSON.stringify(loadDebugMap()))
-          : 0;
-
+    (async () => {
+      const osmGraph = await loadOSMMap(minLat, minLng, maxLat, maxLng);
       assertGraph("Retrieved OSM graph", osmGraph);
 
       console.time("CrossConvert");
@@ -85,7 +80,6 @@
       if (ccGraph instanceof Error) {
         throw { stage: "CrossConvert", error: ccGraph };
       }
-
       assertGraph("CrossConverted graph", ccGraph);
 
       console.time("fold2DegreeEdges");
@@ -94,7 +88,6 @@
       if (foldGraph instanceof Error) {
         throw { stage: "CrossConvert", error: foldGraph };
       }
-
       assertGraph("Folded graph", foldGraph);
 
       mapData = foldGraph;
@@ -307,6 +300,7 @@
     left: 0;
     z-index: 0;
   }
+
   #float-actions {
     position: absolute;
     bottom: 10px;
