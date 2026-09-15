@@ -56,6 +56,9 @@ export function removeNode<N extends Node, E extends Edge>(graph: Graph<N, E>, n
 }
 
 export function removeEdge<N extends Node, E extends Edge>(graph: Graph<N, E>, edgeId: App.EdgeId) {
+  if (!graph.edges[edgeId]) {
+    throw new Error(`removeEdge: Edge ${edgeId} does not exist in graph`);
+  }
   assertGraph("Before removeEdge", graph);
   delete graph.edges[edgeId];
   for (const node of Object.values(graph.nodes)) {
