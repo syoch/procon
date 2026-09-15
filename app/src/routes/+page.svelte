@@ -15,7 +15,7 @@
   import { assertGraph } from "$lib/utils/graph";
   import { loadOSMMap } from "$lib/map_loader/osm";
 
-  let map: L.Map;
+  let map: L.Map | undefined = $state(undefined);
 
   let minLat = $state(37.4379);
   let maxLat = $state(37.4389);
@@ -25,14 +25,20 @@
   class SelectMarker {
     public point = $state<App.Coordinate>({ lat: 0, lng: 0 });
     public projectedPoint = $state<App.Coordinate>({ lat: 0, lng: 0 });
-    private marker: L.Marker = L.marker([0, 0]);
+    private marker: L.Marker | null = null;
 
     constructor(map: L.Map) {
       $effect(() => {
         if (!this.projectedPoint) {
           return;
         }
-        this.marker
+        if (this.marker) {
+          this.marker.remove();
+        }
+        this.marker = L.marker([
+          this.projectedPoint.lat,
+          this.projectedPoint.lng,
+        ])
           .setLatLng([this.projectedPoint.lat, this.projectedPoint.lng])
           .addTo(map)
           .bindPopup(
@@ -52,7 +58,9 @@
     public moveFrom(other: SelectMarker) {
       this.point = other.point;
       this.projectedPoint = other.projectedPoint;
+      this.marker = other.marker;
 
+      other.marker = null;
       other.point = { lat: 0, lng: 0 };
       other.projectedPoint = { lat: 0, lng: 0 };
     }
@@ -69,9 +77,34 @@
   let endMarker: SelectMarker | null = $state(null);
 
   let mapData = $state<App.SearchGraph>({ edges: {}, nodes: {} });
+  let isLoading = $state(false);
+  let lastLoadedRange: {
+    minLat: number;
+    maxLat: number;
+    minLng: number;
+    maxLng: number;
+  } | null = $state(null);
   $effect(() => {
+    if (isLoading) {
+      return;
+    }
+    if (lastLoadedRange) {
+      if (
+        minLat === lastLoadedRange.minLat &&
+        maxLat === lastLoadedRange.maxLat &&
+        minLng === lastLoadedRange.minLng &&
+        maxLng === lastLoadedRange.maxLng
+      ) {
+        return;
+      }
+    }
+    lastLoadedRange = { minLat, maxLat, minLng, maxLng };
+    isLoading = true;
     (async () => {
-      const osmGraph = await loadOSMMap(minLat, minLng, maxLat, maxLng);
+      const osmGraph = loadDebugMap(); // TODO: loadOSMMap が実装されたら loadOSMMap に置き換える
+      if (osmGraph instanceof Error) {
+        throw { stage: "loadDebugMap", error: osmGraph };
+      }
       assertGraph("Retrieved OSM graph", osmGraph);
 
       console.time("CrossConvert");
@@ -86,12 +119,19 @@
       const foldGraph = fold2DegreeEdges(ccGraph);
       console.timeEnd("fold2DegreeEdges");
       if (foldGraph instanceof Error) {
-        throw { stage: "CrossConvert", error: foldGraph };
+        throw { stage: "Fold2DegreeEdges", error: foldGraph };
       }
       assertGraph("Folded graph", foldGraph);
 
       mapData = foldGraph;
-    })();
+    })()
+      .then(() => {
+        isLoading = false;
+      })
+      .catch((e) => {
+        console.error("Error during map loading:", e);
+        isLoading = false;
+      });
   });
 
   let pathResult: App.Coordinate[] = $state([]);
@@ -104,6 +144,7 @@
     }
 
     map.eachLayer((layer) => {
+      if (!map) return;
       if (layer instanceof L.Polyline || layer instanceof L.CircleMarker) {
         map.removeLayer(layer);
       }
@@ -143,9 +184,6 @@
 
       if (fromNode && toNode) {
         const nodes = [fromNode.coordinate, toNode.coordinate];
-        console.log(
-          `Drawing edge ${edge.id} between nodes ${fromNode.id} and ${toNode.id}`,
-        );
         L.polyline(nodes, { color: i++ % 2 === 0 ? "blue" : "red" })
           .addTo(map)
           .bindPopup(`Edge ID: ${edge.id}`);
@@ -192,6 +230,7 @@
         onClick(lat, lng);
       })
       .on("moveend", () => {
+        if (!map) return;
         const bound = map.getBounds();
         minLng = bound.getWest();
         maxLng = bound.getEast();
@@ -211,6 +250,7 @@
     }).addTo(map);
 
     return () => {
+      if (!map) return;
       map.remove();
     };
   });
@@ -251,9 +291,28 @@
     console.timeEnd("pathFind");
 
     pathResult = result
-      .map((x) => [mapData.edges[x].begin, mapData.edges[x].end])
+      .map((x) => {
+        const edge = mapData.edges[x];
+        const beginNode = mapData.nodes[edge.begin];
+        const endNode = mapData.nodes[edge.end];
+        if (!beginNode || !endNode) {
+          console.warn(
+            `Edge ${edge.id} has missing nodes: begin=${edge.begin}, end=${edge.end}`,
+          );
+          return [];
+        }
+        if (edge.type === "FoldedEdge") {
+          return [
+            beginNode.coordinate,
+            ...edge.segments
+              .map((s) => [s.begin_coordinate, s.end_coordinate])
+              .flat(),
+            endNode.coordinate,
+          ].filter(Boolean);
+        }
+        return [beginNode.coordinate, endNode.coordinate];
+      })
       .flat()
-      .map((nodeId) => mapData.nodes[nodeId]?.coordinate)
       .filter(Boolean);
   }
   let params = $state<App.SearchParameters>({
