@@ -1,4 +1,5 @@
 import L from "leaflet"
+import { addEdge, addNode, removeEdge } from "./utils/graph";
 
 function distance_point_to_edge(point: App.Coordinate, edge: [App.Coordinate, App.Coordinate], map?: L.Map): { distance: number, projection: App.Coordinate } | null {
   const [begin, end] = edge;
@@ -58,7 +59,7 @@ function distance_point_to_edge(point: App.Coordinate, edge: [App.Coordinate, Ap
   return { distance, projection: { lat: proj_x, lng: proj_y } };
 }
 
-function findNearestEdge(graph: App.SearchGraph, point: App.Coordinate, map?: L.Map): {
+export function findNearestEdge(graph: App.SearchGraph, point: App.Coordinate, map?: L.Map): {
   edgeId: App.EdgeId;
   segment_index: number;
   distance: number;
@@ -101,7 +102,14 @@ function findNearestEdge(graph: App.SearchGraph, point: App.Coordinate, map?: L.
     : null;
 }
 
-export function transientSplit(graph: App.SearchGraph, point: App.Coordinate, map?: L.Map): [App.SearchGraph, App.NodeId] {
+export function transientSplit(graph: App.SearchGraph, point: App.Coordinate, map?: L.Map): App.NodeId {
+  const nodeId = `tr-${point.lat}-${point.lng}`;
+
+  // すでに同じ場所に分割ノードが存在する場合は何もしない
+  if (graph.nodes[nodeId]) {
+    return nodeId;
+  }
+
   const nearestEdge = findNearestEdge(graph, point, map);
   if (!nearestEdge) {
     throw new Error("垂線を下ろせるエッジが見つかりません");
@@ -115,15 +123,14 @@ export function transientSplit(graph: App.SearchGraph, point: App.Coordinate, ma
 
   const segmentToSplit = edge.segments[nearestEdge.segment_index];
 
-  const newNodeId = `transient-${Date.now()}`;
-  const newEdgeId1 = `transient-edge-1-${Date.now()}`;
-  const newEdgeId2 = `transient-edge-2-${Date.now()}`;
+  const newEdgeId1 = `${nodeId}-t1`;
+  const newEdgeId2 = `${nodeId}-t2`;
 
   const newNode: App.MapVCrossNode = { // TODO: これを表す型が必要。本来 VCrossNode ではない。
     type: "MapVCrossNode",
-    id: newNodeId,
+    id: nodeId,
     coordinate: projection,
-    edges: [newEdgeId1, newEdgeId2],
+    edges: [],
     group_nodes: [],
   };
   const newSegment1: App.Segment = {
@@ -144,7 +151,7 @@ export function transientSplit(graph: App.SearchGraph, point: App.Coordinate, ma
     type: "FoldedEdge",
     id: newEdgeId1,
     begin: edge.begin,
-    end: newNodeId,
+    end: nodeId,
     segments: [
       ...edge.segments.slice(0, nearestEdge.segment_index),
       newSegment1
@@ -153,7 +160,7 @@ export function transientSplit(graph: App.SearchGraph, point: App.Coordinate, ma
   const newEdge2: App.FoldedEdge = {
     type: "FoldedEdge",
     id: newEdgeId2,
-    begin: newNodeId,
+    begin: nodeId,
     end: edge.end,
     segments: [
       newSegment2,
@@ -161,18 +168,10 @@ export function transientSplit(graph: App.SearchGraph, point: App.Coordinate, ma
     ],
   };
 
-  const newGraph: App.SearchGraph = {
-    nodes: {
-      ...graph.nodes,
-      [newNodeId]: newNode,
-    },
-    edges: {
-      ...graph.edges,
-      [newEdgeId1]: newEdge1,
-      [newEdgeId2]: newEdge2,
-    }
-  };
-  delete newGraph.edges[edgeId]; // 元のエッジを削除する
+  addNode(graph, newNode);
+  removeEdge(graph, edgeId);
+  addEdge(graph, newEdge1);
+  addEdge(graph, newEdge2);
 
-  return [newGraph, newNodeId];
+  return nodeId;
 }
