@@ -12,6 +12,7 @@
   import Button from "@smui/button";
   import { generateInitSearchState, pathFind } from "$lib/path_finder";
   import Slider from "@smui/slider";
+  import { assertGraph } from "$lib/utils/graph";
 
   let map: L.Map;
 
@@ -65,7 +66,6 @@
   let selectedMarker: SelectMarker | null = $state(null);
   let beginMarker: SelectMarker | null = $state(null);
   let endMarker: SelectMarker | null = $state(null);
-  let consoleLogBuf: ConsoleLogHook;
 
   let mapData = $state<App.SearchGraph>({ edges: {}, nodes: {} });
   $effect(() => {
@@ -77,19 +77,31 @@
           ? JSON.parse(JSON.stringify(loadDebugMap()))
           : 0;
 
+      assertGraph("Retrieved OSM graph", osmGraph);
+
+      console.time("CrossConvert");
       const ccGraph = CrossConvert(osmGraph);
+      console.timeEnd("CrossConvert");
       if (ccGraph instanceof Error) {
         throw { stage: "CrossConvert", error: ccGraph };
       }
+
+      assertGraph("CrossConverted graph", ccGraph);
+
+      console.time("fold2DegreeEdges");
       const foldGraph = fold2DegreeEdges(ccGraph);
+      console.timeEnd("fold2DegreeEdges");
       if (foldGraph instanceof Error) {
         throw { stage: "CrossConvert", error: foldGraph };
       }
+
+      assertGraph("Folded graph", foldGraph);
 
       mapData = foldGraph;
     })();
   });
 
+  let pathResult: App.Coordinate[] = $state([]);
   $effect(() => {
     if (!mapData) {
       return;
@@ -123,6 +135,10 @@
         continue;
       }
       if (edge.type === "MapVCrossEdge") {
+        if (!fromNode || !toNode) {
+          console.warn(`MapVCrossEdge ${edge.id} has missing nodes`);
+          continue;
+        }
         L.circleMarker([fromNode.coordinate.lat, fromNode.coordinate.lng], {
           color: "red",
           radius: 2,
@@ -146,18 +162,32 @@
         `Edge ${edge.id} has missing nodes: fromNode=${fromNode?.id}, toNode=${toNode?.id}`,
       );
 
-      if (!fromNode && !toNode) {
-        console.warn(`Edge ${edge.id} has no valid nodes.`);
-      }
-
       const validNode = fromNode || toNode;
+      if (!validNode) continue;
       L.circleMarker([validNode.coordinate.lat, validNode.coordinate.lng], {
         color: "orange",
       })
         .addTo(map)
         .bindPopup(`Edge ID: ${edge.id} (one node missing)`);
     }
+
+    if (pathResult.length > 0) {
+      L.polyline(pathResult, { color: "purple", weight: 5 })
+        .addTo(map)
+        .bindPopup(`Found path with ${pathResult.length} nodes`);
+    }
   });
+
+  function onClick(lat: number, lng: number) {
+    console.debug("Clicked at", lat, lng);
+    const res = findNearestEdge(mapData, { lat, lng }, map);
+    if (!res) {
+      console.error("No edge found");
+      return;
+    }
+
+    selectedMarker?.setCoordinate({ lat, lng }, res.projection);
+  }
 
   onMount(() => {
     map = L.map("map")
@@ -166,13 +196,7 @@
         const lat = e.latlng.lat;
         const lng = e.latlng.lng;
 
-        const res = findNearestEdge(mapData, { lat, lng }, map);
-        if (!res) {
-          console.error("No edge found");
-          return;
-        }
-
-        selectedMarker?.setCoordinate({ lat, lng }, res.projection);
+        onClick(lat, lng);
       })
       .on("moveend", () => {
         const bound = map.getBounds();
@@ -193,13 +217,13 @@
       maxZoom: 18,
     }).addTo(map);
 
-    consoleLogBuf.patch_console_log();
     return () => {
       map.remove();
     };
   });
 
   function doFindPath() {
+    assertGraph("doFindPath top", mapData);
     if (!beginMarker || !endMarker) {
       console.error("Begin or end marker is not set");
       return;
@@ -229,17 +253,15 @@
     );
     mapData = transientSplit(mapData, endNodeId, endMarker.projectedPoint, map);
 
-    console.log("finding path...");
+    console.time("pathFind");
     const result = pathFind(mapData, params, [beginNodeId], [endNodeId]);
-    console.log("path found");
-    const pathNodes = result
+    console.timeEnd("pathFind");
+
+    pathResult = result
       .map((x) => [mapData.edges[x].begin, mapData.edges[x].end])
       .flat()
       .map((nodeId) => mapData.nodes[nodeId]?.coordinate)
       .filter(Boolean);
-    L.polyline(pathNodes, { color: "purple", weight: 5 })
-      .addTo(map)
-      .bindPopup(`Found path with ${result.length} edges`);
   }
   let params = $state<App.SearchParameters>({
     lambda: 1,
@@ -250,6 +272,7 @@
 </script>
 
 <div id="map"></div>
+
 <div id="float-actions">
   <div id="DebugNodeIn">
     <DebugNodeIn
@@ -273,10 +296,6 @@
     <LocationInput></LocationInput>
   </div>
   <Button onclick={doFindPath}>Find path</Button>
-</div>
-
-<div id="debug-log">
-  <ConsoleLogHook bind:this={consoleLogBuf}></ConsoleLogHook>
 </div>
 
 <style>
@@ -304,17 +323,5 @@
       padding-top: 10px;
       border-top: 1px solid #ccc;
     }
-  }
-
-  #debug-log {
-    position: absolute;
-    bottom: 10px;
-    right: 10px;
-    background-color: rgba(0, 0, 0, 0.6);
-    color: rgba(255, 255, 255, 0.8);
-    padding: 10px;
-    border-radius: 10px;
-    font-family: monospace;
-    max-width: 300px;
   }
 </style>
