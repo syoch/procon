@@ -107,6 +107,14 @@ export function addEdge<N extends Node, E extends Edge>(graph: Graph<N, E>, edge
 
 }
 
+/**
+ * グラフを変換する
+ *
+ * @param graph 変換対象のグラフ
+ * @param nodeTransformer ノードを変換する関数 (引数で与えられるノードは変更しないこと)
+ * @param edgeTransformer エッジを変換する関数 (引数で与えられるエッジは変更しないこと)
+ * @returns 変換後のグラフ
+ */
 export function transformGraph<
   N1 extends Node, E1 extends Edge, N2 extends Node, E2 extends Edge
 >(graph: Graph<N1, E1>, nodeTransformer: (node: N1) => N2, edgeTransformer: (edge: E1) => E2): Graph<N2, E2> {
