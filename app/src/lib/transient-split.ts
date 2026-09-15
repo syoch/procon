@@ -102,7 +102,9 @@ export function findNearestEdge(graph: App.SearchGraph, point: App.Coordinate, m
     : null;
 }
 
-export function transientSplit(graph: App.SearchGraph, nodeId: string, point: App.Coordinate, map?: L.Map): App.SearchGraph {
+export function transientSplit(_graph: App.SearchGraph, nodeId: string, point: App.Coordinate, map?: L.Map): App.SearchGraph {
+  const graph = structuredClone(_graph);
+
   if (graph.nodes[nodeId]) {
     console.warn(`transientSplit: nodeId ${nodeId} already exists in graph`);
     return graph;
@@ -166,11 +168,10 @@ export function transientSplit(graph: App.SearchGraph, nodeId: string, point: Ap
     ],
   };
 
-  let newGraph = graph;
-  newGraph = addNode(newGraph, newNode);
-  newGraph = removeEdge(newGraph, edgeId);
-  newGraph = addEdge(newGraph, newEdge1);
-  newGraph = addEdge(newGraph, newEdge2);
+  addNode(graph, newNode);
+  removeEdge(graph, edgeId);
+  addEdge(graph, newEdge1);
+  addEdge(graph, newEdge2);
 
-  return newGraph;
+  return graph;
 }

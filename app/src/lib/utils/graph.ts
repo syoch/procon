@@ -11,6 +11,8 @@ type Graph<NodeType extends Node, EdgeType extends Edge> = {
 
 
 export function assertGraph<N extends Node, E extends Edge>(assertTag: string, graph: Graph<N, E>) {
+  if (!import.meta.env.DEV) return;
+
   for (const edge of Object.values(graph.edges)) {
     const fromNode = graph.nodes[edge.begin];
     const toNode = graph.nodes[edge.end];
@@ -38,37 +40,34 @@ export function assertGraph<N extends Node, E extends Edge>(assertTag: string, g
   }
 }
 
-export function removeNode<N extends Node, E extends Edge>(graph: Graph<N, E>, nodeId: App.NodeId): Graph<N, E> {
+export function removeNode<N extends Node, E extends Edge>(graph: Graph<N, E>, nodeId: App.NodeId) {
   assertGraph("Before removeNode", graph);
-  const newGraph = { ...graph };
   for (const edgeId of graph.nodes[nodeId].edges) {
-    removeEdge(newGraph, edgeId);
+    removeEdge(graph, edgeId);
   }
-  delete newGraph.nodes[nodeId];
-  assertGraph("After removeNode", newGraph);
-  return newGraph;
+  delete graph.nodes[nodeId];
+  assertGraph("After removeNode", graph);
+
 }
 
-export function removeEdge<N extends Node, E extends Edge>(graph: Graph<N, E>, edgeId: App.EdgeId): Graph<N, E> {
+export function removeEdge<N extends Node, E extends Edge>(graph: Graph<N, E>, edgeId: App.EdgeId) {
   assertGraph("Before removeEdge", graph);
-  const newGraph = { ...graph };
-  delete newGraph.edges[edgeId];
-  for (const node of Object.values(newGraph.nodes)) {
+  delete graph.edges[edgeId];
+  for (const node of Object.values(graph.nodes)) {
     node.edges = node.edges.filter(eid => eid !== edgeId);
   }
-  assertGraph("After removeEdge", newGraph);
-  return newGraph;
+  assertGraph("After removeEdge", graph);
+
 }
 
-export function addNode<N extends Node, E extends Edge>(graph: Graph<N, E>, node: N): Graph<N, E> {
+export function addNode<N extends Node, E extends Edge>(graph: Graph<N, E>, node: N) {
   assertGraph("Before addNode", graph);
-  const newGraph = { ...graph };
-  newGraph.nodes[node.id] = node;
-  assertGraph("After addNode", newGraph);
-  return newGraph;
+  graph.nodes[node.id] = node;
+  assertGraph("After addNode", graph);
+
 }
 
-export function addEdge<N extends Node, E extends Edge>(graph: Graph<N, E>, edge: E): Graph<N, E> {
+export function addEdge<N extends Node, E extends Edge>(graph: Graph<N, E>, edge: E) {
   if (!graph.nodes[edge.begin]) {
     throw new Error(`addEdge: Edge ${edge.id} has missing fromNode: ${edge.begin}`);
   }
@@ -78,16 +77,15 @@ export function addEdge<N extends Node, E extends Edge>(graph: Graph<N, E>, edge
 
   assertGraph("Before addEdge", graph);
 
-  const newGraph = { ...graph };
-  const fromNode = newGraph.nodes[edge.begin];
-  const toNode = newGraph.nodes[edge.end];
+  const fromNode = graph.nodes[edge.begin];
+  const toNode = graph.nodes[edge.end];
 
-  newGraph.edges[edge.id] = edge;
+  graph.edges[edge.id] = edge;
   fromNode.edges.push(edge.id);
   toNode.edges.push(edge.id);
 
-  assertGraph("After addEdge", newGraph);
-  return newGraph;
+  assertGraph("After addEdge", graph);
+
 }
 
 export function transformGraph<
