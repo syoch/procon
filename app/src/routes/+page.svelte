@@ -12,15 +12,6 @@
   import Slider from "@smui/slider";
   import { assertGraph } from "$lib/utils/graph";
 
-  let map: L.Map | undefined = $state(undefined);
-  let error: string | null = $state(null);
-
-  // #12 交差点変換が実装されたときに使う状態
-  let minLat = $state(37.4379);
-  let maxLat = $state(37.4389);
-  let minLng = $state(138.8795);
-  let maxLng = $state(138.8805);
-
   class SelectMarker {
     public point = $state<App.Coordinate | null>(null);
     public projectedPoint = $state<App.Coordinate | null>(null);
@@ -75,70 +66,15 @@
     }
   }
 
+  let map: L.Map | undefined = $state(undefined);
+  let error: string | null = $state(null);
+
   let selectedMarker: SelectMarker | null = $state(null);
   let beginMarker: SelectMarker | null = $state(null);
   let endMarker: SelectMarker | null = $state(null);
-
   let mapData = $state<App.SearchGraph>({ edges: {}, nodes: {} });
-  let isLoading = $state(false);
-  // #12 交差点変換が実装されたときに使う状態
-  let lastLoadedRange: {
-    minLat: number;
-    maxLat: number;
-    minLng: number;
-    maxLng: number;
-  } | null = $state(null);
-  $effect(() => {
-    if (isLoading) {
-      return;
-    }
-    if (lastLoadedRange) {
-      if (
-        minLat === lastLoadedRange.minLat &&
-        maxLat === lastLoadedRange.maxLat &&
-        minLng === lastLoadedRange.minLng &&
-        maxLng === lastLoadedRange.maxLng
-      ) {
-        return;
-      }
-    }
-    lastLoadedRange = { minLat, maxLat, minLng, maxLng };
-    isLoading = true;
-    (async () => {
-      const osmGraph = loadDebugMap(); // TODO: loadOSMMap が実装されたら loadOSMMap に置き換える
-      if (osmGraph instanceof Error) {
-        throw { stage: "loadDebugMap", error: osmGraph };
-      }
-      assertGraph("Retrieved OSM graph", osmGraph);
-
-      console.time("CrossConvert");
-      const ccGraph = CrossConvert(osmGraph);
-      console.timeEnd("CrossConvert");
-      if (ccGraph instanceof Error) {
-        throw { stage: "CrossConvert", error: ccGraph };
-      }
-      assertGraph("CrossConverted graph", ccGraph);
-
-      console.time("fold2DegreeEdges");
-      const foldGraph = fold2DegreeEdges(ccGraph);
-      console.timeEnd("fold2DegreeEdges");
-      if (foldGraph instanceof Error) {
-        throw { stage: "Fold2DegreeEdges", error: foldGraph };
-      }
-      assertGraph("Folded graph", foldGraph);
-
-      mapData = foldGraph;
-    })()
-      .then(() => {
-        isLoading = false;
-      })
-      .catch((e) => {
-        console.error("Error during map loading:", e);
-        isLoading = false;
-      });
-  });
-
   let pathResult: App.Coordinate[] = $state([]);
+
   $effect(() => {
     if (!mapData) {
       return;
@@ -224,6 +160,40 @@
     selectedMarker?.setCoordinate({ lat, lng }, res.projection);
   }
 
+  async function loadMap() {
+    // TODO: loadOSMMap が実装されたら loadOSMMap に置き換える
+    // その際 map.getBounds() を使って表示範囲の OSM データを取得するようにする
+    // また、移動によって loadMap が並列で呼ばれる可能性があるので、最新の呼び出しだけが有効になるようにする
+    try {
+      const osmGraph = loadDebugMap();
+      if (osmGraph instanceof Error) {
+        throw { stage: "loadDebugMap", error: osmGraph.message };
+      }
+      assertGraph("Retrieved OSM graph", osmGraph);
+
+      console.time("CrossConvert");
+      const ccGraph = CrossConvert(osmGraph);
+      console.timeEnd("CrossConvert");
+      if (ccGraph instanceof Error) {
+        throw { stage: "CrossConvert", error: ccGraph };
+      }
+      assertGraph("CrossConverted graph", ccGraph);
+
+      console.time("fold2DegreeEdges");
+      const foldGraph = fold2DegreeEdges(ccGraph);
+      console.timeEnd("fold2DegreeEdges");
+      if (foldGraph instanceof Error) {
+        throw { stage: "Fold2DegreeEdges", error: foldGraph };
+      }
+      assertGraph("Folded graph", foldGraph);
+
+      mapData = foldGraph;
+    } catch (e) {
+      console.error("Error during map update", e);
+      error = `Error during map update: ${JSON.stringify(e)}`;
+    }
+  }
+
   onMount(() => {
     map = L.map("map")
       .setView([37.4379, 138.8795], 18)
@@ -233,13 +203,8 @@
 
         onClick(lat, lng);
       })
-      .on("moveend", () => {
-        if (!map) return;
-        const bound = map.getBounds();
-        minLng = bound.getWest();
-        maxLng = bound.getEast();
-        maxLat = bound.getNorth();
-        minLat = bound.getSouth();
+      .on("moveend", async () => {
+        await loadMap();
       });
 
     selectedMarker = new SelectMarker(map);
