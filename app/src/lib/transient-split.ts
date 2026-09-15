@@ -103,6 +103,11 @@ export function findNearestEdge(graph: App.SearchGraph, point: App.Coordinate, m
 }
 
 export function transientSplit(graph: App.SearchGraph, nodeId: string, point: App.Coordinate, map?: L.Map): App.SearchGraph {
+  if (graph.nodes[nodeId]) {
+    console.warn(`transientSplit: nodeId ${nodeId} already exists in graph`);
+    return graph;
+  }
+
   const nearestEdge = findNearestEdge(graph, point, map);
   if (!nearestEdge) {
     throw new Error("垂線を下ろせるエッジが見つかりません");
@@ -161,14 +166,7 @@ export function transientSplit(graph: App.SearchGraph, nodeId: string, point: Ap
     ],
   };
 
-  let newGraph: App.SearchGraph = {
-    nodes: {
-      ...graph.nodes,
-    },
-    edges: {
-      ...graph.edges,
-    }
-  };
+  let newGraph = graph;
   newGraph = addNode(newGraph, newNode);
   newGraph = removeEdge(newGraph, edgeId);
   newGraph = addEdge(newGraph, newEdge1);
