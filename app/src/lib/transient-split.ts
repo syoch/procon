@@ -1,4 +1,5 @@
 import L from "leaflet"
+import { addEdge, addNode, removeEdge } from "./utils/graph";
 
 function distance_point_to_edge(point: App.Coordinate, edge: [App.Coordinate, App.Coordinate], map?: L.Map): { distance: number, projection: App.Coordinate } | null {
   const [begin, end] = edge;
@@ -122,7 +123,7 @@ export function transientSplit(graph: App.SearchGraph, nodeId: string, point: Ap
     type: "MapVCrossNode",
     id: nodeId,
     coordinate: projection,
-    edges: [newEdgeId1, newEdgeId2],
+    edges: [],
     group_nodes: [],
   };
   const newSegment1: App.Segment = {
@@ -160,18 +161,18 @@ export function transientSplit(graph: App.SearchGraph, nodeId: string, point: Ap
     ],
   };
 
-  const newGraph: App.SearchGraph = {
+  let newGraph: App.SearchGraph = {
     nodes: {
       ...graph.nodes,
-      [nodeId]: newNode,
     },
     edges: {
       ...graph.edges,
-      [newEdgeId1]: newEdge1,
-      [newEdgeId2]: newEdge2,
     }
   };
-  delete newGraph.edges[edgeId]; // 元のエッジを削除する
+  newGraph = addNode(newGraph, newNode);
+  newGraph = removeEdge(newGraph, edgeId);
+  newGraph = addEdge(newGraph, newEdge1);
+  newGraph = addEdge(newGraph, newEdge2);
 
   return newGraph;
 }
