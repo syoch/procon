@@ -22,7 +22,7 @@ function calculateEdgeCost(edge: App.ComputedEdge | App.MapVCrossEdge, params: A
   let view_score = edge.type === "ComputedEdge" ? edge.view_score : edge.type === "MapVCrossEdge" ? edge.view_score : 0;
   let width_score = edge.type === "ComputedEdge" ? edge.width_score : edge.type === "MapVCrossEdge" ? 0 : 0;
   let mix_score = edge.type === "ComputedEdge" ? edge.mix_score : edge.type === "MapVCrossEdge" ? 0 : 0;
-  let distance = edge.type === "ComputedEdge" ? calculateEdgeLength(edge) : 0;
+  let distance = edge.type === "ComputedEdge" ? calculateEdgeLength(edge) : 10;
 
   const lambda = params.lambda;
   const a1 = params.view_score_weight;
