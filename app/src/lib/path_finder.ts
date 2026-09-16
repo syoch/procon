@@ -30,7 +30,7 @@ function calculateEdgeCost(edge: App.ComputedEdge | App.MapVCrossEdge, params: A
   const a3 = params.mix_score_weight;
 
   let score = a1 * view_score + a2 * width_score + a3 * mix_score;
-  let cost = distance * (1 - score * lambda);
+  let cost = distance * (1 + lambda * (1 - score));
   return cost;
 }
 
