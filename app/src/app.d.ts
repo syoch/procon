@@ -135,6 +135,7 @@ declare global {
 			begin: NodeId;
 			/** 終点ノード識別子 */
 			end: NodeId;
+
 			/** セグメント */
 			segments: Segment[];
 
@@ -193,7 +194,7 @@ declare global {
 		 * 主に DebugMapData/DebugGraphData で使用する。
 		 */
 		type GenericMap = {
-			nodes: { [key: App.NodeId]: App.MapVCrossNode | App.MapNode | App.SplittedNode };
+			nodes: { [key: App.NodeId]: App.MapVCrossNode | App.MapNode};
 			edges: {
 				[key: App.EdgeId]:
 				| App.OSMEdge
