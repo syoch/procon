@@ -85,11 +85,7 @@ export function findNearestEdge(graph: App.SearchGraph, point: App.Coordinate, m
     if (edge.type === "MapVCrossEdge") {
       continue;
     }
-    if (edge.type === "ComputedEdge") {
-      updateNearestEdge(graph.nodes[edge.begin].coordinate, graph.nodes[edge.end].coordinate, edgeId, -1);
-      continue;
-    }
-
+    
     for (const subEdge of edge.segments) {
       const begin = subEdge.begin_coordinate;
       const end = subEdge.end_coordinate;
@@ -117,36 +113,6 @@ export function transientSplit(graph: App.SearchGraph, point: App.Coordinate, ma
 
   const { edgeId, projection } = nearestEdge;
   const edge = graph.edges[edgeId];
-  if (edge.type === "ComputedEdge") {
-    removeEdge(graph, edgeId);
-    const newEdge1: App.ComputedEdge = {
-      type: "ComputedEdge",
-      id: `${edgeId}-t1`,
-      begin: edge.begin,
-      end: nodeId,
-      width_score: edge.width_score,
-      view_score: edge.view_score,
-      mix_score: edge.mix_score,
-    };
-    const newEdge2: App.ComputedEdge = {
-      type: "ComputedEdge",
-      id: `${edgeId}-t2`,
-      begin: nodeId,
-      end: edge.end,
-      width_score: edge.width_score,
-      view_score: edge.view_score,
-      mix_score: edge.mix_score,
-    };
-    addNode(graph, {
-      type: "SplittedNode",
-      id: nodeId,
-      coordinate: projection,
-      edges: []
-    });
-    addEdge(graph, newEdge1);
-    addEdge(graph, newEdge2);
-    return nodeId;
-  }
 
   if (edge.type === "MapVCrossEdge") {
     throw new Error("MapVCrossEdge は分割できません");
@@ -177,18 +143,27 @@ export function transientSplit(graph: App.SearchGraph, point: App.Coordinate, ma
     width: segmentToSplit.width,
     sidewalk: segmentToSplit.sidewalk,
   };
-  const newEdge1: App.FoldedEdge = {
-    type: "FoldedEdge",
+
+  const newEdge1 = {
     id: newEdgeId1,
     begin: edge.begin,
     end: nodeId,
     segments: [
       ...edge.segments.slice(0, nearestEdge.segment_index),
       newSegment1
-    ]
+    ],
+
+    ...edge.type === "ComputedEdge" ? {
+      type: "ComputedEdge" as const,
+      width_score: edge.width_score,
+      view_score: edge.view_score,
+      mix_score: edge.mix_score,
+    } : {
+      type: "FoldedEdge" as const,
+    }
   };
-  const newEdge2: App.FoldedEdge = {
-    type: "FoldedEdge",
+
+  const newEdge2 = {
     id: newEdgeId2,
     begin: nodeId,
     end: edge.end,
@@ -196,6 +171,14 @@ export function transientSplit(graph: App.SearchGraph, point: App.Coordinate, ma
       newSegment2,
       ...edge.segments.slice(nearestEdge.segment_index + 1)
     ],
+    ...edge.type === "ComputedEdge" ? {
+      type: "ComputedEdge" as const,
+      width_score: edge.width_score,
+      view_score: edge.view_score,
+      mix_score: edge.mix_score,
+    } : {
+      type: "FoldedEdge" as const,
+    }
   };
 
   addNode(graph, newNode);
