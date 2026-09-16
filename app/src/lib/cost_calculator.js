@@ -69,6 +69,9 @@ export function CalculateCost(folded_edge) {
       width_score: widthScore,
       view_score: viewScore,
       mix_score: mixScore,
+      // path_finder は segments から距離を計算し、direction で通行可否を判定する
+      segments: folded_edge.segments,
+      direction: folded_edge.direction,
     };
 
     /* ComputedEdgeを表示 */
