@@ -136,6 +136,9 @@ declare global {
 			/** 終点ノード識別子 */
 			end: NodeId;
 
+			/** セグメント */
+			segments: Segment[];
+
 			/** スコア */
 			width_score: number;
 			/** スコア */
