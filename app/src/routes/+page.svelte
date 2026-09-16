@@ -261,7 +261,7 @@
     );
     const endNodeId = transientSplit(mapData, endMarker.projectedPoint, map);
 
-    console.time("pathFind");
+    console.time("pathFind");//parms
     const result = pathFind(mapData, params, [beginNodeId], [endNodeId]);
     console.timeEnd("pathFind");
 
@@ -308,7 +308,7 @@
       bind:end_node_id={endMarker}
     ></DebugNodeIn>
   </div>
-  <div id="DebugParam">
+  <div id="DebugParam"><!--parmsが変数-->
     <Slider min={0} max={1} step={0.01} bind:value={params.mix_score_weight}
     ></Slider>
     <span>Mix Score Weight: {params.mix_score_weight}</span>

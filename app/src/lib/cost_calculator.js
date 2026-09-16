@@ -38,7 +38,7 @@ export function CalculateCost(folded_edge) {
     mixScore = calculateMixScore(primarySidewalk, primaryHighway);
 
     /* 視界スコアの計算 */
-    viewScore = calculateViewScore(folded_edge);
+    viewScore = calculateViewScore(folded_edge,primaryHighway);
 
     /* 計算結果を表示 */
     console.log("scores",{
@@ -69,6 +69,7 @@ export function CalculateCost(folded_edge) {
       width_score: widthScore,
       view_score: viewScore,
       mix_score: mixScore,
+      segments: folded_edge.segments
     };
 
     /* ComputedEdgeを表示 */
@@ -218,20 +219,34 @@ function calculateMixScore(sidewalk, highway) {
   }
 }
 
+/*2次元ベクトルクラス*/
+class Vector {
+  /**
+   * @param {number} x
+   * @param {number} y
+   */
+  constructor(x, y) {
+    this.x = x;
+    this.y = y;
+  }
+}
+
 /**
  * 視界スコア・道の曲率計算
  * @param {App.FoldedEdge} folded_edge
+ * @param {string | undefined} primary_highway
  * @returns {number}
  */
-function calculateViewScore(folded_edge) {
+function calculateViewScore(folded_edge,primary_highway) {
   if(folded_edge.segments.length < 2){
     console.log("folded_edgeのセグメントが1つしかないため、視界スコアを最大値に設定します。");
     return 1.0; // 直線道路の場合は視界スコアを最大値に設定
   }
-  let angle = 0,distance = 0,score =0, curvrate=0;
+  let score=0;
+  const scores = [];
   for(let i=0;i<folded_edge.segments.length-1;i++){
     let vector1,vector2;
-    let score=new Array (folded_edge.segments.length);
+
     const firstSeg = folded_edge.segments[i];
     const nextSeg = folded_edge.segments[i + 1];
     
@@ -251,21 +266,31 @@ function calculateViewScore(folded_edge) {
       console.warn("folded_edgeのセグメントが連結されていません。");
       return 0; //セグメントが連結されていない場合は視界スコアを0に設定
     }
-    const angle=calculateAngle(vector1, vector2);
+    const angle=Math.PI-calculateAngle(vector1, vector2);
     const firstnode1 = L.latLng(firstSeg.begin_coordinate.lat, firstSeg.begin_coordinate.lng);
     const firstnode2 = L.latLng(firstSeg.end_coordinate.lat, firstSeg.end_coordinate.lng);
     const nextnode1 =L.latLng(nextSeg.begin_coordinate.lat,nextSeg.begin_coordinate.lng);
     const nextnode2 =L.latLng(nextSeg.end_coordinate.lat,nextSeg.end_coordinate.lng);
     const distance=(firstnode1.distanceTo(firstnode2)+nextnode1.distanceTo(nextnode2))/2;
-    const curv=angle/distance;
+
     if(distance > 0){
+      const curv=angle/distance;
       const currentHighway = firstSeg.highway;
-      score[i] = curvature_ratio(curv, currentHighway);
+      scores.push(curvature_ratio(curv, currentHighway,primary_highway));
     }else{
       console.warn("距離が0以下のため、視界スコアを最大値に設定します。");
-      score[i]=1.0;
+      scores.push(1.0);
     }
   }
+
+  if (scores.length === 0) return 1.0;
+  //scoresから平均値を計算する
+  const aveScore = scores.reduce((sum, val) => sum + val, 0) / scores.length;
+  // 配列の中から最小値（一番低いスコア＝一番急なカーブ）を取得
+  const minScore = Math.min(...scores);
+
+  score=(minScore+aveScore)/2
+
   return score; //後に日本の道路設計基準よりスコア調整する予定
 }
 
@@ -273,16 +298,17 @@ function calculateViewScore(folded_edge) {
  * 視界スコア・道の曲率計算
  * @param {number} curv
  * @param {string | undefined} highway
+ * @param {string | undefined} primary_highway
  * @returns {number}
  */
-function curvature_ratio(curv, highway) {
+function curvature_ratio(curv, highway,primary_highway) {
   let standard_curv=0;
 
   switch (highway) {
     case "motorway":
        standard_curv=1/570; // 高速道路(歩行者・自転車禁止)
         break;
-       case "trunk":
+      case "trunk":
       standard_curv=1/380;
       break;
     case "primary":
@@ -298,32 +324,46 @@ function curvature_ratio(curv, highway) {
       standard_curv=1/50;
       break;
     case "residential":
+    case "service":
+    case "track":
       standard_curv=1/30;
+      break;
     default:
-      console.warn("highway属性が見つかりませんでした。");
-      return 0.1; // 不明な場合
-  }
-  const score=curv/standard_curv;
-  if(score<=1){
-    return score;
-  }else{
-    console.warn("視界スコアにエラーが発生しました。")
-    return 0;//危険な可能性が高いのでscoreを0とする
-  }
+      switch (primary_highway) {
+        case "motorway":
+          standard_curv=1/570; // 高速道路(歩行者・自転車禁止)
+          break;
+        case "trunk":
+          standard_curv=1/380;
+          break;
+        case "primary":
+          standard_curv=1/230;
+          break;
+        case "secondary":
+          standard_curv=1/120;
+          break;
+        case "tertiary":
+          standard_curv=1/80;
+          break;
+        case "unclassified":
+          standard_curv=1/50;
+          break;
+        case "residential":
+        case "service":
+        case "track":
+          standard_curv=1/30;
+          break;
+        default:
+          standard_curv = 1/30; //safe fallback (ゼロ除算防止)
+          break;
+        }
+      }
+  const score=1.0-curv/standard_curv;
+  return Math.min(1.0, Math.max(0.0, score));
 }
 
 
-/*2次元ベクトルクラス*/
-class Vector {
-  /**
-   * @param {number} x
-   * @param {number} y
-   */
-  constructor(x, y) {
-    this.x = x;
-    this.y = y;
-  }
-}
+
 
 /*内積から角度を計算 */
   /**
