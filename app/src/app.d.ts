@@ -52,9 +52,9 @@ declare global {
 			/** OSM 上の道路の種類 */
 			highway: string;
 			/** OSM 上の幅員情報 */
-			width: number;
+			width: number | null;
 			/** OSM 上の歩道情報 */
-			sidewalk: string;
+			sidewalk: string | null;
 		};
 
 		/** 交差点変換後の交差点を表すノード */
@@ -101,9 +101,9 @@ declare global {
 			/** OSM 上の道路の種類 */
 			highway: string,
 			/** OSM 上の幅員情報 */
-			width: number,
+			width: number | null,
 			/** OSM 上の歩道情報 */
-			sidewalk: string,
+			sidewalk: string | null,
 		}
 
 		/**
