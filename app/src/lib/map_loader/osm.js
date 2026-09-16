@@ -1,6 +1,6 @@
 /**
  * @file osm.js
- * @brief OSM(Overpass API)からデータを読み込み、交差点をノードとする OSM Graph を構築する
+ * @brief OSM(Overpass API)からデータを読み込み、OSM Graph を構築する
  */
 
 /**
@@ -74,48 +74,11 @@ function splitElements(data) {
 }
 
 /**
- * @brief 交差点ノード(=グラフの実ノードとなる点)のIDセットを求める
- *  次のいずれかを満たすノードを「交差点」とみなす:
- *   ① 2つ以上のwayに共有されている
- *   ② wayの端点(始点/終点) ※行き止まりの道路にも対応するため
- * @param {Array<any>} rawWays
- * @returns {Set<string>}
- */
-function findIntersectionNodeIds(rawWays) {
-  /** @type {{[nodeId:string]: number}} */
-  const wayCountByNode = {};
-
-  for (const way of rawWays) {
-    const nodeIds = way.nodes ?? [];
-    const seenInThisWay = new Set(); // 同じwayの中の重複(環状路など)は1回とカウント
-    for (const rawId of nodeIds) {
-      const id = String(rawId);
-      if (seenInThisWay.has(id)) continue;
-      seenInThisWay.add(id);
-      wayCountByNode[id] = (wayCountByNode[id] ?? 0) + 1;
-    }
-  }
-
-  const intersectionIds = new Set();
-  for (const [id, count] of Object.entries(wayCountByNode)) {
-    if (count >= 2) intersectionIds.add(id);
-  }
-
-  for (const way of rawWays) {
-    const nodeIds = way.nodes ?? [];
-    if (nodeIds.length === 0) continue;
-    intersectionIds.add(String(nodeIds[0]));
-    intersectionIds.add(String(nodeIds[nodeIds.length - 1]));
-  }
-
-  return intersectionIds;
-}
-
-/**
- * @brief 生データ(rawNodes, rawWays)から交差点をノードとする OSM Graph を構築する
- *  各wayを交差点ノードの位置でセグメントに分割し、セグメントごとに1エッジを作る。
- *  セグメント内の中間の形状点(交差点でない点)はグラフノードにはせず、
- *  座標列を edge.geometry として保持する(begin→endの間の全座標、両端含む)。
+ * @brief 生データ(rawNodes, rawWays)から OSM Graph を構築する
+ *
+ * 交差点判定・セグメント化(次数によるノードの分類や、交差点間の座標列の畳み込み)は
+ * ここでは行わない。それは crossTransform(cross_transform.js)以降の責務であり、
+ * ここでは各wayの隣接ノードペアをそのまま1本の OSMEdge として展開するだけに留める。
  * @param {{[id:string]: {lat:number, lng:number}}} rawNodes
  * @param {Array<any>} rawWays
  * @returns {App.OSMGraph}
@@ -125,8 +88,6 @@ function buildGraphFromWays(rawNodes, rawWays) {
   const nodes = {};
   /** @type {{[id:string]: App.OSMEdge}} */
   const edges = {};
-
-  const intersectionIds = findIntersectionNodeIds(rawWays);
 
   /**
    * @param {string} rawId
@@ -151,58 +112,35 @@ function buildGraphFromWays(rawNodes, rawWays) {
     const tags = way.tags ?? {};
     const nodeIds = (way.nodes ?? []).map(String);
 
-    /** @type {{lat:number, lng:number}[]} */
-    let segmentGeometry = [];
-    /** @type {string | null} */
-    let segmentBeginId = null;
-    let segmentIndex = 0;
+    // width タグが無い道路も存在するため、無い場合は null のままにする
+    const width = tags.width ? parseFloat(tags.width) : null;
 
-    for (let i = 0; i < nodeIds.length; i++) {
-      const currentId = nodeIds[i];
-      if (!rawNodes[currentId]) continue; // bbox境界などで座標が無いノードはスキップ
+    for (let i = 0; i < nodeIds.length - 1; i++) {
+      const beginId = nodeIds[i];
+      const endId = nodeIds[i + 1];
+      if (beginId === endId) continue; // 環状路などで同一点が連続する場合はスキップ
 
-      if (segmentBeginId === null) {
-        // セグメント開始点(直前の交差点、またはwayの先頭)
-        segmentBeginId = currentId;
-        segmentGeometry = [{ lat: rawNodes[currentId].lat, lng: rawNodes[currentId].lng }];
-        continue;
-      }
+      const beginNode = ensureMapNode(beginId);
+      const endNode = ensureMapNode(endId);
+      if (!beginNode || !endNode) continue; // bbox境界などで座標が無いノードはスキップ
 
-      segmentGeometry.push({ lat: rawNodes[currentId].lat, lng: rawNodes[currentId].lng });
+      const edgeId = `${wayId}_${i}`;
 
-      if (intersectionIds.has(currentId) && currentId !== segmentBeginId) {
-        // 交差点に到達 → ここまでを1エッジとして確定する
-        const beginNode = ensureMapNode(segmentBeginId);
-        const endNode = ensureMapNode(currentId);
+      /** @type {App.OSMEdge} */
+      const edge = {
+        type: "OSMEdge",
+        id: edgeId,
+        begin: beginId,
+        end: endId,
 
-        if (beginNode && endNode) {
-          const edgeId = `${wayId}_${segmentIndex}`;
-          segmentIndex++;
+        highway: tags.highway ?? "residential",
+        width,
+        sidewalk: tags.sidewalk ?? "both",
+      };
 
-          /** @type {App.OSMEdge} */
-          const edge = {
-            type: "OSMEdge",
-            id: edgeId,
-            begin: segmentBeginId,
-            end: currentId,
-
-            highway: tags.highway ?? "residential",
-            width: tags.width ? parseFloat(tags.width) : null,
-            sidewalk: tags.sidewalk ?? null,
-
-            // begin→endの間の形状点の座標列(両端含む)。距離計算やカーブ評価に使う。
-            geometry: segmentGeometry,
-          };
-
-          edges[edgeId] = edge;
-          beginNode.edges.push(edgeId);
-          endNode.edges.push(edgeId);
-        }
-
-        // 次のセグメントをこの交差点から開始する
-        segmentBeginId = currentId;
-        segmentGeometry = [{ lat: rawNodes[currentId].lat, lng: rawNodes[currentId].lng }];
-      }
+      edges[edgeId] = edge;
+      beginNode.edges.push(edgeId);
+      endNode.edges.push(edgeId);
     }
   }
 

@@ -52,7 +52,7 @@ declare global {
 			/** OSM 上の道路の種類 */
 			highway: string;
 			/** OSM 上の幅員情報 */
-			width: number;
+			width: number | null;
 			/** OSM 上の歩道情報 */
 			sidewalk: string;
 		};
@@ -101,7 +101,7 @@ declare global {
 			/** OSM 上の道路の種類 */
 			highway: string,
 			/** OSM 上の幅員情報 */
-			width: number,
+			width: number | null,
 			/** OSM 上の歩道情報 */
 			sidewalk: string,
 		}
@@ -136,26 +136,12 @@ declare global {
 			/** 終点ノード識別子 */
 			end: NodeId;
 
-			/** セグメント */
-			segments: Segment[];
-
 			/** スコア */
 			width_score: number;
 			/** スコア */
 			view_score: number;
 			/** スコア */
 			mix_score: number;
-		};
-
-		type SplittedNode = {
-			/** 型を識別するための固定値 */
-			type: "SplittedNode",
-			/** ノード識別子 */
-			id: NodeId,
-			/** 座標 */
-			coordinate: Coordinate,
-			/** 隣接するエッジの参照リスト */
-			edges: EdgeId[],
 		};
 
 		// Graph Types
@@ -184,7 +170,7 @@ declare global {
 		 * fold2DegreeEdges: CrossConvertedGraph -> SearchGraph
 		 */
 		type SearchGraph = {
-			nodes: { [key: NodeId]: MapVCrossNode | SplittedNode };
+			nodes: { [key: NodeId]: MapVCrossNode };
 			edges: { [key: EdgeId]: MapVCrossEdge | FoldedEdge | ComputedEdge };
 		};
 
