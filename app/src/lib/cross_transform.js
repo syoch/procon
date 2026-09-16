@@ -85,6 +85,8 @@ export function CrossConvert(osmGraph) {
             intersectionCoordinate,
             osmGraph.nodes[neighborNodeId2].coordinate
           ),
+          // 交差点内部の移動は両方向に通行可能とする (進入・退出エッジ側の direction で制限される)
+          direction: "both",
         });
       }
     }

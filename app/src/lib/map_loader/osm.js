@@ -74,6 +74,24 @@ function splitElements(data) {
 }
 
 /**
+ * @brief OSM の oneway タグ等から、エッジの通行可能な向きを求める。
+ *
+ * way のノード順を begin → end とし、oneway=yes なら forward、oneway=-1 なら backward とする。
+ * ラウンドアバウト(junction=roundabout) と motorway 系はタグ省略時も一方通行とみなす。
+ * @param {{[key: string]: string | undefined}} tags
+ * @returns {App.TravelDirection}
+ */
+function resolveDirection(tags) {
+  const oneway = (tags.oneway ?? "").toLowerCase();
+  if (oneway === "-1" || oneway === "reverse") return "backward";
+  if (oneway === "yes" || oneway === "true" || oneway === "1") return "forward";
+  if (oneway === "no" || oneway === "false" || oneway === "0") return "both";
+  if (tags.junction === "roundabout" || tags.junction === "circular") return "forward";
+  if (tags.highway === "motorway" || tags.highway === "motorway_link") return "forward";
+  return "both";
+}
+
+/**
  * @brief 生データ(rawNodes, rawWays)から OSM Graph を構築する
  *
  * 交差点判定・セグメント化(次数によるノードの分類や、交差点間の座標列の畳み込み)は
@@ -116,6 +134,7 @@ function buildGraphFromWays(rawNodes, rawWays) {
     // parseFloat は不正な値(例: "約5m")で NaN を返すことがあるので、有限数のときだけ採用する
     const parsedWidth = parseFloat(tags.width);
     const width = Number.isFinite(parsedWidth) ? parsedWidth : null;
+    const direction = resolveDirection(tags);
 
     for (let i = 0; i < nodeIds.length - 1; i++) {
       const beginId = nodeIds[i];
@@ -138,6 +157,7 @@ function buildGraphFromWays(rawNodes, rawWays) {
         highway: tags.highway ?? "",
         width,
         sidewalk: tags.sidewalk ?? null,
+        direction,
       };
 
       edges[edgeId] = edge;

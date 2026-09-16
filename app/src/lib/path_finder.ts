@@ -1,5 +1,6 @@
 import { LatLng } from "leaflet";
 import { CalculateCost } from "./cost_calculator";
+import { canTraverseBackward, canTraverseForward } from "./utils/direction";
 
 type SearchPath = {
   cost: number;
@@ -54,8 +55,12 @@ export function step_search(
       continue;
     }
 
+    // 一方通行を考慮し、進行可能な向きのエッジだけを隣接として扱う
     const neighbors = Object.values(map.edges)
-      .filter((edge) => edge.begin === old_path.node || edge.end === old_path.node);
+      .filter((edge) =>
+        (edge.begin === old_path.node && canTraverseForward(edge.direction)) ||
+        (edge.end === old_path.node && canTraverseBackward(edge.direction))
+      );
 
     for (const edge of neighbors) {
       // 隣接エッジについて、 FoldedEdge の場合コスト計算を行う。
