@@ -1,4 +1,4 @@
-import { addEdge, addNode, removeNode, transformGraph } from "./utils/graph";
+import { addEdge, removeNode, transformGraph } from "./utils/graph";
 import { combineDirection, flipDirection } from "./utils/direction";
 
 
@@ -65,12 +65,13 @@ export function fold2DegreeEdges(graph) {
       continue;
     }
     if (node.edges.length === 1) {
-      removeNode(searchGraph, nodeId);
-      addNode(searchGraph, {
+      // 次数1は行き止まり(葉)。唯一のエッジを保持したまま、型だけ MapVCrossNode に差し替える。
+      // removeNode すると唯一のエッジまで削除され、孤立ノードになったり接続先の道路が欠落する。
+      searchGraph.nodes[nodeId] = {
         ...node,
         type: "MapVCrossNode",
         group_nodes: [nodeId],
-      });
+      };
       continue;
     }
 
