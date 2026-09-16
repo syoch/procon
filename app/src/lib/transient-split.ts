@@ -148,6 +148,7 @@ export function transientSplit(graph: App.SearchGraph, point: App.Coordinate, ma
     id: newEdgeId1,
     begin: edge.begin,
     end: nodeId,
+    direction: edge.direction,
     segments: [
       ...edge.segments.slice(0, nearestEdge.segment_index),
       newSegment1
@@ -167,6 +168,7 @@ export function transientSplit(graph: App.SearchGraph, point: App.Coordinate, ma
     id: newEdgeId2,
     begin: nodeId,
     end: edge.end,
+    direction: edge.direction,
     segments: [
       newSegment2,
       ...edge.segments.slice(nearestEdge.segment_index + 1)

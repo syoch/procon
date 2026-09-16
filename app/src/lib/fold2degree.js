@@ -1,4 +1,5 @@
 import { addEdge, addNode, removeNode, transformGraph } from "./utils/graph";
+import { combineDirection, flipDirection } from "./utils/direction";
 
 
 /**
@@ -34,6 +35,7 @@ export function fold2DegreeEdges(graph) {
         id: edge.id,
         begin: edge.begin,
         end: edge.end,
+        direction: edge.direction,
         segments: [
           {
             begin_coordinate: beginNode.coordinate,
@@ -100,11 +102,14 @@ export function fold2DegreeEdges(graph) {
       });
       edge1.begin = edge1.end;
       edge1.end = nodeId;
+      // 反転すると進行可能な向きも逆になる
+      edge1.direction = flipDirection(edge1.direction);
     }
 
     // edge2 において nodeId が始点側（begin）になるように反転準備
     let edge2Segments = edge2.segments;
     let edge2OtherNodeId = edge2.end;
+    let edge2Direction = edge2.direction;
 
     if (edge2.end === nodeId) {
       edge2Segments = edge2Segments.toReversed().map((seg) => {
@@ -115,6 +120,7 @@ export function fold2DegreeEdges(graph) {
         };
       });
       edge2OtherNodeId = edge2.begin;
+      edge2Direction = flipDirection(edge2.direction);
     }
 
     /** @type {App.FoldedEdge} */
@@ -123,6 +129,8 @@ export function fold2DegreeEdges(graph) {
       id: edge1.id,
       begin: edge1.begin,
       end: edge2OtherNodeId,
+      // 連結方向に対して両エッジが通行可能なときだけ通行可能にする
+      direction: combineDirection(edge1.direction, edge2Direction),
       segments: [...edge1.segments, ...edge2Segments],
     };
 

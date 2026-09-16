@@ -1,4 +1,6 @@
+import { LatLng } from "leaflet";
 import { CalculateCost } from "./cost_calculator";
+import { canTraverseBackward, canTraverseForward } from "./utils/direction";
 
 type SearchPath = {
   cost: number;
@@ -11,12 +13,17 @@ type SearchState = {
   min_cost: number;
 };
 
+function calculateEdgeLength(edge: App.ComputedEdge) {
+  return edge.segments
+    .map(x => new LatLng(x.begin_coordinate.lat, x.begin_coordinate.lng).distanceTo(new LatLng(x.end_coordinate.lat, x.end_coordinate.lng)))
+    .reduce((prev, acc) => acc + prev, 0);
+}
 
 function calculateEdgeCost(edge: App.ComputedEdge | App.MapVCrossEdge, params: App.SearchParameters): number {
   let view_score = edge.type === "ComputedEdge" ? edge.view_score : edge.type === "MapVCrossEdge" ? edge.view_score : 0;
   let width_score = edge.type === "ComputedEdge" ? edge.width_score : edge.type === "MapVCrossEdge" ? 0 : 0;
   let mix_score = edge.type === "ComputedEdge" ? edge.mix_score : edge.type === "MapVCrossEdge" ? 0 : 0;
-  let distance = 100; // Issue #17 により定数としている
+  let distance = edge.type === "ComputedEdge" ? calculateEdgeLength(edge) : 10;
 
   const lambda = params.lambda;
   const a1 = params.view_score_weight;
@@ -24,7 +31,7 @@ function calculateEdgeCost(edge: App.ComputedEdge | App.MapVCrossEdge, params: A
   const a3 = params.mix_score_weight;
 
   let score = a1 * view_score + a2 * width_score + a3 * mix_score;
-  let cost = distance * (1 - score * lambda);
+  let cost = distance * (1 + lambda * (1 - score));
   return cost;
 }
 
@@ -48,8 +55,12 @@ export function step_search(
       continue;
     }
 
+    // 一方通行を考慮し、進行可能な向きのエッジだけを隣接として扱う
     const neighbors = Object.values(map.edges)
-      .filter((edge) => edge.begin === old_path.node || edge.end === old_path.node);
+      .filter((edge) =>
+        (edge.begin === old_path.node && canTraverseForward(edge.direction)) ||
+        (edge.end === old_path.node && canTraverseBackward(edge.direction))
+      );
 
     for (const edge of neighbors) {
       // 隣接エッジについて、 FoldedEdge の場合コスト計算を行う。
