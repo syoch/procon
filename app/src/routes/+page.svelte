@@ -320,7 +320,10 @@
     <span>Width Score Weight: {params.width_score_weight}</span>
   </div>
   <div id="LocationInput">
-    <LocationInput></LocationInput>
+    <LocationInput></LocationInput><br />
+    <input type="text" style="width:80px;" name="start" />
+    <input type="text" style="width:80px;" name="finish" />
+    <input type="submit" value="決定" />
   </div>
   <Button onclick={doFindPath}>Find path</Button>
 

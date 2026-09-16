@@ -49,6 +49,9 @@ export async function loadOSMMap(minLat, minLon, maxLat, maxLon) {
     sidewalk: "both", // 歩道の有無
   };
 
+  console.log(nodes);
+  console.log(edges);
+
   // 作成したエッジを edges オブジェクトに追加する
   edges["TestEdge"] = testEdge;
 

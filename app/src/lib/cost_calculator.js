@@ -1,10 +1,347 @@
+import L from "leaflet";
 /**
  * @brief コスト計算を行う
  * @param {App.FoldedEdge} folded_edge
- * @returns {App.ComputedEdge | Error} コスト計算後のエッジ
+ * @returns {App.ComputedEdge | Error} //コスト計算後のエッジ
  */
 export function CalculateCost(folded_edge) {
-  void folded_edge;
-  // 実装時は以下の return 文を削除すること
-  return new Error("CalculateCost 関数は未実装です");
+  let widthScore = 0; // 幅員スコア
+  let mixScore = 0; // 混在スコア(歩行者と自転車の混在度)
+  let viewScore = 0; // 視界スコア
+
+  if (folded_edge.type === "FoldedEdge") {
+    /** @type {App.Segment[]} */
+    const segments = folded_edge.segments || [];
+
+    // --- 1. 各属性の統計（代表値・平均値）を計算 ---
+    const primaryHighway = getMostFrequentAttribute(segments, "highway");
+    const primarySidewalk = getMostFrequentAttribute(segments, "sidewalk");
+    const averageWidth = calculateAverageWidth(segments);
+
+    /* 集計結果の表示 */
+    /*
+    console.log({
+      "FoldedEdge.": true,
+      id: folded_edge.id,
+      segmentCount: segments.length,
+      highway: primaryHighway,   // 最も多く登場した highway
+      width: averageWidth,       // width の平均値 (数値または undefined)
+      sidewalk: primarySidewalk, // 最も多く登場した sidewalk
+    });
+    */
+
+    // --- 2. 代表値・平均値を使った各種スコアの計算 ---
+    /* 振幅スコアの計算 */
+    widthScore = calculateWidthScore(averageWidth, primaryHighway);
+
+    /* 混在スコアの計算 */
+    mixScore = calculateMixScore(primarySidewalk, primaryHighway);
+
+    /* 視界スコアの計算 */
+    viewScore = calculateViewScore(folded_edge);
+
+    /* 計算結果を表示 */
+    console.log("scores",{
+      id: folded_edge.id,
+      widthScore: widthScore,
+      mixScore: mixScore,
+      viewScore: viewScore,
+    });
+    /*folded_edgeの表示*/
+    console.log("FoldedEdge", {
+      id: folded_edge.id, 
+      begin: folded_edge.begin,
+      end: folded_edge.end,
+      first_segments_begin: folded_edge.segments[0].begin_coordinate,
+      first_segments_end: folded_edge.segments[0].end_coordinate,
+      last_segments_begin: folded_edge.segments[folded_edge.segments.length - 1].begin_coordinate,
+      last_segments_end: folded_edge.segments[folded_edge.segments.length - 1].end_coordinate,
+    });
+
+
+    // --- 3. computedEdge の生成 ---
+    /** @type {App.ComputedEdge} */
+    const computedEdge = {
+      type: "ComputedEdge",
+      id: folded_edge.id,
+			begin: folded_edge.begin,
+			end: folded_edge.end,
+      width_score: widthScore,
+      view_score: viewScore,
+      mix_score: mixScore,
+    };
+
+    /* ComputedEdgeを表示 */
+    /*
+    console.log("ComputedEdge", {
+    type: computedEdge.type,
+          id: computedEdge.id,
+			begin: computedEdge.begin,
+			end: computedEdge.end,
+    width_score: computedEdge.width_score,
+    mix_score: computedEdge.mix_score,
+    view_score: computedEdge.view_score,
+    });
+    */
+
+    return computedEdge;
+  }
+
+  return new Error("Invalid edge type. Expected FoldedEdge.");
+}
+
+// -------------------------------------------------------------
+// 【集計用ヘルパー関数】
+// -------------------------------------------------------------
+
+/**
+ * segments 配列の中から指定キーの「最も出現頻度が高い値（最頻値）」を取得する
+ * @param {App.Segment[]} segments
+ * @param {keyof App.Segment} key
+ * @returns {string | undefined}
+ */
+function getMostFrequentAttribute(segments, key) {
+  /** @type {Record<string, number>} */
+  const counts = {};
+
+  for (const seg of segments) {
+    const val = seg[key];
+    if (typeof val === "string") {
+      counts[val] = (counts[val] || 0) + 1;
+    }
+  }
+
+  let mostFrequent = undefined;
+  let maxCount = 0;
+
+  for (const [val, count] of Object.entries(counts)) {
+    if (count > maxCount) {
+      maxCount = count;
+      mostFrequent = val;
+    }
+  }
+
+  return mostFrequent;
+}
+
+/**
+ * segments 配列の中から数値形式の width の平均値を計算する
+ * @param {App.Segment[]} segments
+ * @returns {number | undefined}
+ */
+function calculateAverageWidth(segments) {
+  let sum = 0;
+  let count = 0;
+
+  for (const seg of segments) {
+    if (typeof seg.width === "number" && !isNaN(seg.width) && seg.width > 0) {
+      sum += seg.width;
+      count++;
+    }
+  }
+
+  return count > 0 ? sum / count : undefined;
+}
+
+/**
+ * 幅員スコアの計算
+ * @param {number | undefined} width
+ * @param {string | undefined} highway
+ * @returns {number}
+ */
+function calculateWidthScore(width, highway) {
+  if (!width) {
+    // widthが未定義の場合はhighway属性から推定
+    switch (highway) {
+      case "motorway":
+        return 1.0; // 高速道路
+      case "trunk":
+        return 0.9; // 幹線道路
+      case "primary":
+        return 0.8; // 主要国道
+      case "secondary":
+        return 0.6; // 国道・主要地方道
+      case "tertiary":
+        return 0.4; // 一般主要道
+      case "unclassified":
+        return 0.3; // 一般道
+      case "residential":
+        return 0.1; // 住宅街の道路
+      default:
+        return 0.3; // 不明な場合(遊歩道も考慮したほうがいいかも)
+    }
+  }
+  if (width >= 6.0) {
+    return 1.0; // 6m以上：非常に安全
+  } else if (width >= 3.0) {
+    return 0.7; // 3m以上：普通
+  } else {
+    return 0.1; // 狭い
+  }
+}
+
+/**
+ * 混在スコアの計算
+ * @param {string | undefined} sidewalk
+ * @param {string | undefined} highway
+ * @returns {number}
+ */
+function calculateMixScore(sidewalk, highway) {
+  if (!sidewalk) {
+    // sidewalkが未定義の場合はhighway属性から推定
+    switch (highway) {
+      case "motorway":
+        return 1.0; // 高速道路(歩行者・自転車禁止)
+      case "trunk":
+      case "primary":
+      case "secondary":
+      case "tertiary":
+        return 0.8; // 一般主要道(歩道あり・自転車通行可)
+      case "unclassified":
+      case "residential":
+        return 0.3; // 一般道・住宅街の道路(路側帯があることが多い道路)
+      default:
+        return 0.1; // 不明な場合
+    }
+  }
+  switch (sidewalk) {
+    case "both":
+      return 0.8; // 両側に歩道あり
+    case "left":
+    case "right":
+    case "separate":
+      return 0.6; // 片側または独立歩道
+    case "none":
+      return 0.3; // 歩道なし
+    default:
+      return 0.5;
+  }
+}
+
+/**
+ * 視界スコア・道の曲率計算
+ * @param {App.FoldedEdge} folded_edge
+ * @returns {number}
+ */
+function calculateViewScore(folded_edge) {
+  if(folded_edge.segments.length < 2){
+    console.log("folded_edgeのセグメントが1つしかないため、視界スコアを最大値に設定します。");
+    return 1.0; // 直線道路の場合は視界スコアを最大値に設定
+  }
+  let angle = 0,distance = 0,score =0, curvrate=0;
+  for(let i=0;i<folded_edge.segments.length-1;i++){
+    let vector1,vector2;
+    let score=new Array (folded_edge.segments.length);
+    const firstSeg = folded_edge.segments[i];
+    const nextSeg = folded_edge.segments[i + 1];
+    
+    if(firstSeg.end_coordinate.lng === nextSeg.begin_coordinate.lng && firstSeg.end_coordinate.lat === nextSeg.begin_coordinate.lat){
+      vector1=new Vector(firstSeg.begin_coordinate.lng - firstSeg.end_coordinate.lng, firstSeg.begin_coordinate.lat - firstSeg.end_coordinate.lat);
+      vector2=new Vector(nextSeg.end_coordinate.lng - nextSeg.begin_coordinate.lng, nextSeg.end_coordinate.lat - nextSeg.begin_coordinate.lat);
+    } else if(firstSeg.begin_coordinate.lng === nextSeg.begin_coordinate.lng && firstSeg.begin_coordinate.lat === nextSeg.begin_coordinate.lat){
+      vector1=new Vector(firstSeg.end_coordinate.lng - firstSeg.begin_coordinate.lng, firstSeg.end_coordinate.lat - firstSeg.begin_coordinate.lat);
+      vector2=new Vector(nextSeg.end_coordinate.lng - nextSeg.begin_coordinate.lng, nextSeg.end_coordinate.lat - nextSeg.begin_coordinate.lat);
+    } else if(firstSeg.begin_coordinate.lng === nextSeg.end_coordinate.lng && firstSeg.begin_coordinate.lat === nextSeg.end_coordinate.lat){
+      vector1=new Vector(firstSeg.end_coordinate.lng - firstSeg.begin_coordinate.lng, firstSeg.end_coordinate.lat - firstSeg.begin_coordinate.lat);
+      vector2=new Vector(nextSeg.begin_coordinate.lng - nextSeg.end_coordinate.lng, nextSeg.begin_coordinate.lat - nextSeg.end_coordinate.lat);
+    } else if(firstSeg.end_coordinate.lng === nextSeg.end_coordinate.lng && firstSeg.end_coordinate.lat === nextSeg.end_coordinate.lat){
+      vector1=new Vector(firstSeg.begin_coordinate.lng - firstSeg.end_coordinate.lng, firstSeg.begin_coordinate.lat - firstSeg.end_coordinate.lat);
+      vector2=new Vector(nextSeg.begin_coordinate.lng - nextSeg.end_coordinate.lng, nextSeg.begin_coordinate.lat - nextSeg.end_coordinate.lat);
+    } else {
+      console.warn("folded_edgeのセグメントが連結されていません。");
+      return 0; //セグメントが連結されていない場合は視界スコアを0に設定
+    }
+    const angle=calculateAngle(vector1, vector2);
+    const firstnode1 = L.latLng(firstSeg.begin_coordinate.lat, firstSeg.begin_coordinate.lng);
+    const firstnode2 = L.latLng(firstSeg.end_coordinate.lat, firstSeg.end_coordinate.lng);
+    const nextnode1 =L.latLng(nextSeg.begin_coordinate.lat,nextSeg.begin_coordinate.lng);
+    const nextnode2 =L.latLng(nextSeg.end_coordinate.lat,nextSeg.end_coordinate.lng);
+    const distance=(firstnode1.distanceTo(firstnode2)+nextnode1.distanceTo(nextnode2))/2;
+    const curv=angle/distance;
+    if(distance > 0){
+      const currentHighway = firstSeg.highway;
+      score[i] = curvature_ratio(curv, currentHighway);
+    }else{
+      console.warn("距離が0以下のため、視界スコアを最大値に設定します。");
+      score[i]=1.0;
+    }
+  }
+  return score; //後に日本の道路設計基準よりスコア調整する予定
+}
+
+/**
+ * 視界スコア・道の曲率計算
+ * @param {number} curv
+ * @param {string | undefined} highway
+ * @returns {number}
+ */
+function curvature_ratio(curv, highway) {
+  let standard_curv=0;
+
+  switch (highway) {
+    case "motorway":
+       standard_curv=1/570; // 高速道路(歩行者・自転車禁止)
+        break;
+       case "trunk":
+      standard_curv=1/380;
+      break;
+    case "primary":
+      standard_curv=1/230;
+      break;
+    case "secondary":
+      standard_curv=1/120;
+      break;
+    case "tertiary":
+      standard_curv=1/80;
+      break;
+    case "unclassified":
+      standard_curv=1/50;
+      break;
+    case "residential":
+      standard_curv=1/30;
+    default:
+      console.warn("highway属性が見つかりませんでした。");
+      return 0.1; // 不明な場合
+  }
+  const score=curv/standard_curv;
+  if(score<=1){
+    return score;
+  }else{
+    console.warn("視界スコアにエラーが発生しました。")
+    return 0;//危険な可能性が高いのでscoreを0とする
+  }
+}
+
+
+/*2次元ベクトルクラス*/
+class Vector {
+  /**
+   * @param {number} x
+   * @param {number} y
+   */
+  constructor(x, y) {
+    this.x = x;
+    this.y = y;
+  }
+}
+
+/*内積から角度を計算 */
+  /**
+   * @param {Vector} Vector1
+   * @param {Vector} Vector2
+   * @returns {number} // 角度（ラジアン）
+   */
+function calculateAngle(Vector1, Vector2) {
+  const dotProduct = Vector1.x * Vector2.x + Vector1.y * Vector2.y;
+  const magnitude1 = Math.sqrt(Vector1.x * Vector1.x + Vector1.y * Vector1.y);
+  const magnitude2 = Math.sqrt(Vector2.x * Vector2.x + Vector2.y * Vector2.y);
+
+  if (magnitude1 === 0 || magnitude2 === 0) {
+    return 0;
+  }
+
+  const cosAngle = dotProduct / (magnitude1 * magnitude2);
+  const angle = Math.acos(Math.min(Math.max(cosAngle, -1), 1)); // Clamp the value to [-1, 1] to avoid numerical errors
+
+  return angle;
 }
