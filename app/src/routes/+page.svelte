@@ -226,6 +226,7 @@
         await loadMap();
       })
       .whenReady(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 10));
         await loadMap();
       });
 
