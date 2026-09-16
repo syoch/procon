@@ -54,7 +54,26 @@ declare global {
 			/** OSM 上の幅員情報 */
 			width: number | null;
 			/** OSM 上の歩道情報 */
-			sidewalk: string;
+			sidewalk: string | null;
+		};
+
+		/**
+		 * Transient Split によって生成される分割ノード
+		 *
+		 * NOTE: transient-split.ts の使用パターン(addNodeへ渡される形)から推測して
+		 * 再構築した定義。MapNode と同一の構造になっているが、本来の定義そのものを
+		 * 確認できていないため未確定情報。git履歴等で元の定義を確認でき次第、
+		 * 差分があれば修正すること。
+		 */
+		type SplittedNode = {
+			/** 型を識別するための固定値 */
+			type: "SplittedNode",
+			/** ノード識別子 */
+			id: NodeId,
+			/** 座標 */
+			coordinate: Coordinate,
+			/** 隣接するエッジの参照リスト */
+			edges: EdgeId[]
 		};
 
 		/** 交差点変換後の交差点を表すノード */
@@ -103,7 +122,7 @@ declare global {
 			/** OSM 上の幅員情報 */
 			width: number | null,
 			/** OSM 上の歩道情報 */
-			sidewalk: string,
+			sidewalk: string | null,
 		}
 
 		/**
@@ -144,7 +163,6 @@ declare global {
 			view_score: number;
 			/** スコア */
 			mix_score: number;
-			edges: EdgeId[],
 		};
 
 		// Graph Types
