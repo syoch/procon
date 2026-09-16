@@ -194,7 +194,7 @@ declare global {
 		 * 主に DebugMapData/DebugGraphData で使用する。
 		 */
 		type GenericMap = {
-			nodes: { [key: App.NodeId]: App.MapVCrossNode | App.MapNode };
+			nodes: { [key: App.NodeId]: App.MapVCrossNode | App.MapNode | App.SplittedNode };
 			edges: {
 				[key: App.EdgeId]:
 				| App.OSMEdge
