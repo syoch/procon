@@ -12,7 +12,7 @@
 
   onMount(() => {
     const debugMap = loadDebugMap();
-    const searchGraph = fold2DegreeEdges(debugMap);
+    const searchGraph = fold2DegreeEdges(debugMap,true);
     //追加
     Object.values(searchGraph).forEach(edge=>{
       CalculateCost(edge);

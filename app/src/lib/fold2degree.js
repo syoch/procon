@@ -3,7 +3,7 @@
  * @param {App.CrossConvertedGraph} graph
  * @returns {App.SearchGraph | Error} 探索用グラフ
  */
-export function fold2DegreeEdges(graph) {
+export function fold2DegreeEdges(graph,debug=false) {
   if (!graph || !graph.nodes || !graph.edges) {
     console.error("無効なグラフデータです。", graph);
     return new Error("無効なグラフデータです。");
@@ -134,6 +134,10 @@ for (const [edgeId, edge] of Object.entries(graph.edges)) {
     }
   }
 
-  console.log("一本道への畳み込み・連結処理完了", searchGraph);
+// フラグが true (ON) の時だけ実行する
+  if (debug) {
+    console.log("一本道への畳み込み・連結処理完了", searchGraph);
+  }
+  
   return searchGraph;
 }
