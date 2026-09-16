@@ -1,3 +1,4 @@
+import { LatLng } from "leaflet";
 import { CalculateCost } from "./cost_calculator";
 
 type SearchPath = {
@@ -11,12 +12,17 @@ type SearchState = {
   min_cost: number;
 };
 
+function calculateEdgeLength(edge: App.ComputedEdge) {
+  return edge.segments
+    .map(x => new LatLng(x.begin_coordinate.lat, x.begin_coordinate.lng).distanceTo(new LatLng(x.end_coordinate.lat, x.end_coordinate.lng)))
+    .reduce((prev, acc) => acc + prev, 0);
+}
 
 function calculateEdgeCost(edge: App.ComputedEdge | App.MapVCrossEdge, params: App.SearchParameters): number {
   let view_score = edge.type === "ComputedEdge" ? edge.view_score : edge.type === "MapVCrossEdge" ? edge.view_score : 0;
   let width_score = edge.type === "ComputedEdge" ? edge.width_score : edge.type === "MapVCrossEdge" ? 0 : 0;
   let mix_score = edge.type === "ComputedEdge" ? edge.mix_score : edge.type === "MapVCrossEdge" ? 0 : 0;
-  let distance = 100; // Issue #17 により定数としている
+  let distance = edge.type === "ComputedEdge" ? calculateEdgeLength(edge) : 0;
 
   const lambda = params.lambda;
   const a1 = params.view_score_weight;
