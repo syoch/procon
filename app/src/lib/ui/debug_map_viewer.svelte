@@ -1,9 +1,15 @@
 <script lang="ts">
   import L from "leaflet";
 
-  let { mapData }: { mapData: App.GenericMap } = $props();
-
-  let map: L.Map | undefined = $state(undefined);
+  let {
+    mapData,
+    on_map_click,
+    map = $bindable(undefined),
+  }: {
+    mapData: App.GenericMap;
+    on_map_click?: (latlng: L.LatLng) => void;
+    map?: L.Map | undefined;
+  } = $props();
 
   export function clearMap() {
     if (!map) {
@@ -139,7 +145,9 @@
   });
 
   $effect(() => {
-    map = L.map("map");
+    map = L.map("map").on("click", (e) => {
+      on_map_click?.(e.latlng);
+    });
 
     return () => {
       if (map) {

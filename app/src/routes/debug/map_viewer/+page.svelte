@@ -1,144 +1,60 @@
 <script lang="ts">
-  import { onMount } from "svelte";
-  import L from "leaflet";
   import {
     debugMapCCMap,
     debugMapOSMMap,
     debugMapSearchMap,
   } from "$lib/mocks/debug_map";
+  import DebugMapViewer from "$lib/ui/debug_map_viewer.svelte";
+  import DebugGraphViewer from "$lib/ui/debug_graph_viewer.svelte";
+  import Button from "@smui/button";
 
-  type GenericMap = {
-    nodes: { [key: App.NodeId]: App.MapVCrossNode | App.MapNode };
-    edges: {
-      [key: App.EdgeId]:
-        | App.OSMEdge
-        | App.MapVCrossEdge
-        | App.FoldedEdge
-        | App.ComputedEdge;
-    };
-  };
+  let mapData: App.GenericMap = $state(debugMapSearchMap);
 
-  let map: L.Map | undefined = $state(undefined);
-  let mapData: GenericMap | undefined = $state(undefined);
-
-  function clearMap() {
-    if (!map) {
-      return;
-    }
-    map.eachLayer((layer) => {
-      map?.removeLayer(layer);
-    });
-  }
-
-  $effect(() => {
-    if (mapData === undefined || map === undefined) {
-      return;
-    }
-
-    clearMap();
-
-    const mapMinLat = Math.min(
-      ...Object.values(mapData.nodes).map((node) => node.coordinate.lat),
-    );
-    const mapMaxLat = Math.max(
-      ...Object.values(mapData.nodes).map((node) => node.coordinate.lat),
-    );
-    const mapMinLng = Math.min(
-      ...Object.values(mapData.nodes).map((node) => node.coordinate.lng),
-    );
-    const mapMaxLng = Math.max(
-      ...Object.values(mapData.nodes).map((node) => node.coordinate.lng),
-    );
-
-    map.setView([(mapMinLat + mapMaxLat) / 2, (mapMinLng + mapMaxLng) / 2], 19);
-
-    for (const node of Object.values(mapData.nodes)) {
-      L.circleMarker([node.coordinate.lat, node.coordinate.lng])
-        .addTo(map)
-        .bindPopup(`Node ID: ${node.id}`);
-    }
-
-    for (const edge of Object.values(mapData.edges)) {
-      const fromNode = mapData.nodes[edge.begin];
-      const toNode = mapData.nodes[edge.end];
-
-      if (edge.type == "FoldedEdge") {
-        L.polyline(
-          edge.segments.map((seg) => [
-            seg.begin_coordinate,
-            seg.end_coordinate,
-          ]),
-          { color: "green" },
-        )
-          .addTo(map)
-          .bindPopup(`Edge ID: ${edge.id}`);
-      } else {
-        const color =
-          edge.type == "MapVCrossEdge"
-            ? "red"
-            : edge.type == "ComputedEdge"
-              ? "blue"
-              : "gray";
-
-        if (fromNode && toNode) {
-          L.polyline(
-            [
-              [fromNode.coordinate.lat, fromNode.coordinate.lng],
-              [toNode.coordinate.lat, toNode.coordinate.lng],
-            ],
-            { color },
-          )
-            .addTo(map)
-            .bindPopup(`Edge ID: ${edge.id}`);
-        }
-      }
-    }
-  });
-
-  onMount(() => {
-    map = L.map("map").setView([0, 0], 2);
-    return () => {
-      if (map) {
-        map.remove();
-      }
-    };
-  });
+  let activeTab: string = $state("map");
 
   let customMapData: string = $state("");
-  function loadMap(map: GenericMap) {
+  function loadMap(map: App.GenericMap) {
     mapData = map;
     customMapData = JSON.stringify(map);
   }
   function loadMapFromJSON(json: string) {
     try {
-      mapData = JSON.parse(json) as GenericMap;
+      mapData = JSON.parse(json) as App.GenericMap;
     } catch (e) {
       alert("Invalid JSON");
     }
   }
+  const startNode: string[] = [];
+  const endNode: string[] = [];
+  const travelingNodes: string[] = [];
+
+  let mapViewer: DebugMapViewer | undefined = $state(undefined);
 </script>
 
-<div id="map"></div>
+{#if activeTab === "map"}
+  <DebugMapViewer {mapData} bind:this={mapViewer} />
+{:else if activeTab === "graph"}
+  <DebugGraphViewer {mapData} {startNode} {endNode} {travelingNodes}
+  ></DebugGraphViewer>
+{/if}
+
 <div id="float-actions">
-  <button onclick={() => loadMap(debugMapOSMMap)}>OSM Map</button>
-  <button onclick={() => loadMap(debugMapCCMap)}>Cross Converted Map</button>
-  <button onclick={() => loadMap(debugMapSearchMap)}>Search Map</button>
+  <Button onclick={() => loadMap(debugMapOSMMap)}>OSM Map</Button>
+  <Button onclick={() => loadMap(debugMapCCMap)}>Cross Converted Map</Button>
+  <Button onclick={() => loadMap(debugMapSearchMap)}>Search Map</Button>
   <input bind:value={customMapData} placeholder="マップ文字列" />
-  <button onclick={() => loadMapFromJSON(customMapData)}
-    >マップ文字列読み込み</button
+  <Button onclick={() => loadMapFromJSON(customMapData)}
+    >マップ文字列読み込み</Button
   >
-  <button onclick={() => clearMap()}>マップクリア</button>
+  <Button onclick={() => mapViewer?.clearMap()}>マップクリア</Button>
+  <Button
+    onclick={() => {
+      activeTab = activeTab === "map" ? "graph" : "map";
+    }}>toggle tab</Button
+  >
 </div>
 
 <style>
-  #map {
-    height: 100vh;
-    width: 100vw;
-    position: absolute;
-    top: 0;
-    left: 0;
-    z-index: 0;
-  }
   #float-actions {
     position: absolute;
     bottom: 10px;
@@ -149,12 +65,5 @@
 
     display: flex;
     flex-direction: column;
-
-    button,
-    input {
-      margin: 5px;
-      display: block;
-      height: 30px;
-    }
   }
 </style>
