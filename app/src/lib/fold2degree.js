@@ -19,42 +19,53 @@ export function fold2DegreeEdges(graph) {
   };
 
   // 交差点ノード (MapVCrossNode) のみを抽出
-  for (const [nodeId, node] of Object.entries(graph.nodes)) {
+for (const [nodeId, node] of Object.entries(graph.nodes)) {
+    // 1. 交差点ノードは必ず残す
     if (node.type === "MapVCrossNode") {
+      searchGraph.nodes[nodeId] = JSON.parse(JSON.stringify(node));
+      continue;
+    }
+    // 2. 次数が 2 以外の MapNode（行き止まりの次数1など）も残す
+    if (node.edges && node.edges.length !== 2) {
       searchGraph.nodes[nodeId] = JSON.parse(JSON.stringify(node));
     }
   }
 
   // エッジの初期変換 (OSMEdge -> FoldedEdge)
-  for (const [edgeId, edge] of Object.entries(graph.edges)) {
-    if (edge.type === "OSMEdge") {
-      /** @type {App.FoldedEdge} */
-      const foldedEdge = {
-        type: "FoldedEdge",
-        id: edge.id,
-        begin: edge.begin,
-        end: edge.end,
-        segments: [
-          {
-            begin_coordinate: graph.nodes[edge.begin]?.coordinate ?? {
-              lat: 0,
-              lng: 0,
-            },
-            end_coordinate: graph.nodes[edge.end]?.coordinate ?? {
-              lat: 0,
-              lng: 0,
-            },
-            highway: edge.highway,
-            width: edge.width,
-            sidewalk: edge.sidewalk,
-          },
-        ],
-      };
-      searchGraph.edges[edgeId] = foldedEdge;
-    } else if (edge.type === "MapVCrossEdge") {
-      searchGraph.edges[edgeId] = JSON.parse(JSON.stringify(edge));
+for (const [edgeId, edge] of Object.entries(graph.edges)) {
+  if (edge.type === "OSMEdge") {
+    // 始点・終点のノードを取得し、無ければ警告を出す
+    const beginNode = graph.nodes[edge.begin];
+    if (!beginNode) {
+      console.warn(`ノード ${edge.begin} が見つかりません。`);
     }
+
+    const endNode = graph.nodes[edge.end];
+    if (!endNode) {
+      console.warn(`ノード ${edge.end} が見つかりません。`);
+    }
+
+    /** @type {App.FoldedEdge} */
+    const foldedEdge = {
+      type: "FoldedEdge",
+      id: edge.id,
+      begin: edge.begin,
+      end: edge.end,
+      segments: [
+        {
+          begin_coordinate: beginNode?.coordinate ?? { lat: 0, lng: 0 },
+          end_coordinate: endNode?.coordinate ?? { lat: 0, lng: 0 },
+          highway: edge.highway,
+          width: edge.width,
+          sidewalk: edge.sidewalk,
+        },
+      ],
+    };
+    searchGraph.edges[edgeId] = foldedEdge;
+  } else if (edge.type === "MapVCrossEdge") {
+    searchGraph.edges[edgeId] = JSON.parse(JSON.stringify(edge));
   }
+}
 
   // -------------------------------------------------------------
   // 【ステップ2】畳み込み・連結処理 (graph.nodes[nodeId].edges を直接参照)
@@ -73,6 +84,7 @@ export function fold2DegreeEdges(graph) {
 
     // エッジがすでに他の畳み込みで削除済みか、同じエッジ（ループ）ならスキップ
     if (!edge1 || !edge2 || edgeId1 === edgeId2) continue;
+    // 交差点内部のエッジ(MapVCrossEdge)が含まれる場合は畳み込み対象外とし、そのまま残すためスキップ
     if (edge1.type !== "FoldedEdge" || edge2.type !== "FoldedEdge") continue;
 
     // --- 向きと端点の判定ロジック ---
@@ -113,15 +125,7 @@ export function fold2DegreeEdges(graph) {
     delete searchGraph.edges[edgeId2];
 
     // --- 【フィードバック反映：134行目相当】ノードの参照プロパティ更新 ---
-    // 反対側のノードが保持する edges 内の「edgeId2」を「edgeId1」に置換する
-    const otherNodeInGraph = graph.nodes[edge2OtherNodeId];
-    if (otherNodeInGraph && otherNodeInGraph.edges) {
-      otherNodeInGraph.edges = otherNodeInGraph.edges.map((eId) =>
-        eId === edgeId2 ? edgeId1 : eId,
-      );
-    }
-
-    // SearchGraph 側のノード（交差点の場合）も同様に更新する
+//渡された graph は一切いじらず、searchGraph のノードだけを更新する
     const otherNodeInSearch = searchGraph.nodes[edge2OtherNodeId];
     if (otherNodeInSearch && otherNodeInSearch.edges) {
       otherNodeInSearch.edges = otherNodeInSearch.edges.map((eId) =>
