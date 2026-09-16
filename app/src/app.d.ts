@@ -135,6 +135,8 @@ declare global {
 			begin: NodeId;
 			/** 終点ノード識別子 */
 			end: NodeId;
+			/** セグメント */
+			segments: Segment[];
 
 			/** スコア */
 			width_score: number;
@@ -142,6 +144,7 @@ declare global {
 			view_score: number;
 			/** スコア */
 			mix_score: number;
+			edges: EdgeId[],
 		};
 
 		// Graph Types
@@ -170,7 +173,7 @@ declare global {
 		 * fold2DegreeEdges: CrossConvertedGraph -> SearchGraph
 		 */
 		type SearchGraph = {
-			nodes: { [key: NodeId]: MapVCrossNode };
+			nodes: { [key: NodeId]: MapVCrossNode | SplittedNode };
 			edges: { [key: EdgeId]: MapVCrossEdge | FoldedEdge | ComputedEdge };
 		};
 

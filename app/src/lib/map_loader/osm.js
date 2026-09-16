@@ -30,7 +30,7 @@ async function fetchOverpassData(minLat, minLon, maxLat, maxLon) {
     [out:json][timeout:30];
     (
       way["highway"]
-        ["highway"!~"footway|cycleway|path|steps|pedestrian|service|track"]
+        ["highway"!~"footway|path|steps|pedestrian|service|track"]
         (${minLat},${minLon},${maxLat},${maxLon});
     );
     out body;
@@ -113,7 +113,9 @@ function buildGraphFromWays(rawNodes, rawWays) {
     const nodeIds = (way.nodes ?? []).map(String);
 
     // width タグが無い道路も存在するため、無い場合は null のままにする
-    const width = tags.width ? parseFloat(tags.width) : null;
+    // parseFloat は不正な値(例: "約5m")で NaN を返すことがあるので、有限数のときだけ採用する
+    const parsedWidth = parseFloat(tags.width);
+    const width = Number.isFinite(parsedWidth) ? parsedWidth : null;
 
     for (let i = 0; i < nodeIds.length - 1; i++) {
       const beginId = nodeIds[i];
@@ -133,9 +135,9 @@ function buildGraphFromWays(rawNodes, rawWays) {
         begin: beginId,
         end: endId,
 
-        highway: tags.highway ?? "residential",
+        highway: tags.highway ?? "",
         width,
-        sidewalk: tags.sidewalk ?? "both",
+        sidewalk: tags.sidewalk ?? null,
       };
 
       edges[edgeId] = edge;
