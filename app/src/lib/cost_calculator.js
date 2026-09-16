@@ -219,18 +219,6 @@ function calculateMixScore(sidewalk, highway) {
   }
 }
 
-/*2次元ベクトルクラス*/
-class Vector {
-  /**
-   * @param {number} x
-   * @param {number} y
-   */
-  constructor(x, y) {
-    this.x = x;
-    this.y = y;
-  }
-}
-
 /**
  * 視界スコア・道の曲率計算
  * @param {App.FoldedEdge} folded_edge
@@ -242,7 +230,6 @@ function calculateViewScore(folded_edge,primary_highway) {
     console.log("folded_edgeのセグメントが1つしかないため、視界スコアを最大値に設定します。");
     return 1.0; // 直線道路の場合は視界スコアを最大値に設定
   }
-  let score=0;
   const scores = [];
   for(let i=0;i<folded_edge.segments.length-1;i++){
     let vec1x,vec1y,vec2x,vec2y;
@@ -311,7 +298,7 @@ function calculateViewScore(folded_edge,primary_highway) {
   // 配列の中から最小値（一番低いスコア＝一番急なカーブ）を取得
   const minScore = Math.min(...scores);
 
-  score=(minScore+aveScore)/2
+  const score=(minScore+aveScore)/2
 
   return score; //後に日本の道路設計基準よりスコア調整する予定
 }
@@ -382,28 +369,4 @@ function curvature_ratio(curv, highway,primary_highway) {
       }
   const score=1.0-curv/standard_curv;
   return Math.min(1.0, Math.max(0.0, score));
-}
-
-
-
-
-/*内積から角度を計算 */
-  /**
-   * @param {Vector} Vector1
-   * @param {Vector} Vector2
-   * @returns {number} // 角度（ラジアン）
-   */
-function calculateAngle(Vector1, Vector2) {
-  const dotProduct = Vector1.x * Vector2.x + Vector1.y * Vector2.y;
-  const magnitude1 = Math.sqrt(Vector1.x * Vector1.x + Vector1.y * Vector1.y);
-  const magnitude2 = Math.sqrt(Vector2.x * Vector2.x + Vector2.y * Vector2.y);
-
-  if (magnitude1 === 0 || magnitude2 === 0) {
-    return 0;
-  }
-
-  const cosAngle = dotProduct / (magnitude1 * magnitude2);
-  const angle = Math.acos(Math.min(Math.max(cosAngle, -1), 1)); // Clamp the value to [-1, 1] to avoid numerical errors
-
-  return angle;
 }
