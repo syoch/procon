@@ -10,7 +10,7 @@
   import Button from "@smui/button";
   import { pathFind } from "$lib/path_finder";
   import Slider from "@smui/slider";
-  import { assertGraph } from "$lib/utils/graph";
+  import { assertGraph, setGraphAssertionsEnabled } from "$lib/utils/graph";
   import { loadOSMMap } from "$lib/map_loader/osm";
 
   class SelectMarker {
@@ -314,6 +314,12 @@
     view_score_weight: 0.3,
     width_score_weight: 0.3,
   });
+
+  // assertGraph は O(V+E) のため、開発中の一括処理では無効化して高速化できる
+  let graphAssertionsEnabled = $state(true);
+  $effect(() => {
+    setGraphAssertionsEnabled(graphAssertionsEnabled);
+  });
 </script>
 
 <div id="map"></div>
@@ -336,6 +342,10 @@
     <Slider min={0} max={1} step={0.01} bind:value={params.width_score_weight}
     ></Slider>
     <span>Width Score Weight: {params.width_score_weight}</span>
+    <label>
+      <input type="checkbox" bind:checked={graphAssertionsEnabled} />
+      Graph Assertions (assertGraph)
+    </label>
   </div>
   <div id="LocationInput">
     <LocationInput></LocationInput><br />
