@@ -55,11 +55,15 @@ export function step_search(
       continue;
     }
 
-    // 一方通行を考慮し、進行可能な向きのエッジだけを隣接として扱う
-    const neighbors = Object.values(map.edges)
+    // 一方通行を考慮し、進行可能な向きのエッジだけを隣接として扱う。
+    // 隣接エッジは node.edges から引く (全エッジ走査を避ける)
+    const neighbors = (map.nodes[old_path.node]?.edges ?? [])
+      .map((edgeId) => map.edges[edgeId])
       .filter((edge) =>
-        (edge.begin === old_path.node && canTraverseForward(edge.direction)) ||
-        (edge.end === old_path.node && canTraverseBackward(edge.direction))
+        edge && (
+          (edge.begin === old_path.node && canTraverseForward(edge.direction)) ||
+          (edge.end === old_path.node && canTraverseBackward(edge.direction))
+        )
       );
 
     for (const edge of neighbors) {
