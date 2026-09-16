@@ -245,39 +245,61 @@ function calculateViewScore(folded_edge,primary_highway) {
   let score=0;
   const scores = [];
   for(let i=0;i<folded_edge.segments.length-1;i++){
-    let vector1,vector2;
+    let vec1x,vec1y,vec2x,vec2y;
 
     const firstSeg = folded_edge.segments[i];
     const nextSeg = folded_edge.segments[i + 1];
     
     if(firstSeg.end_coordinate.lng === nextSeg.begin_coordinate.lng && firstSeg.end_coordinate.lat === nextSeg.begin_coordinate.lat){
-      vector1=new Vector(firstSeg.begin_coordinate.lng - firstSeg.end_coordinate.lng, firstSeg.begin_coordinate.lat - firstSeg.end_coordinate.lat);
-      vector2=new Vector(nextSeg.end_coordinate.lng - nextSeg.begin_coordinate.lng, nextSeg.end_coordinate.lat - nextSeg.begin_coordinate.lat);
+      vec1x=firstSeg.begin_coordinate.lng - firstSeg.end_coordinate.lng;
+      vec1y=firstSeg.begin_coordinate.lat - firstSeg.end_coordinate.lat;
+      vec2x=nextSeg.end_coordinate.lng - nextSeg.begin_coordinate.lng;
+      vec2y=nextSeg.end_coordinate.lat - nextSeg.begin_coordinate.lat;
     } else if(firstSeg.begin_coordinate.lng === nextSeg.begin_coordinate.lng && firstSeg.begin_coordinate.lat === nextSeg.begin_coordinate.lat){
-      vector1=new Vector(firstSeg.end_coordinate.lng - firstSeg.begin_coordinate.lng, firstSeg.end_coordinate.lat - firstSeg.begin_coordinate.lat);
-      vector2=new Vector(nextSeg.end_coordinate.lng - nextSeg.begin_coordinate.lng, nextSeg.end_coordinate.lat - nextSeg.begin_coordinate.lat);
+      vec1x=firstSeg.end_coordinate.lng - firstSeg.begin_coordinate.lng;
+      vec1y=firstSeg.end_coordinate.lat - firstSeg.begin_coordinate.lat;
+      vec2x=nextSeg.end_coordinate.lng - nextSeg.begin_coordinate.lng;
+      vec2y=nextSeg.end_coordinate.lat - nextSeg.begin_coordinate.lat;
     } else if(firstSeg.begin_coordinate.lng === nextSeg.end_coordinate.lng && firstSeg.begin_coordinate.lat === nextSeg.end_coordinate.lat){
-      vector1=new Vector(firstSeg.end_coordinate.lng - firstSeg.begin_coordinate.lng, firstSeg.end_coordinate.lat - firstSeg.begin_coordinate.lat);
-      vector2=new Vector(nextSeg.begin_coordinate.lng - nextSeg.end_coordinate.lng, nextSeg.begin_coordinate.lat - nextSeg.end_coordinate.lat);
+      vec1x=firstSeg.end_coordinate.lng - firstSeg.begin_coordinate.lng;
+      vec1y= firstSeg.end_coordinate.lat - firstSeg.begin_coordinate.lat;
+      vec2x=nextSeg.begin_coordinate.lng - nextSeg.end_coordinate.lng;
+      vec2y=nextSeg.begin_coordinate.lat - nextSeg.end_coordinate.lat;
     } else if(firstSeg.end_coordinate.lng === nextSeg.end_coordinate.lng && firstSeg.end_coordinate.lat === nextSeg.end_coordinate.lat){
-      vector1=new Vector(firstSeg.begin_coordinate.lng - firstSeg.end_coordinate.lng, firstSeg.begin_coordinate.lat - firstSeg.end_coordinate.lat);
-      vector2=new Vector(nextSeg.begin_coordinate.lng - nextSeg.end_coordinate.lng, nextSeg.begin_coordinate.lat - nextSeg.end_coordinate.lat);
+      vec1x=firstSeg.begin_coordinate.lng - firstSeg.end_coordinate.lng;
+      vec1y=firstSeg.begin_coordinate.lat - firstSeg.end_coordinate.lat;
+      vec2x=nextSeg.begin_coordinate.lng - nextSeg.end_coordinate.lng;
+      vec2y=nextSeg.begin_coordinate.lat - nextSeg.end_coordinate.lat;
     } else {
       console.warn("folded_edgeのセグメントが連結されていません。");
       return 0; //セグメントが連結されていない場合は視界スコアを0に設定
     }
-    const angle=Math.PI-calculateAngle(vector1, vector2);
+ // --- 2. 高速内積計算（関数呼び出しオーバーヘッドの削減） ---
+    const dot = vec1x * vec2x + vec1y * vec2y;
+    const mag1 = Math.sqrt(vec1x * vec1x + vec1y * vec1y);
+    const mag2 = Math.sqrt(vec2x * vec2x + vec2y * vec2y);
+
+    if (mag1 === 0 || mag2 === 0) {
+      scores.push(1.0);
+      continue;
+    }
+
+    // 角度（ラジアン）の計算: 直進時 (angle = 0) となるよう Math.PI から減算
+    const cosAngle = Math.min(Math.max(dot / (mag1 * mag2), -1), 1);
+    const angle = Math.PI - Math.acos(cosAngle);
+
+    // 距離の計算: Leaflet を使い前後のセグメント長の平均を算出
     const firstnode1 = L.latLng(firstSeg.begin_coordinate.lat, firstSeg.begin_coordinate.lng);
     const firstnode2 = L.latLng(firstSeg.end_coordinate.lat, firstSeg.end_coordinate.lng);
-    const nextnode1 =L.latLng(nextSeg.begin_coordinate.lat,nextSeg.begin_coordinate.lng);
-    const nextnode2 =L.latLng(nextSeg.end_coordinate.lat,nextSeg.end_coordinate.lng);
-    const distance=(firstnode1.distanceTo(firstnode2)+nextnode1.distanceTo(nextnode2))/2;
+    const nextnode1 = L.latLng(nextSeg.begin_coordinate.lat, nextSeg.begin_coordinate.lng);
+    const nextnode2 = L.latLng(nextSeg.end_coordinate.lat, nextSeg.end_coordinate.lng);
+    const distance = (firstnode1.distanceTo(firstnode2) + nextnode1.distanceTo(nextnode2)) / 2;
 
-    if(distance > 0){
-      const curv=angle/distance;
+    if (distance > 0) {
+      const curv = angle / distance;
       const currentHighway = firstSeg.highway;
-      scores.push(curvature_ratio(curv, currentHighway,primary_highway));
-    }else{
+      scores.push(curvature_ratio(curv, currentHighway, primary_highway));
+    } else {
       console.warn("距離が0以下のため、視界スコアを最大値に設定します。");
       scores.push(1.0);
     }
