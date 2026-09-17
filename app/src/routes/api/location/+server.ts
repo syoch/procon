@@ -4,10 +4,8 @@
 // 実体はNominatim(OSM公式ジオコーディングAPI, nominatim.openstreetmap.org)へのサーバーサイドプロキシ。
 //
 // [!] 本番デプロイ前に要対応:
-//   1. 下のUser-Agentの連絡先(https://github.com/TODO-set-repo-url-here の部分)を
-//      実際のチームのリポジトリURLかメールアドレスに差し替える(半角英数字のみ。全角文字はNG)
-//   2. フロント側の呼び出しは「1文字入力ごとにfetch」しないこと(デバウンス必須。ポリシーで明示的に禁止されてる)
-//   3. 検索結果を画面に出す際は "© OpenStreetMap contributors" のクレジット表示が必要
+//   1. フロント側の呼び出しは「1文字入力ごとにfetch」しないこと(デバウンス必須。ポリシーで明示的に禁止されてる)
+//   2. 検索結果を画面に出す際は "© OpenStreetMap contributors" のクレジット表示が必要
 //
 // 参考: Nominatim Usage Policy https://operations.osmfoundation.org/policies/nominatim/
 //       Nominatim Search API   https://nominatim.org/release-docs/latest/api/Search/
@@ -59,7 +57,7 @@ let lastUpstreamRequestAt = 0;
 let upstreamQueue: Promise<unknown> = Promise.resolve();
 
 // 同じクエリを叩き直さないための簡易キャッシュ(プロセスメモリ上のみ、再起動で消える)。
-// 期限切れエントリの即時削除+件数上限(FIFOで間引き)でメモリの際限ない増加を防ぐ。
+// 期限切れエントリの即時削除+件数上限(LRUで間引き)でメモリの際限ない増加を防ぐ。
 const CACHE_TTL_MS = 10 * 60 * 1000; // 10分
 const MAX_CACHE_ENTRIES = 500;
 const searchCache = new Map<string, { data: LocationCandidate[]; expiresAt: number }>();
@@ -71,6 +69,11 @@ function getCachedCandidates(key: string): LocationCandidate[] | null {
 		searchCache.delete(key); // 期限切れは残さず即削除
 		return null;
 	}
+	// ヒットしたエントリをMapの最後尾に移動させ、「最近使った順」を保つ(実質LRU化)。
+	// これにより、setCachedCandidates側のFIFO的な間引きが、実際にはアクセス頻度の
+	// 低いエントリから優先的に削除されるようになる。
+	searchCache.delete(key);
+	searchCache.set(key, cached);
 	return cached.data;
 }
 
@@ -111,7 +114,7 @@ async function fetchFromNominatim(nominatimUrl: URL, fetchFn: typeof fetch): Pro
 			fetchFn(nominatimUrl, {
 				headers: {
 					// 半角英数字のみ。日本語などの全角文字を入れるとfetch()が例外を投げるので注意
-					'User-Agent': 'procon-safe-nav/0.1 (+https://github.com/TODO-set-repo-url-here)'
+					'User-Agent': 'procon-safe-nav/0.1 (+https://github.com/syoch/procon)'
 				}
 			})
 		);
@@ -162,6 +165,13 @@ export const GET: RequestHandler = async ({ url, fetch }) => {
 		raw = (await upstreamResponse.json()) as NominatimResult[];
 	} catch (e) {
 		console.error('[api/location] Nominatimレスポンスのパースに失敗', e);
+		throw error(502, '位置情報サービスの応答が不正です');
+	}
+
+	// jsonv2は本来配列を返す想定だが、Nominatim側の想定外応答(オブジェクト等)に
+	// 備えて、配列でなければここで502として扱う
+	if (!Array.isArray(raw)) {
+		console.error('[api/location] Nominatimの応答が配列ではありません', raw);
 		throw error(502, '位置情報サービスの応答が不正です');
 	}
 
