@@ -20,32 +20,20 @@ export async function loadOSMMap(minLat, minLon, maxLat, maxLon) {
 /**
  * @brief Overpass API へ bbox 内の highway 付き way を問い合わせる
  * @param {number} minLat
- * @param {number} minLon
+ * @param {number} minLng
  * @param {number} maxLat
- * @param {number} maxLon
+ * @param {number} maxLng
  * @returns {Promise<{elements: Array<any>}>}
  */
-async function fetchOverpassData(minLat, minLon, maxLat, maxLon) {
-  const query = `
-    [out:json][timeout:30];
-    (
-      way["highway"]
-        ["highway"!~"footway|path|steps|pedestrian|service|track"]
-        (${minLat},${minLon},${maxLat},${maxLon});
-    );
-    out body;
-    >;
-    out skel qt;
-  `;
-
-  const res = await fetch("https://overpass-api.de/api/interpreter", {
+async function fetchOverpassData(minLat, minLng, maxLat, maxLng) {
+  const res = await fetch("/api/osm", {
     method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: "data=" + encodeURIComponent(query),
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ minLat, minLng, maxLat, maxLng }),
   });
 
   if (!res.ok) {
-    throw new Error(`Overpass API エラー: ${res.status}`);
+    throw new Error(`/api/osm API エラー: ${res.status}`);
   }
 
   return res.json();

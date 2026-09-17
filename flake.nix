@@ -1,8 +1,7 @@
 {
   description = "WideNavi Development env";
 
-  # procon サーバーの systemd バージョンを合わせるために nixpkgs 24.11 を使ってる
-  inputs.nixpkgs.url = "github:nixos/nixpkgs/nixos-24.11";
+  inputs.nixpkgs.url = "github:nixos/nixpkgs/nixos-26.05";
 
   outputs =
     {
@@ -12,11 +11,12 @@
     let
       system = "x86_64-linux";
       pkgs = import nixpkgs { inherit system; };
+      nodePkg = pkgs.nodejs_26;
     in
     {
       devShells.${system}.default = pkgs.mkShell {
         buildInputs = with pkgs; [
-          nodejs_22
+          nodePkg
           pnpm
         ];
       };
@@ -33,7 +33,7 @@
             hash = "sha256-ih4+W+jsLT5H80DYGUXbd6Hjhq4R1safo63Iyzrbxfw=";
           };
           nativeBuildInputs = [
-            pkgs.nodejs_22
+            pkgs.nodePkg
             pkgs.pnpm
             pkgs.pnpm.configHook
             pkgs.npmHooks.npmBuildHook
@@ -57,7 +57,7 @@
 
           [Service]
           Type=simple
-          ExecStart=${pkgs.nodejs_22}/bin/node ${self.packages.${system}.procon-server}/index.js
+          ExecStart=${pkgs.nodePkg}/bin/node ${self.packages.${system}.procon-server}/index.js
           Restart=always
           User=procon
           Group=procon
