@@ -9,8 +9,26 @@ export type Graph<NodeType extends Node, EdgeType extends Edge> = {
   edges: Record<App.EdgeId, EdgeType>,
 };
 
+let assertionsEnabled = true;
+
+/**
+ * assertGraph の有効 / 無効を切り替える。
+ *
+ * assertGraph は O(V+E) の走査を行うため、要素ごとに呼ばれると全体が O((V+E)^2) になる。
+ * 開発時に一括処理を高速化したいときは無効化する (開発画面 routes/+page.svelte から切り替える想定)。
+ */
+export function setGraphAssertionsEnabled(enabled: boolean) {
+  assertionsEnabled = enabled;
+}
+
+/** assertGraph が現在有効かどうか */
+export function isGraphAssertionsEnabled(): boolean {
+  return assertionsEnabled;
+}
+
 
 export function assertGraph<N extends Node, E extends Edge>(assertTag: string, graph: Graph<N, E>) {
+  if (!assertionsEnabled) return;
   if (import.meta.env?.DEV === false) return;
 
   for (const edge of Object.values(graph.edges)) {
@@ -55,13 +73,22 @@ export function removeNode<N extends Node, E extends Edge>(graph: Graph<N, E>, n
 }
 
 export function removeEdge<N extends Node, E extends Edge>(graph: Graph<N, E>, edgeId: App.EdgeId) {
-  if (!graph.edges[edgeId]) {
+  const edge = graph.edges[edgeId];
+  if (!edge) {
     throw new Error(`removeEdge: Edge ${edgeId} does not exist in graph`);
   }
   assertGraph("Before removeEdge", graph);
   delete graph.edges[edgeId];
-  for (const node of Object.values(graph.nodes)) {
-    node.edges = node.edges.filter(eid => eid !== edgeId);
+  // エッジを参照しているのは両端点だけなので、全ノードを走査せず端点のみ更新する
+  const beginNode = graph.nodes[edge.begin];
+  if (beginNode) {
+    beginNode.edges = beginNode.edges.filter(eid => eid !== edgeId);
+  }
+  if (edge.begin !== edge.end) {
+    const endNode = graph.nodes[edge.end];
+    if (endNode) {
+      endNode.edges = endNode.edges.filter(eid => eid !== edgeId);
+    }
   }
   assertGraph("After removeEdge", graph);
 

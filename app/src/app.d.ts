@@ -12,6 +12,14 @@ declare global {
 			lat: number
 		};
 
+		/**
+		 * エッジの通行可能な向き。
+		 *
+		 * forward = begin → end のみ通行可、backward = end → begin のみ通行可、
+		 * both = 両方向通行可、none = どちら向きも通行不可。
+		 */
+		type TravelDirection = "both" | "forward" | "backward" | "none";
+
 		// Graph Primitives
 
 		/**
@@ -52,9 +60,11 @@ declare global {
 			/** OSM 上の道路の種類 */
 			highway: string;
 			/** OSM 上の幅員情報 */
-			width: number;
+			width: number | null;
 			/** OSM 上の歩道情報 */
-			sidewalk: string;
+			sidewalk: string | null;
+			/** 通行可能な向き */
+			direction: TravelDirection;
 		};
 
 		/** 交差点変換後の交差点を表すノード */
@@ -87,6 +97,8 @@ declare global {
 
 			/** 回転半径より導出される視界スコア */
 			view_score: number;
+			/** 通行可能な向き */
+			direction: TravelDirection;
 		};
 
 
@@ -101,9 +113,9 @@ declare global {
 			/** OSM 上の道路の種類 */
 			highway: string,
 			/** OSM 上の幅員情報 */
-			width: number,
+			width: number | null,
 			/** OSM 上の歩道情報 */
-			sidewalk: string,
+			sidewalk: string | null,
 		}
 
 		/**
@@ -122,6 +134,8 @@ declare global {
 
 			/** 経由するセグメントのリスト */
 			segments: Segment[];
+			/** 通行可能な向き */
+			direction: TravelDirection;
 		};
 
 		/** スコアが計算されたエッジ */
@@ -145,6 +159,8 @@ declare global {
 			view_score: number;
 			/** スコア */
 			mix_score: number;
+			/** 通行可能な向き */
+			direction: TravelDirection;
 		};
 
 		type SplittedNode = {
