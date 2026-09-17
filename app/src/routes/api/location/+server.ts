@@ -6,27 +6,14 @@
 // [!] 本番デプロイ前に要対応:
 //   1. 下のUser-Agentの連絡先(https://github.com/TODO-set-repo-url-here の部分)を
 //      実際のチームのリポジトリURLかメールアドレスに差し替える(半角英数字のみ。全角文字はNG)
-//   2. adapter-staticのままだとビルドできないので、デプロイ先に合わせてアダプタを変更する
-//   3. フロント側の呼び出しは「1文字入力ごとにfetch」しないこと(デバウンス必須。ポリシーで明示的に禁止されてる)
-//   4. 検索結果を画面に出す際は "© OpenStreetMap contributors" のクレジット表示が必要
+//   2. フロント側の呼び出しは「1文字入力ごとにfetch」しないこと(デバウンス必須。ポリシーで明示的に禁止されてる)
+//   3. 検索結果を画面に出す際は "© OpenStreetMap contributors" のクレジット表示が必要
 //
 // 参考: Nominatim Usage Policy https://operations.osmfoundation.org/policies/nominatim/
 //       Nominatim Search API   https://nominatim.org/release-docs/latest/api/Search/
 
 import { json, error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-
-/**
- * 検索結果1件分(フロントに返す形)
- * @typedef {Object} LocationCandidate
- * @property {string} name - 短い表示名(例: "長岡駅")
- * @property {string} displayName - Nominatimの完全な住所文字列
- * @property {number} lat - 緯度
- * @property {number} lon - 経度
- * @property {string} category - OSMのclassタグ(例: "railway", "amenity")
- * @property {string} type - OSMのtypeタグ(例: "station", "school")
- * @property {[number, number, number, number]} boundingBox - [minLat, maxLat, minLon, maxLon]
- */
 
 /** Nominatimのjsonv2レスポンス1件分(必要なフィールドのみ) */
 interface NominatimResult {
@@ -39,27 +26,63 @@ interface NominatimResult {
 	boundingbox: [string, string, string, string];
 }
 
+/** 検索結果1件分(フロントに返す形) */
 interface LocationCandidate {
+	/** 短い表示名(例: "長岡駅") */
 	name: string;
+	/** Nominatimの完全な住所文字列 */
 	displayName: string;
+	/** 緯度 */
 	lat: number;
+	/** 経度 */
 	lon: number;
+	/** OSMのclassタグ(例: "railway", "amenity") */
 	category: string;
+	/** OSMのtypeタグ(例: "station", "school") */
 	type: string;
+	/** [minLat, maxLat, minLon, maxLon] */
 	boundingBox: [number, number, number, number];
 }
 
 const NOMINATIM_ENDPOINT = 'https://nominatim.openstreetmap.org/search';
 
+// クエリの最大長。長すぎるクエリはNominatimへの無駄打ちになるだけなので弾く。
+const MAX_QUERY_LENGTH = 100;
+
 // Nominatim利用ポリシー: 公開サーバーへは1リクエスト/秒が絶対上限。
 // 少し余裕を持たせて1.1秒間隔にしておく。
+// [!] このレート制限はプロセス単体でのみ有効。systemd等で1プロセス運用する分には
+//     問題ないが、複数インスタンス/クラスタ構成にする場合は全体で1req/秒を
+//     超えうるので、その際は外部(Redis等)で共有する仕組みに変更すること。
 const MIN_REQUEST_INTERVAL_MS = 1100;
 let lastUpstreamRequestAt = 0;
 let upstreamQueue: Promise<unknown> = Promise.resolve();
 
-// 同じクエリを叩き直さないための簡易キャッシュ(プロセスメモリ上のみ、再起動で消える)
+// 同じクエリを叩き直さないための簡易キャッシュ(プロセスメモリ上のみ、再起動で消える)。
+// 期限切れエントリの即時削除+件数上限(FIFOで間引き)でメモリの際限ない増加を防ぐ。
 const CACHE_TTL_MS = 10 * 60 * 1000; // 10分
+const MAX_CACHE_ENTRIES = 500;
 const searchCache = new Map<string, { data: LocationCandidate[]; expiresAt: number }>();
+
+function getCachedCandidates(key: string): LocationCandidate[] | null {
+	const cached = searchCache.get(key);
+	if (!cached) return null;
+	if (cached.expiresAt <= Date.now()) {
+		searchCache.delete(key); // 期限切れは残さず即削除
+		return null;
+	}
+	return cached.data;
+}
+
+function setCachedCandidates(key: string, data: LocationCandidate[]): void {
+	if (searchCache.size >= MAX_CACHE_ENTRIES) {
+		const oldestKey = searchCache.keys().next().value;
+		if (oldestKey !== undefined) {
+			searchCache.delete(oldestKey);
+		}
+	}
+	searchCache.set(key, { data, expiresAt: Date.now() + CACHE_TTL_MS });
+}
 
 /**
  * Nominatimへのリクエストを1req/秒に間引きながら直列実行するキュー。
@@ -109,11 +132,15 @@ export const GET: RequestHandler = async ({ url, fetch }) => {
 	if (q.length < 2) {
 		throw error(400, 'q パラメータは2文字以上で指定してください');
 	}
+	// 長すぎるクエリも同様に無駄打ちになるので弾く
+	if (q.length > MAX_QUERY_LENGTH) {
+		throw error(400, `q パラメータは${MAX_QUERY_LENGTH}文字以内で指定してください`);
+	}
 
 	const cacheKey = `${q}::${limit}`;
-	const cached = searchCache.get(cacheKey);
-	if (cached && cached.expiresAt > Date.now()) {
-		return json({ candidates: cached.data, cached: true });
+	const cached = getCachedCandidates(cacheKey);
+	if (cached) {
+		return json({ candidates: cached, cached: true });
 	}
 
 	const nominatimUrl = new URL(NOMINATIM_ENDPOINT);
@@ -130,7 +157,13 @@ export const GET: RequestHandler = async ({ url, fetch }) => {
 		throw error(502, `位置情報サービスがエラーを返しました(status: ${upstreamResponse.status})`);
 	}
 
-	const raw = (await upstreamResponse.json()) as NominatimResult[];
+	let raw: NominatimResult[];
+	try {
+		raw = (await upstreamResponse.json()) as NominatimResult[];
+	} catch (e) {
+		console.error('[api/location] Nominatimレスポンスのパースに失敗', e);
+		throw error(502, '位置情報サービスの応答が不正です');
+	}
 
 	const candidates: LocationCandidate[] = raw.map((r) => ({
 		name: r.name?.trim() || r.display_name.split(',')[0].trim(),
@@ -147,7 +180,7 @@ export const GET: RequestHandler = async ({ url, fetch }) => {
 		]
 	}));
 
-	searchCache.set(cacheKey, { data: candidates, expiresAt: Date.now() + CACHE_TTL_MS });
+	setCachedCandidates(cacheKey, candidates);
 
 	return json({ candidates, cached: false });
 };
