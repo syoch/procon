@@ -33,7 +33,7 @@
             hash = "sha256-ih4+W+jsLT5H80DYGUXbd6Hjhq4R1safo63Iyzrbxfw=";
           };
           nativeBuildInputs = [
-            pkgs.nodePkg
+            nodePkg
             pkgs.pnpm
             pkgs.pnpm.configHook
             pkgs.npmHooks.npmBuildHook
@@ -57,7 +57,7 @@
 
           [Service]
           Type=simple
-          ExecStart=${pkgs.nodePkg}/bin/node ${self.packages.${system}.procon-server}/index.js
+          ExecStart=${nodePkg}/bin/node ${self.packages.${system}.procon-server}/index.js
           Restart=always
           User=procon
           Group=procon
