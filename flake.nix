@@ -30,7 +30,7 @@
           src = ./app;
           pnpmDeps = pkgs.pnpm.fetchDeps {
             inherit (finalAttrs) pname version src;
-            hash = "sha256-ih4+W+jsLT5H80DYGUXbd6Hjhq4R1safo63Iyzrbxfw=";
+            hash = "sha256-qN+A6Q0giQjjBbtkmHjmpxK+QcMHf0wYhZ3B2is+c58=";
           };
           nativeBuildInputs = [
             pkgs.nodejs_22
