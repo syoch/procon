@@ -2,7 +2,13 @@ import { divideBoundary, simplifyBoundary, type Boundary } from "./boundary";
 import { readCache, saveCache } from "./cache-manger";
 import { mergeOSMData, trimOSMData, type OSMData } from "./osmdata";
 
-const OVERPASS_ENDPOINT = "https://overpass.openstreetmap.fr/api/interpreter";
+const OVERPASS_ENDPOINT = (() => {
+  const endpoint = process.env.OVERPASS_ENDPOINT;
+  if (!endpoint) {
+    throw new Error("OVERPASS_ENDPOINT 環境変数が設定されていません");
+  }
+  return endpoint;
+})();
 
 async function fetchOverpassData(boundaries: Boundary[]): Promise<OSMData> {
   let queryRequireSet = ""
@@ -62,7 +68,7 @@ export async function requireOSMData(boundary: Boundary): Promise<OSMData> {
 
     for (const b of boundariesToGet) {
       const subData = trimOSMData(fetchedData, b);
-      saveCache(b, subData);
+      await saveCache(b, subData);
       cachedChunks.push(subData);
     }
   }
