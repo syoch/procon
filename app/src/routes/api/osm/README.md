@@ -17,14 +17,10 @@ OSM から取得した地図情報をキャッシュする仕組み
 
 ## データフロー
 
-```ts
-type Boundary = {minLat: number, maxLat: number, minLng: number, MaxLng: number};
-```
-
 ```mermaid
 graph
     OriginalBoundary["targetBoundary (Boundary)"]
-    subgraph RequireOSMData
+    subgraph requireOSMData
         MergedOSMData["mergedOSMData (OSMData)"]
         OriginalBoundary --divideBoundary--> dividedBoundaries
 

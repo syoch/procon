@@ -1,4 +1,4 @@
-import { divideBoundary, simplifyBoundary, type Boundary } from "./boundary";
+import { divideBoundary, simplifyBoundary as simplifyBoundaries, type Boundary } from "./boundary";
 import { readCache, saveCache } from "./cache-manager";
 import { mergeOSMData, trimOSMData, type OSMData } from "./osmdata";
 
@@ -63,7 +63,7 @@ export async function requireOSMData(boundary: Boundary): Promise<OSMData> {
   }
 
   if (boundariesToGet.length > 0) {
-    const boundariesToQuery = simplifyBoundary(boundariesToGet);
+    const boundariesToQuery = simplifyBoundaries(boundariesToGet);
     const fetchedData = await fetchOverpassData(boundariesToQuery);
 
     for (const b of boundariesToGet) {

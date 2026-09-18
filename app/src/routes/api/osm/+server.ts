@@ -1,7 +1,6 @@
 import { json } from '@sveltejs/kit';
 
 import type { RequestHandler } from './$types';
-import type { Boundary } from './boundary';
 import { requireOSMData } from '.';
 import { trimOSMDataByWayHighway } from './osmdata';
 import { z } from 'zod';
