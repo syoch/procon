@@ -61,6 +61,8 @@
           Restart=always
           User=procon
           Group=procon
+          Environment=OSM_CACHE_DIR=/var/cache/procon/osm
+          EnvironmentFile=/etc/procon.env
 
           [Install]
           WantedBy=network.target
@@ -69,19 +71,26 @@
           #!/usr/bin/env bash
           set -euo pipefail
 
-          sudo ln -sf $(readlink -f "$0") /nix/var/nix/gcroots/auto/procon-setup.sh
+          if [ "$(id -u)" -ne 0 ]; then
+            echo "This script must be run as root"
+            exit 1
+          fi
 
-          sudo ln -sf ${./infra/procon-site.conf} /etc/nginx/sites-enabled/procon-site.conf
-          sudo rm -f /etc/nginx/sites-enabled/default
-          sudo ln -sf ${self.packages.${system}.procon-service-unit} /etc/systemd/system/procon-app.service
+          ln -sf $(readlink -f "$0") /nix/var/nix/gcroots/auto/procon-setup.sh
 
-          sudo systemctl daemon-reload
+          ln -sf ${./infra/procon-site.conf} /etc/nginx/sites-enabled/procon-site.conf
+          rm -f /etc/nginx/sites-enabled/default
+          ln -sf ${self.packages.${system}.procon-service-unit} /etc/systemd/system/procon-app.service
 
-          sudo systemctl enable procon-app.service
-          sudo systemctl enable nginx
+          install -d -m 0755 -o procon -g procon /var/cache/procon/osm
 
-          sudo systemctl restart procon-app.service
-          sudo systemctl restart nginx
+          systemctl daemon-reload
+
+          systemctl enable procon-app.service
+          systemctl enable nginx
+
+          systemctl restart procon-app.service
+          systemctl restart nginx
 
           echo "Setup complete!"
         '';
