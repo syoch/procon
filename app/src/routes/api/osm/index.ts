@@ -1,5 +1,5 @@
 import { divideBoundary, simplifyBoundary, type Boundary } from "./boundary";
-import { readCache, saveCache } from "./cache-manger";
+import { readCache, saveCache } from "./cache-manager";
 import { mergeOSMData, trimOSMData, type OSMData } from "./osmdata";
 
 const OVERPASS_ENDPOINT = (() => {
