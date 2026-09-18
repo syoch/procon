@@ -20,16 +20,22 @@ export async function loadOSMMap(minLat, minLon, maxLat, maxLon) {
 /**
  * @brief Overpass API へ bbox 内の highway 付き way を問い合わせる
  * @param {number} minLat
- * @param {number} minLng
+ * @param {number} minLon
  * @param {number} maxLat
- * @param {number} maxLng
+ * @param {number} maxLon
  * @returns {Promise<{elements: Array<any>}>}
  */
-async function fetchOverpassData(minLat, minLng, maxLat, maxLng) {
+async function fetchOverpassData(minLat, minLon, maxLat, maxLon) {
   const res = await fetch("/api/osm", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ minLat, minLng, maxLat, maxLng }),
+    body: JSON.stringify({
+      minLat,
+      minLng: minLon,
+      maxLat,
+      maxLng: maxLon,
+      wayHighwayExcludes: ["footway", "path", "steps", "pedestrian", "service", "track"],
+    }),
   });
 
   if (!res.ok) {

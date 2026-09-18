@@ -2,12 +2,13 @@ import { divideBoundary, simplifyBoundary, type Boundary } from "./boundary";
 import { readCache, saveCache } from "./cache-manger";
 import { mergeOSMData, trimOSMData, type OSMData } from "./osmdata";
 
-const OVERPASS_ENDPOINT = "https://overpass-api.de/api/interpreter";
+const OVERPASS_ENDPOINT = "https://overpass.openstreetmap.fr/api/interpreter";
 
 async function fetchOverpassData(boundaries: Boundary[]): Promise<OSMData> {
   let queryRequireSet = ""
   for (const boundary of boundaries) {
-    queryRequireSet += `way["highway"](${boundary.minLat},${boundary.minLng},${boundary.maxLat},${boundary.maxLng});`;
+    // 生に近いデータのキャッシュを取りたいので、 bbox 以外のフィルタは使わない
+    queryRequireSet += `way(${boundary.minLat},${boundary.minLng},${boundary.maxLat},${boundary.maxLng});`;
   }
   const query = `
     [out:json][timeout:30];

@@ -42,10 +42,6 @@ export function mergeOSMData(data: OSMData, other: OSMData) {
 }
 
 export function trimOSMData(data: OSMData, boundary: Boundary): OSMData {
-    const trimmedData: OSMData = {
-        elements: []
-    };
-
     const outputNodes = new Set<number>();
     const savedNodes = new Set<number>();
     for (const element of data.elements) {
@@ -56,11 +52,13 @@ export function trimOSMData(data: OSMData, boundary: Boundary): OSMData {
             continue;
         }
 
-        trimmedData.elements.push(element);
         savedNodes.add(element.id);
         outputNodes.add(element.id);
     }
 
+    const trimmedData: OSMData = {
+        elements: []
+    };
     for (const element of data.elements) {
         if (element.type !== "way") continue;
 
@@ -71,15 +69,55 @@ export function trimOSMData(data: OSMData, boundary: Boundary): OSMData {
         trimmedData.elements.push(element);
 
         for (const nodeId of element.nodes) {
-            if (savedNodes.has(nodeId)) continue;
-            if (outputNodes.has(nodeId)) continue;
-
-            const node = data.elements.find(e => e.type === "node" && e.id === nodeId) as OSMRawNode | undefined;
-            if (!node) continue;
-
-            trimmedData.elements.push(node);
             outputNodes.add(nodeId);
         }
+    }
+
+    for (const element of data.elements) {
+        if (element.type !== "node") continue;
+
+        if (!outputNodes.has(element.id)) {
+            continue;
+        }
+
+        trimmedData.elements.push(element);
+    }
+
+    return trimmedData;
+}
+
+export function trimOSMDataByWayHighway(data: OSMData, wayHighwayExcludes: string[]): OSMData {
+    const trimmedData: OSMData = {
+        elements: []
+    };
+
+    const savedNodes = new Set<number>();
+    for (const element of data.elements) {
+        if (element.type !== "way") continue;
+
+        const highwayTag = element.tags["highway"];
+        if (!highwayTag) {
+            continue;
+        }
+        if (wayHighwayExcludes.includes(highwayTag)) {
+            continue;
+        }
+
+        trimmedData.elements.push(element);
+
+        for (const nodeId of element.nodes) {
+            savedNodes.add(nodeId);
+        }
+    }
+
+    for (const element of data.elements) {
+        if (element.type !== "node") continue;
+
+        if (!savedNodes.has(element.id)) {
+            continue;
+        }
+
+        trimmedData.elements.push(element);
     }
 
     return trimmedData;
