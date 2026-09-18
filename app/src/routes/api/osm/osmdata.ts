@@ -95,7 +95,7 @@ export function trimOSMDataByWayHighway(data: OSMData, wayHighwayExcludes: strin
     for (const element of data.elements) {
         if (element.type !== "way") continue;
 
-        const highwayTag = element.tags["highway"];
+        const highwayTag = element?.tags?.highway;
         if (!highwayTag) {
             continue;
         }
