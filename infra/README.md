@@ -24,6 +24,16 @@
 [procon@vm20025:~]$ sudo certbot certonly --nginx -d procon.syoch.org
 ```
 
+### procon.env の作成
+
+本システムでは環境変数 `OSM_CACHE_DIR` を使うが、この環境変数は systemd service unit で定義されるため、 procon.env では定義しない。
+
+```shell
+[procon@vm20025:~]$ sudo tee /etc/procon.env <<EOF
+OVERPASS_ENDPOINT=(overpass API のエンドポイント URL)
+EOF
+```
+
 ### サーバーリポジトリのクローン
 
 ```shell
