@@ -46,6 +46,7 @@ export function trimOSMData(data: OSMData, boundary: Boundary): OSMData {
         elements: []
     };
 
+    const outputNodes = new Set<number>();
     const savedNodes = new Set<number>();
     for (const element of data.elements) {
         if (element.type !== "node") continue;
@@ -57,16 +58,28 @@ export function trimOSMData(data: OSMData, boundary: Boundary): OSMData {
 
         trimmedData.elements.push(element);
         savedNodes.add(element.id);
+        outputNodes.add(element.id);
     }
 
     for (const element of data.elements) {
         if (element.type !== "way") continue;
 
-        if (element.nodes.some(nodeId => !savedNodes.has(nodeId))) {
+        if (element.nodes.every(nodeId => !savedNodes.has(nodeId))) {
             continue;
         }
 
         trimmedData.elements.push(element);
+
+        for (const nodeId of element.nodes) {
+            if (savedNodes.has(nodeId)) continue;
+            if (outputNodes.has(nodeId)) continue;
+
+            const node = data.elements.find(e => e.type === "node" && e.id === nodeId) as OSMRawNode | undefined;
+            if (!node) continue;
+
+            trimmedData.elements.push(node);
+            outputNodes.add(nodeId);
+        }
     }
 
     return trimmedData;

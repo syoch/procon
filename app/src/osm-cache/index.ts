@@ -2,10 +2,12 @@ import { divideBoundary, simplifyBoundary, type Boundary } from "./boundary";
 import { readCache, saveCache } from "./cache-manger";
 import { mergeOSMData, trimOSMData, type OSMData } from "./osmdata";
 
+const OVERPASS_ENDPOINT = "https://overpass-api.de/api/interpreter";
+
 async function fetchOverpassData(boundaries: Boundary[]): Promise<OSMData> {
   let queryRequireSet = ""
   for (const boundary of boundaries) {
-    queryRequireSet += `way["highway"]["highway"!~"footway|path|steps|pedestrian|service|track"](${boundary.minLat},${boundary.minLng},${boundary.maxLat},${boundary.maxLng});`;
+    queryRequireSet += `way["highway"](${boundary.minLat},${boundary.minLng},${boundary.maxLat},${boundary.maxLng});`;
   }
   const query = `
     [out:json][timeout:30];
@@ -17,11 +19,11 @@ async function fetchOverpassData(boundaries: Boundary[]): Promise<OSMData> {
     out skel qt;
   `;
 
-  const res = await fetch("https://overpass-api.de/api/interpreter", {
+  const res = await fetch(OVERPASS_ENDPOINT, {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",
-      "User-Agent": "NITNC-widenavi/1.0"
+      "User-Agent": "NITNC-widenavi/1.0 (+https://github.com/syoch/procon)"
     },
     body: "data=" + encodeURIComponent(query),
   });
@@ -37,7 +39,6 @@ async function fetchOverpassData(boundaries: Boundary[]): Promise<OSMData> {
 }
 
 export async function requireOSMData(boundary: Boundary): Promise<OSMData> {
-  console.log(`requireOSMData(${JSON.stringify(boundary)})`)
   const dividedBoundaries = divideBoundary(boundary);
 
   const boundariesToGet: Boundary[] = [];

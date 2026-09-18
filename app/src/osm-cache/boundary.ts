@@ -48,7 +48,6 @@ export function simplifyBoundary(boundaries: Boundary[]): Boundary[] {
         const [lat, lng] = leaderBlock.split(',').map(Number);
         const latList = [lat];
         const lngList = [lng];
-        console.log(latList, lngList)
 
         while (lngList.every(lng => hasBoundary(latList[0] - 1, lng))) {
             lngList.forEach(lng => deleteBoundary(latList[0] - 1, lng))

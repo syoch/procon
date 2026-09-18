@@ -1,4 +1,4 @@
-import { divideBoundary, simplifyBoundary, type Boundary } from "./boundary.ts";
+import { divideBoundary, simplifyBoundary, type Boundary } from "./boundary";
 
 function boundariesCovers(original: Boundary, divided: Boundary[]): boolean {
     const minLat = Math.min(...divided.map(x => x.minLat));
