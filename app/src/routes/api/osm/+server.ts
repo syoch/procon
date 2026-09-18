@@ -17,7 +17,7 @@ export const POST: RequestHandler = async ({ request }) => {
     const body = await request.json();
     const query = requestSchema.safeParse(body);
     if (!query.success) {
-      return json({ error: 'Invalid request body', details: query.error }, { status: 400 });
+      return json({ error: 'Invalid request body', details: query.error.issues }, { status: 400 });
     }
 
     const osmData = await requireOSMData(query.data);
