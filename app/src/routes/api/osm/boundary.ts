@@ -9,6 +9,11 @@ export type Boundary = {
     maxLng: number,
 };
 
+export function boundaryContains(boundary: Boundary, coordinate: App.Coordinate): boolean {
+    return boundary.minLat <= coordinate.lat && coordinate.lat <= boundary.maxLat
+        && boundary.minLng <= coordinate.lng && coordinate.lng <= boundary.maxLng;
+}
+
 export function divideBoundary(boundary: Boundary): Boundary[] {
     const baseLat = Math.floor(boundary.minLat / deltaLatitude) * deltaLatitude;
     const baseLng = Math.floor(boundary.minLng / deltaLongitude) * deltaLongitude;
