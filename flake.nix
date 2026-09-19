@@ -1,8 +1,7 @@
 {
   description = "WideNavi Development env";
 
-  # procon サーバーの systemd バージョンを合わせるために nixpkgs 24.11 を使ってる
-  inputs.nixpkgs.url = "github:nixos/nixpkgs/nixos-24.11";
+  inputs.nixpkgs.url = "github:nixos/nixpkgs/release-26.05";
 
   outputs =
     {
