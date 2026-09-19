@@ -1,4 +1,4 @@
-import { divideBoundary, simplifyBoundaries, type Boundary } from "../../src/routes/api/osm/boundary";
+import { boundaryContains, divideBoundary, simplifyBoundaries, type Boundary } from "../../src/routes/api/osm/boundary";
 import { expect, test, vi } from "vitest";
 
 function boundariesCovers(original: Boundary, divided: Boundary[]): boolean {
@@ -10,6 +10,44 @@ function boundariesCovers(original: Boundary, divided: Boundary[]): boolean {
   return minLat <= original.minLat && minLng <= original.minLng
     && original.maxLat <= maxLat && original.maxLng <= maxLng;
 }
+
+test("boundaryContains", () => {
+  const boundary: Boundary = {
+    minLat: 0,
+    maxLat: 1,
+    minLng: 0,
+    maxLng: 1,
+  }
+  const INCLUDE_LIST: App.Coordinate[] = [
+    { lat: 0, lng: 0 },
+    { lat: 0, lng: 1 },
+    { lat: 1, lng: 0 },
+    { lat: 1, lng: 1 },
+    { lat: 0, lng: 0 },
+    { lat: 0, lng: 0.9 },
+    { lat: 0.9, lng: 0 },
+    { lat: 0.9, lng: 0.9 },
+    { lat: 0.5, lng: 0.5 },
+  ];
+  const EXCLUDE_LIST: App.Coordinate[] = [
+    { lat: -0.1, lng: 0 },
+    { lat: 0, lng: -0.1 },
+    { lat: 1.1, lng: 0 },
+    { lat: 0, lng: 1.1 },
+    { lat: -0.1, lng: -0.1 },
+    { lat: 1.1, lng: 1.1 },
+    { lat: -0.1, lng: 1.1 },
+    { lat: 1.1, lng: -0.1 },
+  ];
+
+  for (const coordinate of INCLUDE_LIST) {
+    expect(boundaryContains(boundary, coordinate)).toBe(true);
+  }
+
+  for (const coordinate of EXCLUDE_LIST) {
+    expect(boundaryContains(boundary, coordinate)).toBe(false);
+  }
+});
 
 test("divideBoundary covers the original one", () => {
   for (let baseLat = 2; baseLat < 11; baseLat += 3) {
