@@ -1,8 +1,7 @@
 {
   description = "WideNavi Development env";
 
-  # procon サーバーの systemd バージョンを合わせるために nixpkgs 24.11 を使ってる
-  inputs.nixpkgs.url = "github:nixos/nixpkgs/nixos-24.11";
+  inputs.nixpkgs.url = "github:nixos/nixpkgs/release-26.05";
 
   outputs =
     {
@@ -12,12 +11,14 @@
     let
       system = "x86_64-linux";
       pkgs = import nixpkgs { inherit system; };
+      nodePkg = pkgs.nodejs_26;
+      pnpmPkg = pkgs.pnpm_11;
     in
     {
       devShells.${system}.default = pkgs.mkShell {
-        buildInputs = with pkgs; [
-          nodejs_22
-          pnpm
+        buildInputs = [
+          nodePkg
+          pnpmPkg
         ];
       };
 
@@ -28,14 +29,15 @@
           version = "0.1.0";
 
           src = ./app;
-          pnpmDeps = pkgs.pnpm.fetchDeps {
+          pnpmDeps = pkgs.fetchPnpmDeps {
             inherit (finalAttrs) pname version src;
-            hash = "sha256-rkrOWt6z2OPbHMFnspoFKBDVNZmgYmCqVCpyuF0y8pk=";
+            hash = "sha256-yCeg+TV2UDRXmU8ey0tqHCP95hyEl+ITOdLSiAtZeCQ=";
+            fetcherVersion = 3;
           };
           nativeBuildInputs = [
-            pkgs.nodejs_22
-            pkgs.pnpm
-            pkgs.pnpm.configHook
+            nodePkg
+            pnpmPkg
+            pkgs.pnpmConfigHook
             pkgs.npmHooks.npmBuildHook
           ];
           buildPhase = ''
@@ -57,7 +59,7 @@
 
           [Service]
           Type=simple
-          ExecStart=${pkgs.nodejs_22}/bin/node ${self.packages.${system}.procon-server}/index.js
+          ExecStart=${nodePkg}/bin/node ${self.packages.${system}.procon-server}/index.js
           Restart=always
           User=procon
           Group=procon
