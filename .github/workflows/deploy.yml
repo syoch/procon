@@ -6,25 +6,55 @@ on:
   pull_request:
 
 jobs:
-  # PR / main のチェック: アプリ検証 + procon-server の Nix ビルド検証
-  build:
+  check:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 11
+          package_json_file: app/package.json
+          cache_dependency_path: app/pnpm-lock.yaml
+          cache: true
 
       - uses: actions/setup-node@v4
         with:
           node-version: 22
 
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 11
-
-      - name: アプリの検証 (check)
+      - name: pnpm check
         working-directory: app
         run: |
           pnpm install --frozen-lockfile
           pnpm check
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 11
+          package_json_file: app/package.json
+          cache_dependency_path: app/pnpm-lock.yaml
+          cache: true
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: pnpm test
+        working-directory: app
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm test
+
+  # 最大限キャッシュを活用するために、pnpm check/test の結果によらず nix ビルドは行う
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
 
       - uses: cachix/install-nix-action@v31
         with:
@@ -33,10 +63,9 @@ jobs:
       - name: procon-server の Nix ビルド検証
         run: nix build -L .#procon-server
 
-  # main への push: VPS 上で同期 + nix run .#setup (nginx・unit・アプリを一括反映)
   deploy:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: [build]
+    needs: [check, test, build]
     runs-on: ubuntu-latest
     steps:
       - name: SSH 設定
