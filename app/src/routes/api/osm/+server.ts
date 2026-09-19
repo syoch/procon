@@ -1,9 +1,12 @@
 import { json } from '@sveltejs/kit';
 
 import type { RequestHandler } from './$types';
-import { requireOSMData } from '.';
-import { trimOSMDataByWayHighway } from './osmdata';
+import { trimOSMDataByWayHighway } from './osm-data';
 import { z } from 'zod';
+import { cacheManager } from './fs-cache-manager';
+import { fetchOverpassData } from './osm-fetcher';
+import { requireOSMData } from '.';
+
 
 const requestSchema = z.object({
   minLat: z.number(),
@@ -20,7 +23,7 @@ export const POST: RequestHandler = async ({ request }) => {
       return json({ error: 'Invalid request body', details: query.error.issues }, { status: 400 });
     }
 
-    const osmData = await requireOSMData(query.data);
+    const osmData = await requireOSMData(query.data, cacheManager, fetchOverpassData);
 
     const result = trimOSMDataByWayHighway(osmData, query.data.wayHighwayExcludes);
 

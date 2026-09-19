@@ -9,6 +9,11 @@ export type Boundary = {
     maxLng: number,
 };
 
+export function boundaryContains(boundary: Boundary, coordinate: App.Coordinate): boolean {
+    return boundary.minLat <= coordinate.lat && coordinate.lat <= boundary.maxLat
+        && boundary.minLng <= coordinate.lng && coordinate.lng <= boundary.maxLng;
+}
+
 export function divideBoundary(boundary: Boundary): Boundary[] {
     const baseLat = Math.floor(boundary.minLat / deltaLatitude) * deltaLatitude;
     const baseLng = Math.floor(boundary.minLng / deltaLongitude) * deltaLongitude;
@@ -27,7 +32,7 @@ export function divideBoundary(boundary: Boundary): Boundary[] {
 
 // 隣接する Boundary をまとめてより少ない Boundary での表現を得る
 // 制約: それぞれの boundary の minLat, minLng はグリッド境界上にあり、大きさは 1x1
-export function simplifyBoundary(boundaries: Boundary[]): Boundary[] {
+export function simplifyBoundaries(boundaries: Boundary[]): Boundary[] {
     // 未処理の Boundary の配置を保存した Map
     const boundaryMap: Set<string> = new Set();
     for (const bound of boundaries) {

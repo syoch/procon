@@ -1,4 +1,4 @@
-import type { Boundary } from "./boundary";
+import { boundaryContains, type Boundary } from "./boundary";
 
 export type OSMRawWay = {
     type: "way";
@@ -47,8 +47,7 @@ export function trimOSMData(data: OSMData, boundary: Boundary): OSMData {
     for (const element of data.elements) {
         if (element.type !== "node") continue;
 
-        if (element.lat < boundary.minLat || element.lat > boundary.maxLat
-            || element.lon < boundary.minLng || element.lon > boundary.maxLng) {
+        if (!boundaryContains(boundary, { lat: element.lat, lng: element.lon })) {
             continue;
         }
 
