@@ -13,14 +13,14 @@ jobs:
 
       - uses: pnpm/action-setup@v6
         with:
-          version: 9.15.9
+          version: 11.27.0
           package_json_file: app/package.json
           cache_dependency_path: app/pnpm-lock.yaml
           cache: true
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 26
 
       - name: pnpm check
         working-directory: app
@@ -35,14 +35,14 @@ jobs:
 
       - uses: pnpm/action-setup@v6
         with:
-          version: 9.15.9
+          version: 11.27.0
           package_json_file: app/package.json
           cache_dependency_path: app/pnpm-lock.yaml
           cache: true
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 26
 
       - name: pnpm test
         working-directory: app
