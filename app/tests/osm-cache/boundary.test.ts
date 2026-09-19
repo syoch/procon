@@ -1,5 +1,5 @@
 import { boundaryContains, divideBoundary, simplifyBoundaries, type Boundary } from "../../src/routes/api/osm/boundary";
-import { expect, test, vi } from "vitest";
+import { expect, test } from "vitest";
 
 function boundariesCovers(original: Boundary, divided: Boundary[]): boolean {
   const minLat = Math.min(...divided.map(x => x.minLat));
@@ -23,7 +23,6 @@ test("boundaryContains", () => {
     { lat: 0, lng: 1 },
     { lat: 1, lng: 0 },
     { lat: 1, lng: 1 },
-    { lat: 0, lng: 0 },
     { lat: 0, lng: 0.9 },
     { lat: 0.9, lng: 0 },
     { lat: 0.9, lng: 0.9 },

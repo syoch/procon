@@ -49,7 +49,7 @@ const QUERY_BOUNDARY: Boundary[] = [
 
 const readCache = vi.fn().mockImplementation(async (bound: Boundary) => {
   for (const cached of CACHED_BOUNDARY) {
-    if (cached.minLat === bound.minLat && cached.minLng === bound.minLng) {
+    if (cached.minLat === bound.minLat && cached.minLng === bound.minLng && cached.maxLat === bound.maxLat && cached.maxLng === bound.maxLng) {
       return { elements: [] };
     }
   }
@@ -61,13 +61,13 @@ const fetchOSM = vi.fn().mockImplementation(async _ => ({ elements: [] }));
 test("requireOSMData", async () => {
   await requireOSMData(BOUNDARY, { readCache, saveCache }, fetchOSM);
   expect(readCache).toHaveBeenCalledTimes(4);
-  expect(readCache).calledWith(CACHED_BOUNDARY[0]);
-  expect(readCache).calledWith(CACHED_BOUNDARY[1]);
-  expect(readCache).calledWith(UNCACHED_BOUNDARY[0]);
-  expect(readCache).calledWith(UNCACHED_BOUNDARY[1]);
+  expect(readCache).toHaveBeenCalledWith(CACHED_BOUNDARY[0]);
+  expect(readCache).toHaveBeenCalledWith(CACHED_BOUNDARY[1]);
+  expect(readCache).toHaveBeenCalledWith(UNCACHED_BOUNDARY[0]);
+  expect(readCache).toHaveBeenCalledWith(UNCACHED_BOUNDARY[1]);
   expect(saveCache).toHaveBeenCalledTimes(2);
-  expect(saveCache).calledWith(UNCACHED_BOUNDARY[0], { elements: [] });
-  expect(saveCache).calledWith(UNCACHED_BOUNDARY[1], { elements: [] });
+  expect(saveCache).toHaveBeenCalledWith(UNCACHED_BOUNDARY[0], { elements: [] });
+  expect(saveCache).toHaveBeenCalledWith(UNCACHED_BOUNDARY[1], { elements: [] });
   expect(fetchOSM).toHaveBeenCalledTimes(1);
-  expect(fetchOSM).calledWith(QUERY_BOUNDARY);
+  expect(fetchOSM).toHaveBeenCalledWith(QUERY_BOUNDARY);
 });

@@ -1,4 +1,4 @@
-import { test } from "vitest";
+import { expect, test } from "vitest";
 import { mergeOSMData, trimOSMData, type OSMData, type OSMRawNode } from "../../src/routes/api/osm/osm-data";
 import { boundaryContains, type Boundary } from "../../src/routes/api/osm/boundary";
 
@@ -41,14 +41,10 @@ test("mergeOSMData generated non duplicate elements", () => {
   const nodeIds = new Set<number>();
   for (const element of merged.elements) {
     if (element.type === "way") {
-      if (wayIds.has(element.id)) {
-        throw new Error(`duplicate way id ${element.id}`);
-      }
+      expect(wayIds.has(element.id)).toBe(false);
       wayIds.add(element.id);
     } else if (element.type === "node") {
-      if (nodeIds.has(element.id)) {
-        throw new Error(`duplicate node id ${element.id}`);
-      }
+      expect(nodeIds.has(element.id)).toBe(false);
       nodeIds.add(element.id);
     }
   }
@@ -71,13 +67,9 @@ test("mergeOSMData merged all elements", () => {
 
   for (const element of [...DATA1.elements, ...DATA2.elements]) {
     if (element.type === "way") {
-      if (!wayIds.has(element.id)) {
-        throw new Error(`missing way id ${element.id}`);
-      }
+      expect(wayIds.has(element.id)).toBe(true);
     } else if (element.type === "node") {
-      if (!nodeIds.has(element.id)) {
-        throw new Error(`missing node id ${element.id}`);
-      }
+      expect(nodeIds.has(element.id)).toBe(true);
     }
   }
 });
@@ -102,17 +94,15 @@ test("trimOSMData does not include way such as every nodes are out of bounds", (
     let everyNodeOutOfBounds = true;
     for (const nodeId of element.nodes) {
       const node = nodeMap.get(nodeId);
-      if (!node) {
-        throw new Error(`way ${element.id} has node ${nodeId} which is not included in trimmed data`);
-      }
+
+      expect(node).toBeDefined();
+      if (!node) continue;
 
       if (boundaryContains(TRIM_BOUND, { lat: node.lat, lng: node.lon })) {
         everyNodeOutOfBounds = false;
       }
     }
 
-    if (everyNodeOutOfBounds) {
-      throw new Error(`way ${element.id} has every node out of bounds`);
-    }
+    expect(everyNodeOutOfBounds).toBe(false);
   }
 });
