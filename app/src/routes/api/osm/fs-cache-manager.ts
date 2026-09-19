@@ -4,7 +4,7 @@ import type { OSMData } from "./osm-data";
 import type { Boundary } from "./boundary";
 import { existsSync } from "fs";
 import { env } from "$env/dynamic/private";
-import type { OSMCacheManager } from ".";
+import type { OSMCacheManager } from "./types";
 
 function getCacheDir(): string {
     const cacheDir = env.OSM_CACHE_DIR;

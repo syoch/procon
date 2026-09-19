@@ -1,6 +1,6 @@
 import { type Boundary } from "./boundary";
 import { type OSMData } from "./osm-data";
-import { type OSMFetcher } from ".";
+import { type OSMFetcher } from "./types";
 import { env } from "$env/dynamic/private";
 
 function getOverpassEndpoint(): string {

@@ -1,4 +1,5 @@
 import { divideBoundary, simplifyBoundaries, type Boundary } from "../../src/routes/api/osm/boundary";
+import { expect, test, vi } from "vitest";
 
 function boundariesCovers(original: Boundary, divided: Boundary[]): boolean {
   const minLat = Math.min(...divided.map(x => x.minLat));
@@ -10,7 +11,7 @@ function boundariesCovers(original: Boundary, divided: Boundary[]): boolean {
     && original.maxLat <= maxLat && original.maxLng <= maxLng;
 }
 
-function testDivideBoundary() {
+test("divideBoundary covers the original one", () => {
   for (let baseLat = 2; baseLat < 11; baseLat += 3) {
     for (let baseLng = 2; baseLng < 11; baseLng += 3) {
       for (let deltaLat = 0.01; deltaLat < 2; deltaLat += 0.3) {
@@ -24,15 +25,16 @@ function testDivideBoundary() {
 
           const divided = divideBoundary(boundary);
           if (!boundariesCovers(boundary, divided)) {
-            console.log(`failed ${baseLat} ${baseLng} ${deltaLat} ${deltaLng}`)
+            expect.fail(`failed ${baseLat} ${baseLng} ${deltaLat} ${deltaLng}`);
           }
         }
       }
     }
   }
-}
+})
 
-function testSimplifyBoundary() {
+
+test("simplifyBoundaries(divided boundaries) === original boundary", () => {
   const boundary: Boundary = {
     minLat: 2,
     minLng: 2,
@@ -43,6 +45,7 @@ function testSimplifyBoundary() {
   const divided = divideBoundary(boundary);
   const simplified = simplifyBoundaries(divided);
 
-  console.log(simplified);
-}
-testSimplifyBoundary();
+  expect(simplified.length).toBe(1);
+  expect(simplified[0]).toEqual(boundary);
+
+})
