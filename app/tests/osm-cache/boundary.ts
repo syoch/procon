@@ -1,4 +1,4 @@
-import { divideBoundary, simplifyBoundary, type Boundary } from "../../src/routes/api/osm/boundary";
+import { divideBoundary, simplifyBoundaries, type Boundary } from "../../src/routes/api/osm/boundary";
 
 function boundariesCovers(original: Boundary, divided: Boundary[]): boolean {
   const minLat = Math.min(...divided.map(x => x.minLat));
@@ -41,7 +41,7 @@ function testSimplifyBoundary() {
   }
 
   const divided = divideBoundary(boundary);
-  const simplified = simplifyBoundary(divided);
+  const simplified = simplifyBoundaries(divided);
 
   console.log(simplified);
 }

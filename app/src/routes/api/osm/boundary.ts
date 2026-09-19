@@ -27,7 +27,7 @@ export function divideBoundary(boundary: Boundary): Boundary[] {
 
 // 隣接する Boundary をまとめてより少ない Boundary での表現を得る
 // 制約: それぞれの boundary の minLat, minLng はグリッド境界上にあり、大きさは 1x1
-export function simplifyBoundary(boundaries: Boundary[]): Boundary[] {
+export function simplifyBoundaries(boundaries: Boundary[]): Boundary[] {
     // 未処理の Boundary の配置を保存した Map
     const boundaryMap: Set<string> = new Set();
     for (const bound of boundaries) {

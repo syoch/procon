@@ -27,16 +27,16 @@ graph
         boundariesToGet["boundariesToGet (Boundary[])"]
         boundariesToQuery["boundariesToQuery (Boundary[])"]
         requiredMapData["requiredMapData (OSMData)"]
-        cachedMapDatas["cachedMapDatas (OSMData[])"]
+        cachedMapData["cachedMapData (OSMData[])"]
 
         dividedBoundaries --readCache--> cacheReadResult
 
         cacheReadResult --if NoCacheAvailable--> boundariesToGet
-        cacheReadResult --if OSMData--> cachedMapDatas
+        cacheReadResult --if OSMData--> cachedMapData
         boundariesToGet --simplifyBoundaries--> boundariesToQuery
         boundariesToQuery --require--> requiredMapData
         requiredMapData --saveCache--> Void00000["void"]
-        cachedMapDatas --> MergedOSMData
+        cachedMapData --> MergedOSMData
         requiredMapData --> MergedOSMData
     end
     ResultMapData["result (MapData)"]
