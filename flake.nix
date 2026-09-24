@@ -1,8 +1,7 @@
 {
   description = "WideNavi Development env";
 
-  # procon サーバーの systemd バージョンを合わせるために nixpkgs 24.11 を使ってる
-  inputs.nixpkgs.url = "github:nixos/nixpkgs/nixos-24.11";
+  inputs.nixpkgs.url = "github:nixos/nixpkgs/release-26.05";
 
   outputs =
     {
@@ -12,12 +11,14 @@
     let
       system = "x86_64-linux";
       pkgs = import nixpkgs { inherit system; };
+      nodePkg = pkgs.nodejs_26;
+      pnpmPkg = pkgs.pnpm_11;
     in
     {
       devShells.${system}.default = pkgs.mkShell {
-        buildInputs = with pkgs; [
-          nodejs_22
-          pnpm
+        buildInputs = [
+          nodePkg
+          pnpmPkg
         ];
       };
 
@@ -28,14 +29,15 @@
           version = "0.1.0";
 
           src = ./app;
-          pnpmDeps = pkgs.pnpm.fetchDeps {
+          pnpmDeps = pkgs.fetchPnpmDeps {
             inherit (finalAttrs) pname version src;
-            hash = "sha256-ih4+W+jsLT5H80DYGUXbd6Hjhq4R1safo63Iyzrbxfw=";
+            hash = "sha256-yCeg+TV2UDRXmU8ey0tqHCP95hyEl+ITOdLSiAtZeCQ=";
+            fetcherVersion = 3;
           };
           nativeBuildInputs = [
-            pkgs.nodejs_22
-            pkgs.pnpm
-            pkgs.pnpm.configHook
+            nodePkg
+            pnpmPkg
+            pkgs.pnpmConfigHook
             pkgs.npmHooks.npmBuildHook
           ];
           buildPhase = ''
@@ -57,10 +59,12 @@
 
           [Service]
           Type=simple
-          ExecStart=${pkgs.nodejs_22}/bin/node ${self.packages.${system}.procon-server}/index.js
+          ExecStart=${nodePkg}/bin/node ${self.packages.${system}.procon-server}/index.js
           Restart=always
           User=procon
           Group=procon
+          Environment=OSM_CACHE_DIR=/var/cache/procon/osm
+          EnvironmentFile=/etc/procon.env
 
           [Install]
           WantedBy=network.target
@@ -69,19 +73,26 @@
           #!/usr/bin/env bash
           set -euo pipefail
 
-          sudo ln -sf $(readlink -f "$0") /nix/var/nix/gcroots/auto/procon-setup.sh
+          if [ "$(id -u)" -ne 0 ]; then
+            echo "This script must be run as root"
+            exit 1
+          fi
 
-          sudo ln -sf ${./infra/procon-site.conf} /etc/nginx/sites-enabled/procon-site.conf
-          sudo rm -f /etc/nginx/sites-enabled/default
-          sudo ln -sf ${self.packages.${system}.procon-service-unit} /etc/systemd/system/procon-app.service
+          ln -sf $(readlink -f "$0") /nix/var/nix/gcroots/auto/procon-setup.sh
 
-          sudo systemctl daemon-reload
+          ln -sf ${./infra/procon-site.conf} /etc/nginx/sites-enabled/procon-site.conf
+          rm -f /etc/nginx/sites-enabled/default
+          ln -sf ${self.packages.${system}.procon-service-unit} /etc/systemd/system/procon-app.service
 
-          sudo systemctl enable procon-app.service
-          sudo systemctl enable nginx
+          install -d -m 0755 -o procon -g procon /var/cache/procon/osm
 
-          sudo systemctl restart procon-app.service
-          sudo systemctl restart nginx
+          systemctl daemon-reload
+
+          systemctl enable procon-app.service
+          systemctl enable nginx
+
+          systemctl restart procon-app.service
+          systemctl restart nginx
 
           echo "Setup complete!"
         '';

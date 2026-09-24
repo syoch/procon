@@ -6,7 +6,11 @@
     import Button from "@smui/button";
     let map: App.GenericMap = $state(debugMapOSMMap);
 
-    function loadMap(newMap: App.GenericMap) {
+    function loadMap(newMap: App.GenericMap | Error) {
+        if (newMap instanceof Error) {
+            console.error("loadMap failed with error", newMap);
+            return;
+        }
         console.group("Updating map information");
         console.log(map);
         console.log(newMap);

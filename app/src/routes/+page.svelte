@@ -10,7 +10,8 @@
   import Button from "@smui/button";
   import { pathFind } from "$lib/path_finder";
   import Slider from "@smui/slider";
-  import { assertGraph } from "$lib/utils/graph";
+  import { assertGraph, setGraphAssertionsEnabled } from "$lib/utils/graph";
+  import { loadOSMMap } from "$lib/map_loader/osm";
 
   class SelectMarker {
     public point = $state<App.Coordinate | null>(null);
@@ -160,12 +161,23 @@
     selectedMarker?.setCoordinate({ lat, lng }, res.projection);
   }
 
+  let latestCallId = 0;
   async function loadMap() {
-    // TODO: loadOSMMap が実装されたら loadOSMMap に置き換える
-    // その際 map.getBounds() を使って表示範囲の OSM データを取得するようにする
-    // また、移動によって loadMap が並列で呼ばれる可能性があるので、最新の呼び出しだけが有効になるようにする
+    const callId = latestCallId + 1;
+    latestCallId += 1;
+
+    const bounds = map?.getBounds();
+    if (!bounds) {
+      console.error("Failed to load map (bounds is falsy)");
+      return;
+    }
+    const minLat = bounds.getSouth();
+    const minLng = bounds.getWest();
+    const maxLat = bounds.getNorth();
+    const maxLng = bounds.getEast();
+    console.log(minLat, minLng, maxLat, maxLng);
     try {
-      const osmGraph = loadDebugMap();
+      const osmGraph = await loadOSMMap(minLat, minLng, maxLat, maxLng);
       if (osmGraph instanceof Error) {
         error = `loadDebugMap - ${osmGraph.message}`;
         throw new Error(osmGraph.message, { cause: osmGraph });
@@ -190,6 +202,11 @@
       }
       assertGraph("Folded graph", foldGraph);
 
+      // 古い応答が返ってきた場合無視する
+      // crossConvert, fold2Deg の計算時間が割と長いので、ここではじく
+      if (latestCallId != callId) {
+        return;
+      }
       mapData = foldGraph;
     } catch (e) {
       console.error("Error loading map:", e);
@@ -209,6 +226,7 @@
         await loadMap();
       })
       .whenReady(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 10));
         await loadMap();
       });
 
@@ -296,6 +314,12 @@
     view_score_weight: 0.3,
     width_score_weight: 0.3,
   });
+
+  // assertGraph は O(V+E) のため、開発中の一括処理では無効化して高速化できる
+  let graphAssertionsEnabled = $state(true);
+  $effect(() => {
+    setGraphAssertionsEnabled(graphAssertionsEnabled);
+  });
 </script>
 
 <div id="map"></div>
@@ -318,6 +342,10 @@
     <Slider min={0} max={1} step={0.01} bind:value={params.width_score_weight}
     ></Slider>
     <span>Width Score Weight: {params.width_score_weight}</span>
+    <label>
+      <input type="checkbox" bind:checked={graphAssertionsEnabled} />
+      Graph Assertions (assertGraph)
+    </label>
   </div>
   <div id="LocationInput">
     <LocationInput></LocationInput><br />
