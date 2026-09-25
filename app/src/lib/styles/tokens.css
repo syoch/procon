@@ -1,0 +1,39 @@
+/* WideNavi デザイントークン (Figma「プロコン」より抽出) */
+:root {
+	/* 色 (Figma 色スタイル) */
+	--wn-main: #5074ea;
+	/* 探索ボタン */
+	--wn-panel: #7ecdea;
+	/* パネル / 戻るボタン */
+	--wn-map: #d9d9d9;
+	/* 地図プレースホルダ */
+	--wn-white: #ffffff;
+	--wn-black: #000000;
+	--wn-placeholder: #8f8f8f;
+	--wn-icon-stroke: #555555;
+
+	/* エフェクト (Figma 効果スタイル: シャドウ / クリック時) */
+	--wn-shadow: 4px 4px 4px rgba(0, 0, 0, 0.25);
+	--wn-shadow-offset: 4px;
+
+	/* タイポグラフィ */
+	--wn-font: "Noto Sans JP", sans-serif;
+
+	/* レイアウト (Figma 486x1040 フレーム準拠) */
+	--wn-panel-width: 398px;
+	--wn-panel-height: 100vh;
+	--wn-panel-left: 0px;
+	--wn-panel-top: 0px;
+}
+
+/* 押下アニメーション (Figma「クリック時」= 影の分だけ沈み込む) */
+.wn-pressable {
+	transition:
+		transform 80ms ease-out,
+		box-shadow 80ms ease-out;
+}
+
+.wn-pressable:active {
+	transform: translate(var(--wn-shadow-offset), var(--wn-shadow-offset));
+	box-shadow: none;
+}

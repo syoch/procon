@@ -2,6 +2,7 @@
 	import favicon from "$lib/assets/favicon.svg";
 	import "leaflet/dist/leaflet.css";
 	import "svelte-material-ui/bare.css";
+	import "$lib/styles/tokens.css";
 
 	import L from "leaflet";
 
