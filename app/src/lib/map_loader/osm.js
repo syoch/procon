@@ -34,7 +34,7 @@ async function fetchOverpassData(minLat, minLon, maxLat, maxLon) {
       minLng: minLon,
       maxLat,
       maxLng: maxLon,
-      wayHighwayExcludes: ["footway", "path", "steps", "pedestrian", "service", "track"],
+      wayHighwayExcludes: ["footway", "path", "steps", "pedestrian"],
     }),
   });
 
