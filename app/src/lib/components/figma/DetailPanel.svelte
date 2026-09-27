@@ -12,9 +12,6 @@
 		onback?: (e: MouseEvent) => void;
 		onsearch?: (e: MouseEvent) => void;
 	} = $props();
-
-	let start = $state("");
-	let end = $state("");
 </script>
 
 <div class="panel">
@@ -25,10 +22,10 @@
 	{#if view === "search"}
 		<div class="logo" transition:fade={{ duration: 140 }}>Wide Navi</div>
 		<div class="field field-start" transition:fade={{ duration: 140 }}>
-			<SearchField placeholder="始点を入力" bind:value={start} />
+			<SearchField placeholder="始点を入力" target="begin" />
 		</div>
 		<div class="field field-end" transition:fade={{ duration: 140 }}>
-			<SearchField placeholder="終点を入力" bind:value={end} />
+			<SearchField placeholder="終点を入力" target="end" />
 		</div>
 		<button
 			type="button"

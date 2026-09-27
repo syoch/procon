@@ -1,15 +1,31 @@
 <script lang="ts">
+	import { MainAppContext } from "$lib/app_state.svelte";
 	import IconSearch from "./IconSearch.svelte";
 
 	let {
 		placeholder = "",
-		value = $bindable(""),
-	}: { placeholder?: string; value?: string } = $props();
+		target,
+	}: { placeholder?: string; target: "begin" | "end" } = $props();
+
+	const appCtx = MainAppContext.getInstance();
+	const loc = $derived(
+		target === "begin" ? appCtx.state.begin : appCtx.state.end,
+	);
 </script>
 
-<div class="field">
+<div
+	class="field"
+	onfocusin={() => (appCtx.state.locationSelection = target)}
+	onfocusout={() => {
+		// 地図タッチによる選択時にフォーカスアウトが発生するため、少し遅延させてから解除する
+		setTimeout(() => {
+			appCtx.state.locationSelection = null;
+		}, 2000);
+	}}
+>
 	<IconSearch />
-	<input bind:value {placeholder} />
+
+	<input bind:value={loc.query} {placeholder} />
 </div>
 
 <style>

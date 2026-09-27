@@ -27,6 +27,7 @@ export type AppState = {
   begin: LocationState;
   end: LocationState;
   locationSelection: "begin" | "end" | null
+  locationCandidates: LocationCandidate[] | null;
 }
 
 export type LocationResolver = (query: string) => Promise<LocationCandidate[]>;
@@ -49,6 +50,7 @@ export class MainAppContext {
         query: "",
       },
       locationSelection: null,
+      locationCandidates: null,
     });
   }
 

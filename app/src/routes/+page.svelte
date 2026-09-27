@@ -1,21 +1,16 @@
 <script lang="ts">
-	import { onMount } from "svelte";
 	import L from "leaflet";
-	import DebugNodeIn from "$lib/ui/debug_node_in.svelte";
-	import LocationInput from "$lib/ui/location_input.svelte";
-	import { loadDebugMap } from "$lib/map_loader/debug";
 	import { findNearestEdge, transientSplit } from "$lib/transient-split";
 	import { CrossConvert } from "$lib/cross_transform";
 	import { fold2DegreeEdges } from "$lib/fold2degree";
-	import Button from "@smui/button";
 	import { pathFind } from "$lib/path_finder";
-	import Slider from "@smui/slider";
 	import { assertGraph } from "$lib/utils/graph";
 	import { loadOSMMap } from "$lib/map_loader/osm";
 	import MapViewer from "$lib/components/MapViewer.svelte";
 	import DetailButton from "$lib/components/figma/DetailButton.svelte";
 	import DetailPanel from "$lib/components/figma/DetailPanel.svelte";
 	import { fade, fly } from "svelte/transition";
+	import { MainAppContext } from "$lib/app_state.svelte";
 
 	class SelectMarker {
 		public point = $state<App.Coordinate | null>(null);
@@ -65,10 +60,14 @@
 		}
 	}
 
+	const ctx = MainAppContext.create(async (q) => {
+		console.log(q);
+		return [];
+	});
+
 	let map: L.Map | undefined = $state(undefined);
 	let error: string | null = $state(null);
 
-	let selectedMarker: SelectMarker | null = $state(null);
 	let beginMarker: SelectMarker | null = $state(null);
 	let endMarker: SelectMarker | null = $state(null);
 	let mapData = $state<App.SearchGraph>({ edges: {}, nodes: {} });
@@ -82,8 +81,24 @@
 			return;
 		}
 
-		selectedMarker?.setCoordinate({ lat, lng }, res.projection);
+		if (!ctx.state.locationSelection) {
+			return; // no selection mode
+		}
+
+		if (ctx.state.locationSelection === "begin") {
+			ctx.state.begin.state = "confirmed";
+			ctx.state.begin.query = `${res.projection.lat}, ${res.projection.lng}`;
+			ctx.state.begin.coordinate = res.projection;
+		} else {
+			ctx.state.end.state = "confirmed";
+			ctx.state.end.query = `${res.projection.lat}, ${res.projection.lng}`;
+			ctx.state.end.coordinate = res.projection;
+		}
 	}
+
+	$effect(() => {
+		console.log("app locationSelection", ctx.state.locationSelection);
+	});
 
 	function doFindPath() {
 		assertGraph("doFindPath top", mapData);
@@ -151,7 +166,6 @@
 
 	$effect(() => {
 		if (map) {
-			selectedMarker = new SelectMarker(map);
 			beginMarker = new SelectMarker(map);
 			endMarker = new SelectMarker(map);
 		}
