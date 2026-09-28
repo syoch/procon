@@ -4,13 +4,14 @@ import { distanceOf } from "./utils/haversine";
 
 type SearchPath = {
   cost: number;
-  base_node: App.NodeId;
-  node: App.NodeId;
+  base_node: App.MapVCrossNode | App.SplittedNode;
+  node: App.MapVCrossNode | App.SplittedNode;
   path: App.EdgeId[];
 };
 type SearchState = {
   paths: SearchPath[];
   min_cost: number;
+  cost_cache: Record<App.EdgeId, number>;
 };
 
 function calculateEdgeLength(edge: App.ComputedEdge) {
@@ -35,7 +36,7 @@ function calculateEdgeCost(edge: App.ComputedEdge | App.MapVCrossEdge, params: A
   return cost;
 }
 
-export function step_search(
+function step_search(
   map: App.SearchGraph,
   params: App.SearchParameters,
   state: SearchState,
@@ -43,26 +44,39 @@ export function step_search(
 ): { success: true, state: SearchState } | { success: false, error: string } {
   state.min_cost = Math.min(
     ...state.paths
-      .filter((p) => endNodes.includes(p.node))
+      .filter((p) => endNodes.includes(p.node.id))
       .map((p) => p.cost),
   );
 
-  let new_paths: SearchPath[] = [];
+  let newPaths: Map<App.NodeId, SearchPath> = new Map();
+  const addPath = (path: SearchPath) => {
+    if (path.cost > state.min_cost) return;
+
+    if (!newPaths.has(path.node.id)) {
+      newPaths.set(path.node.id, path);
+      return
+    }
+
+    const existing_path = newPaths.get(path.node.id)!;
+    if (path.cost < existing_path.cost) {
+      newPaths.set(path.node.id, path);
+    }
+  }
+
   for (const old_path of state.paths) {
-    if (endNodes.includes(old_path.node)) {
-      if (old_path.cost > state.min_cost) continue;
-      new_paths.push(old_path);
+    if (endNodes.includes(old_path.node.id)) {
+      addPath(old_path);
       continue;
     }
 
     // 一方通行を考慮し、進行可能な向きのエッジだけを隣接として扱う。
     // 隣接エッジは node.edges から引く (全エッジ走査を避ける)
-    const neighbors = (map.nodes[old_path.node]?.edges ?? [])
+    const neighbors = (old_path.node.edges ?? [])
       .map((edgeId) => map.edges[edgeId])
       .filter((edge) =>
         edge && (
-          (edge.begin === old_path.node && canTraverseForward(edge.direction)) ||
-          (edge.end === old_path.node && canTraverseBackward(edge.direction))
+          (edge.begin === old_path.node.id && canTraverseForward(edge.direction)) ||
+          (edge.end === old_path.node.id && canTraverseBackward(edge.direction))
         )
       );
 
@@ -84,44 +98,36 @@ export function step_search(
       // 閉路を避けるために、すでに通ったエッジを再度通らないようにする
       if (old_path.path.includes(neighbor.id)) continue;
 
-      const new_cost = old_path.cost + calculateEdgeCost(neighbor, params);
-      if (new_cost > state.min_cost) continue;
+      const edgeCost = state.cost_cache[neighbor.id] ?? calculateEdgeCost(neighbor, params);
+      state.cost_cache[neighbor.id] = edgeCost;
 
-      new_paths.push({
+      const new_cost = old_path.cost + edgeCost;
+
+      addPath({
         base_node: old_path.base_node,
         cost: new_cost,
-        node: neighbor.begin === old_path.node ? neighbor.end : neighbor.begin,
+        node: neighbor.begin === old_path.node.id ? map.nodes[neighbor.end] : map.nodes[neighbor.begin],
         path: [...old_path.path, neighbor.id],
       });
     }
   }
-
-  const unique_nodes = new_paths.reduce((acc, path) => {
-    if (!acc.has(path.node)) {
-      acc.set(path.node, path);
-    } else {
-      const existing_path = acc.get(path.node)!;
-      if (path.cost < existing_path.cost) {
-        acc.set(path.node, path);
-      }
-    }
-    return acc;
-  }, new Map<App.NodeId, SearchPath>());
-
-  new_paths = Array.from(unique_nodes.values());
-
   return {
     success: true,
     state: {
-      paths: new_paths,
+      paths: Array.from(newPaths.values()),
       min_cost: state.min_cost,
+      cost_cache: state.cost_cache,
     },
   };
 }
 
-export function generateInitSearchState(beginNodes: App.NodeId[]): SearchState {
+function generateInitSearchState(graph: App.SearchGraph, beginNodes: App.NodeId[]): SearchState {
   let paths: SearchPath[] = [];
-  for (const node of beginNodes) {
+  for (const nodeId of beginNodes) {
+    const node = graph.nodes[nodeId];
+    if (!node) {
+      throw new Error(`Node with ID ${nodeId} not found in the graph.`);
+    }
     paths.push({
       cost: 0,
       base_node: node,
@@ -132,6 +138,7 @@ export function generateInitSearchState(beginNodes: App.NodeId[]): SearchState {
   return {
     paths: paths,
     min_cost: 0,
+    cost_cache: {},
   };
 }
 
@@ -139,16 +146,16 @@ export function generateInitSearchState(beginNodes: App.NodeId[]): SearchState {
  * @brief 経路探索を行う
  * @param graph 探索対象のグラフ
  * @param begin 探索開始地点
- * @param end 探索終了地点
+ * @param endNodes 探索終了地点
  * @returns 経路の辺リスト
  */
-export function pathFind(graph: App.SearchGraph, params: App.SearchParameters, begin: App.NodeId[], end: App.NodeId[]): App.EdgeId[] {
-  if (begin.length === 0 || end.length === 0) {
+export function pathFind(graph: App.SearchGraph, params: App.SearchParameters, begin: App.NodeId[], endNodes: App.NodeId[]): App.EdgeId[] {
+  if (begin.length === 0 || endNodes.length === 0) {
     return [];
   }
-  let state = generateInitSearchState(begin);
+  let state = generateInitSearchState(graph, begin);
   while (true) {
-    const result = step_search(graph, params, state, end);
+    const result = step_search(graph, params, state, endNodes);
     if (!result.success) {
       console.error(result.error);
       return [];
@@ -158,7 +165,7 @@ export function pathFind(graph: App.SearchGraph, params: App.SearchParameters, b
     if (state.paths.length === 0) {
       return [];
     }
-    if (state.paths.every(p => end.includes(p.node) && p.cost === state.min_cost)) {
+    if (state.paths.every(p => endNodes.includes(p.node.id) && p.cost === state.min_cost)) {
       return state.paths[0].path;
     }
   }
