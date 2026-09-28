@@ -7,6 +7,7 @@
     mapData = $bindable(),
     pathResult = $bindable(),
     error = $bindable(),
+    loading = $bindable(false),
     showMapEdges = false,
     doLoadMap,
     onClick,
@@ -15,6 +16,7 @@
     mapData: App.GenericMap;
     pathResult: App.Coordinate[];
     error: string | null;
+    loading: boolean;
     showMapEdges?: boolean;
     doLoadMap: (
       minLat: number,
@@ -115,6 +117,7 @@
     const maxLat = bounds.getNorth();
     const maxLng = bounds.getEast();
     console.log(minLat, minLng, maxLat, maxLng);
+    loading = true;
     try {
       const foldGraph = await doLoadMap(minLat, minLng, maxLat, maxLng);
 
@@ -125,6 +128,11 @@
       mapData = foldGraph;
     } catch (e) {
       console.error("Error loading map:", e);
+    } finally {
+      // 最新のリクエストのみ読み込み完了として扱う
+      if (latestCallId == callId) {
+        loading = false;
+      }
     }
   }
 

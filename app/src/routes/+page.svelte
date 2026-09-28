@@ -12,8 +12,9 @@
 	import TitleScreen from "$lib/components/figma/TitleScreen.svelte";
 	import LoadingScreen from "$lib/components/figma/LoadingScreen.svelte";
 	import SearchingOverlay from "$lib/components/figma/SearchingOverlay.svelte";
-	import { fade } from "svelte/transition";
-	import { onMount } from "svelte";
+	import { fade, fly } from "svelte/transition";
+	import { cubicOut, backOut } from "svelte/easing";
+	import widenaviLogo from "$lib/assets/widenavi-logo.svg";
 	import { MainAppContext, type ParameterVariant } from "$lib/app_state.svelte";
 
 	class SelectMarker {
@@ -242,17 +243,42 @@
 	});
 
 	let view: "map" | "search" | "result" = $state("search");
-	let splash: "title" | "loading" | null = $state("title");
 	let searching = $state(false);
+	let mapLoading = $state(true);
 
-	onMount(() => {
-		const toLoading = setTimeout(() => (splash = "loading"), 900);
-		const toDone = setTimeout(() => (splash = null), 2200);
-		return () => {
-			clearTimeout(toLoading);
-			clearTimeout(toDone);
-		};
+	// 起動シーケンス (Figma):
+	//   ローディング = 地図読み込み完了まで →(DISSOLVE 300ms) タイトル
+	//   →(0.1s後にロゴが上からスプリングで降下 0.958s) → アプリ表示 (DISSOLVE 500ms)
+	type Boot = "loading" | "title" | "logo" | null;
+	let boot: Boot = $state("loading");
+
+	// 地図の読み込みが完了したらローディングからタイトルへ
+	$effect(() => {
+		if (boot === "loading" && !mapLoading) {
+			boot = "title";
+		}
 	});
+
+	// タイトル表示後、0.1s でロゴを降下
+	$effect(() => {
+		if (boot !== "title") return;
+		const toLogo = setTimeout(() => (boot = "logo"), 100);
+		return () => clearTimeout(toLogo);
+	});
+
+	// ロゴ定着後にアプリを表示
+	$effect(() => {
+		if (boot !== "logo") return;
+		const toDone = setTimeout(() => (boot = null), 1500);
+		return () => clearTimeout(toDone);
+	});
+
+	/** 起動演出をスキップして次の段階へ進める */
+	function advanceBoot() {
+		if (boot === "loading") boot = "title";
+		else if (boot === "title") boot = "logo";
+		else if (boot === "logo") boot = null;
+	}
 </script>
 
 <MapViewer
@@ -260,6 +286,7 @@
 	bind:mapData
 	bind:pathResult
 	bind:error
+	bind:loading={mapLoading}
 	{onClick}
 	doLoadMap={async (
 		minLat: number,
@@ -302,7 +329,7 @@
 {#if view !== "map"}
 	<div
 		class="panel-layer"
-		transition:fade={{ duration: 300 }}
+		in:fly={{ x: -398, duration: 300, easing: cubicOut }}
 	>
 		<DetailPanel
 			{view}
@@ -323,10 +350,29 @@
 	<div class="error-banner" transition:fade={{ duration: 150 }}>{error}</div>
 {/if}
 
-{#if splash === "title"}
-	<div class="splash" transition:fade={{ duration: 300 }}><TitleScreen /></div>
-{:else if splash === "loading"}
-	<div class="splash" transition:fade={{ duration: 300 }}><LoadingScreen /></div>
+{#if boot === "loading"}
+	<button type="button" class="boot" aria-label="スキップ" out:fade={{ duration: 300 }} onclick={advanceBoot}>
+		<LoadingScreen />
+	</button>
+{:else if boot === "title" || boot === "logo"}
+	<button
+		type="button"
+		class="boot"
+		aria-label="スキップ"
+		in:fade={{ duration: 300 }}
+		out:fade={{ duration: 500 }}
+		onclick={advanceBoot}
+	>
+		<TitleScreen />
+		{#if boot === "logo"}
+			<img
+				class="splash-logo"
+				src={widenaviLogo}
+				alt="Wide Navi"
+				in:fly={{ y: -600, duration: 958, easing: backOut }}
+			/>
+		{/if}
+	</button>
 {/if}
 
 <style>
@@ -359,5 +405,24 @@
 		font-family: var(--wn-font);
 		font-size: 14px;
 		box-shadow: var(--wn-shadow);
+	}
+
+	.boot {
+		position: fixed;
+		inset: 0;
+		z-index: 100;
+		padding: 0;
+		border: none;
+		background: transparent;
+		cursor: pointer;
+	}
+	.splash-logo {
+		position: fixed;
+		inset: 0;
+		width: 100%;
+		height: 100%;
+		object-fit: contain;
+		pointer-events: none;
+		z-index: 101;
 	}
 </style>

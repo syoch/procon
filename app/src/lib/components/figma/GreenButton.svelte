@@ -14,7 +14,7 @@
 
 <button
 	type="button"
-	class="green-button wn-pressable"
+	class="green-button"
 	style="width: {width}px; height: {height}px"
 	{onclick}
 >
