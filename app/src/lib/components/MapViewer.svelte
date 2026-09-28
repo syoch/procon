@@ -4,33 +4,15 @@
 
   let {
     map = $bindable(),
-    mapData = $bindable(),
     pathResult = $bindable(),
-    error = $bindable(),
-    loading = $bindable(false),
-    showMapEdges = false,
-    doLoadMap,
     onClick,
   }: {
     map: L.Map | undefined;
-    mapData: App.GenericMap;
     pathResult: App.Coordinate[];
-    error: string | null;
-    loading: boolean;
-    showMapEdges?: boolean;
-    doLoadMap: (
-      minLat: number,
-      minLng: number,
-      maxLat: number,
-      maxLng: number,
-    ) => Promise<App.SearchGraph>;
     onClick: (lat: number, lng: number) => void;
   } = $props();
 
   $effect(() => {
-    if (!mapData) {
-      return;
-    }
     if (!map) {
       return;
     }
@@ -47,94 +29,7 @@
         .addTo(map)
         .bindPopup(`Found path with ${pathResult.length} nodes`);
     }
-
-    if (!showMapEdges) return;
-    let i = 0;
-    for (const edge of Object.values(mapData.edges)) {
-      const fromNode = mapData.nodes[edge.begin];
-      const toNode = mapData.nodes[edge.end];
-
-      if (edge.type === "FoldedEdge") {
-        const nodes = [
-          fromNode?.coordinate,
-          ...edge.segments
-            .map((seg) => [seg.begin_coordinate, seg.end_coordinate])
-            .flat(),
-          toNode?.coordinate,
-        ].filter(Boolean);
-        L.polyline(nodes, { color: "green" })
-          .addTo(map)
-          .bindPopup(`Folded Edge ID: ${edge.id}`);
-        continue;
-      }
-      if (edge.type === "MapVCrossEdge") {
-        if (!fromNode || !toNode) {
-          console.warn(`MapVCrossEdge ${edge.id} has missing nodes`);
-          continue;
-        }
-        L.circleMarker([fromNode.coordinate.lat, fromNode.coordinate.lng], {
-          color: "red",
-          radius: 2,
-        })
-          .addTo(map)
-          .bindPopup(`MapVCrossEdge ID: ${edge.id}`);
-        continue;
-      }
-
-      if (fromNode && toNode) {
-        const nodes = [fromNode.coordinate, toNode.coordinate];
-        L.polyline(nodes, { color: i++ % 2 === 0 ? "blue" : "red" })
-          .addTo(map)
-          .bindPopup(`Edge ID: ${edge.id}`);
-        continue;
-      }
-      console.warn(
-        `Edge ${edge.id} has missing nodes: fromNode=${fromNode?.id}, toNode=${toNode?.id}`,
-      );
-
-      const validNode = fromNode || toNode;
-      if (!validNode) continue;
-      L.circleMarker([validNode.coordinate.lat, validNode.coordinate.lng], {
-        color: "orange",
-      })
-        .addTo(map)
-        .bindPopup(`Edge ID: ${edge.id} (one node missing)`);
-    }
   });
-
-  let latestCallId = 0;
-  async function loadMap() {
-    const callId = latestCallId + 1;
-    latestCallId += 1;
-
-    const bounds = map?.getBounds();
-    if (!bounds) {
-      console.error("Failed to load map (bounds is falsy)");
-      return;
-    }
-    const minLat = bounds.getSouth();
-    const minLng = bounds.getWest();
-    const maxLat = bounds.getNorth();
-    const maxLng = bounds.getEast();
-    console.log(minLat, minLng, maxLat, maxLng);
-    loading = true;
-    try {
-      const foldGraph = await doLoadMap(minLat, minLng, maxLat, maxLng);
-
-      // 古い応答が返ってきた場合無視する
-      if (latestCallId != callId) {
-        return;
-      }
-      mapData = foldGraph;
-    } catch (e) {
-      console.error("Error loading map:", e);
-    } finally {
-      // 最新のリクエストのみ読み込み完了として扱う
-      if (latestCallId == callId) {
-        loading = false;
-      }
-    }
-  }
 
   onMount(() => {
     map = L.map("map")
@@ -144,13 +39,6 @@
         const lng = e.latlng.lng;
 
         onClick(lat, lng);
-      })
-      .on("moveend", async () => {
-        await loadMap();
-      })
-      .whenReady(async () => {
-        await new Promise((resolve) => setTimeout(resolve, 10));
-        await loadMap();
       });
 
     // タイルレイヤの追加

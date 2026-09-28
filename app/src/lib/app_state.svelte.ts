@@ -1,4 +1,5 @@
 import { getContext, setContext } from "svelte";
+import type { Readable, Writable } from "svelte/store";
 
 export interface LocationCandidate {
   /** 短い表示名(例: "長岡駅") */
@@ -49,6 +50,8 @@ export type AppState = {
   parameterVariants: ParameterVariant[];
   /** 選択中プリセットの index (-1 は未選択) */
   selectedVariantIndex: number;
+
+  appState: "boot" | "app" | "menu-detail" | "menu-result"
 };
 
 export type LocationResolver = (query: string) => Promise<LocationCandidate[]>;
@@ -60,7 +63,8 @@ export class MainAppContext {
 
   constructor(
     locationResolver: LocationResolver,
-    parameterVariants: ParameterVariant[] = [],
+    parameterVariants: ParameterVariant[],
+    selectedVariantIndex: number
   ) {
     this.locationResolver = locationResolver;
     this.state = $state<AppState>({
@@ -77,21 +81,16 @@ export class MainAppContext {
       locationSelection: null,
       locationCandidates: null,
       parameterVariants,
-      selectedVariantIndex: parameterVariants.length > 0 ? 0 : -1,
+      selectedVariantIndex: selectedVariantIndex,
+      appState: "boot"
     });
   }
 
-  /** 現在選択中のパラメータプリセット(未選択なら null) */
-  get selectedVariant(): ParameterVariant | null {
-    return this.state.parameterVariants[this.state.selectedVariantIndex] ?? null;
-  }
+  get searchParameters(): App.SearchParameters {
+    const params = this.state.parameterVariants[this.state.selectedVariantIndex];
+    if (!params) throw "無効なプリセットインデックスが指定されています";
 
-  /** 名前からプリセットを選択する */
-  selectVariantByName(name: string): void {
-    const index = this.state.parameterVariants.findIndex((v) => v.name === name);
-    if (index >= 0) {
-      this.state.selectedVariantIndex = index;
-    }
+    return params;
   }
 
   static getInstance(): MainAppContext {
@@ -100,9 +99,10 @@ export class MainAppContext {
 
   static create(
     locationResolver: LocationResolver,
-    parameterVariants: ParameterVariant[] = [],
+    parameterVariants: ParameterVariant[],
+    selectedVariantIndex: number,
   ): MainAppContext {
-    const instance = new MainAppContext(locationResolver, parameterVariants);
+    const instance = new MainAppContext(locationResolver, parameterVariants, selectedVariantIndex);
     setContext("MainAppContext", instance);
     return instance;
   }

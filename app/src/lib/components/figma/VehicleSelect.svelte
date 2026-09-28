@@ -3,26 +3,28 @@
 
 	const appCtx = MainAppContext.getInstance();
 	const variants = $derived(appCtx.state.parameterVariants);
-	const selectedName = $derived(
-		appCtx.state.parameterVariants[appCtx.state.selectedVariantIndex]?.name ??
-			"",
-	);
+	const selectedValue = $derived(appCtx.state.selectedVariantIndex);
 
 	function onchange(event: Event) {
-		appCtx.selectVariantByName((event.currentTarget as HTMLSelectElement).value);
+		const variantIndex = (event.currentTarget as HTMLSelectElement).value;
+		try {
+			appCtx.state.selectedVariantIndex = parseInt(variantIndex);
+		} catch (e) {
+			throw e
+		}
 	}
 </script>
 
 <div class="vehicle">
 	<select
-		value={selectedName}
+		value={selectedValue}
 		onchange={onchange}
 		aria-label="車種を選択"
 		required
 	>
 		<option value="" disabled>車種を選択</option>
-		{#each variants as variant (variant.name)}
-			<option value={variant.name}>{variant.name}</option>
+		{#each variants as variant, idx (variant.name)}
+			<option value={idx}>{variant.name}</option>
 		{/each}
 	</select>
 	<svg class="caret" viewBox="0 0 10 8" width="9" height="7.5" aria-hidden="true">
