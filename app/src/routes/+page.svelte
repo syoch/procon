@@ -3,10 +3,9 @@
 	import { fade, fly } from "svelte/transition";
 	import { cubicOut, backOut } from "svelte/easing";
 
-	import { findNearestEdge, transientSplit } from "$lib/transient-split";
+	import { findNearestEdge } from "$lib/transient-split";
 	import { CrossConvert } from "$lib/cross_transform";
 	import { fold2DegreeEdges } from "$lib/fold2degree";
-	import { pathFind } from "$lib/path_finder";
 	import { assertGraph } from "$lib/utils/graph";
 	import { loadOSMMap } from "$lib/map_loader/osm";
 	import MapViewer from "$lib/components/MapViewer.svelte";
@@ -133,44 +132,50 @@
 	async function startSearch() {
 		const begin = ctx.state.begin.coordinate;
 		const end = ctx.state.end.coordinate;
-		if (!begin || !end) {
-			error = "始点と終点を指定してください";
-			console.error("[startSearch]", error);
-			return;
+		if (!begin) {
+			error = "始点が指定されていません";
+		}
+		if (!end) {
+			error = "始点が指定されていません";
 		}
 		if (Object.keys(mapData.edges).length === 0) {
 			error = "地図データを読み込み中です。少し待って再度お試しください";
 			console.error("[startSearch]", error);
 			return;
 		}
-
 		error = null;
+
 		isLoading = true;
-		// オーバーレイを描画してから重い計算に入る
-		await new Promise((resolve) => setTimeout(resolve, 0));
+		const res = await fetch("/api/path-find", {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({
+				begin,
+				end,
+				parameters: ctx.searchParameters,
+				wayHighway: [
+					"motorway",
+					"trunk",
+					"primary",
+					"secondary",
+					"tertiary",
+					"unclassified",
+					"residential",
+				],
+			}),
+		});
+		isLoading = false;
+
+		if (!res.ok) {
+			throw new Error(`/api/path-find API エラー: ${res.status}`);
+		}
 
 		try {
-			assertGraph("startSearch", mapData);
-
-			const beginNodeId = transientSplit(mapData, begin);
-			const endNodeId = transientSplit(mapData, end);
-
-			console.time("pathFind");
-			const result = pathFind(
-				mapData,
-				ctx.searchParameters,
-				[beginNodeId],
-				[endNodeId],
-			);
-			console.timeEnd("pathFind");
-
-			pathResult = pathToCoordinates(result);
+			const path: App.Coordinate[] = await res.json();
+			pathResult = path;
 			ctx.state.appState = "menu-result";
 		} catch (e) {
-			console.error("[startSearch] 経路探索に失敗", e);
-			error = e instanceof Error ? e.message : String(e);
-		} finally {
-			isLoading = false;
+			error = "サーバー応答の読み取りエラーが発生しました";
 		}
 	}
 	const doLoadMap = async (
@@ -308,23 +313,29 @@
 						/>
 					</div>
 				{:else}
-					<span style="position: absolute; white-space: nowrap; left: 18.3px; top: 104px;"
+					<span
+						style="position: absolute; white-space: nowrap; left: 18.3px; top: 104px;"
 						>出発点</span
 					>
-					<span style="position: absolute; white-space: nowrap; left: 30.7px; top: 146px;"
+					<span
+						style="position: absolute; white-space: nowrap; left: 30.7px; top: 146px;"
 						>地名</span
 					>
-					<span style="position: absolute; white-space: nowrap; left: 32.8px; top: 196px;"
+					<span
+						style="position: absolute; white-space: nowrap; left: 32.8px; top: 196px;"
 						>詳細等</span
 					>
 					<div class="divider" style="top: 253px;"></div>
-					<span style="position: absolute; white-space: nowrap; left: 18.5px; top: 278.6px;"
+					<span
+						style="position: absolute; white-space: nowrap; left: 18.5px; top: 278.6px;"
 						>終着点</span
 					>
-					<span style="position: absolute; white-space: nowrap; left: 32.7px; top: 320.2px;"
+					<span
+						style="position: absolute; white-space: nowrap; left: 32.7px; top: 320.2px;"
 						>地点</span
 					>
-					<span style="position: absolute; white-space: nowrap; left: 34.8px; top: 367.6px;"
+					<span
+						style="position: absolute; white-space: nowrap; left: 34.8px; top: 367.6px;"
 						>詳細等</span
 					>
 					<div class="divider" style="top: 425.5px;"></div>
