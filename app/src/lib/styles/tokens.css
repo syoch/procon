@@ -20,7 +20,6 @@
 
 	/* エフェクト */
 	--wn-shadow: 4px 4px 4px rgba(0, 0, 0, 0.25);
-	--wn-shadow-offset: 4px;
 
 	/* タイポグラフィ */
 	--wn-font: "Noto Sans JP", sans-serif;
@@ -30,16 +29,4 @@
 	--wn-panel-height: 100dvh;
 	--wn-panel-left: 0px;
 	--wn-panel-top: 0px;
-}
-
-/* 押下アニメーション (Figma 効果スタイル「クリック時」: 影の分だけ沈み込む) */
-.wn-pressable {
-	transition:
-		transform 50ms ease-out,
-		box-shadow 50ms ease-out;
-}
-
-.wn-pressable:active {
-	transform: translate(var(--wn-shadow-offset), var(--wn-shadow-offset));
-	box-shadow: none;
 }
