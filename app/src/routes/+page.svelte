@@ -242,7 +242,7 @@
 		(async () => {
 			ctx.state.appState = "boot";
 			await new Promise((resolve) => setTimeout(resolve, 1500));
-			ctx.state.appState = "app";
+			ctx.state.appState = "menu-detail";
 		})();
 
 		return;
@@ -280,21 +280,27 @@
 			{#snippet content()}
 				{#if ctx.state.appState === "menu-detail"}
 					<div
-						class="field field-start"
+						style="position: absolute; left: 49px; top: 128px;"
 						transition:fade={{ duration: 140 }}
 					>
 						<SearchField placeholder="始点を入力" target="begin" />
 					</div>
 					<div
-						class="field field-end"
+						style="position: absolute; left: 49px; top: 209px"
 						transition:fade={{ duration: 140 }}
 					>
 						<SearchField placeholder="終点を入力" target="end" />
 					</div>
-					<div class="vehicle" transition:fade={{ duration: 140 }}>
-						<VehicleSelect />
-					</div>
-					<div class="action" transition:fade={{ duration: 140 }}>
+
+					<div
+						style="position: absolute; top: 312px; display: flex;"
+						transition:fade={{ duration: 140 }}
+					>
+						<div style="flex: 0 0 44px;"></div>
+						<div transition:fade={{ duration: 140 }}>
+							<VehicleSelect />
+						</div>
+						<div style="flex: 0 0 25px;"></div>
 						<GreenButton
 							label="検索"
 							width={60}
@@ -302,39 +308,38 @@
 						/>
 					</div>
 				{:else}
-					<span class="label" style="left: 18.3px; top: 104px;"
+					<span style="position: absolute; white-space: nowrap; left: 18.3px; top: 104px;"
 						>出発点</span
 					>
-					<span class="value" style="left: 30.7px; top: 146px;"
+					<span style="position: absolute; white-space: nowrap; left: 30.7px; top: 146px;"
 						>地名</span
 					>
-					<span class="value" style="left: 32.8px; top: 196px;"
+					<span style="position: absolute; white-space: nowrap; left: 32.8px; top: 196px;"
 						>詳細等</span
 					>
 					<div class="divider" style="top: 253px;"></div>
-					<span class="label" style="left: 18.5px; top: 278.6px;"
+					<span style="position: absolute; white-space: nowrap; left: 18.5px; top: 278.6px;"
 						>終着点</span
 					>
-					<span class="value" style="left: 32.7px; top: 320.2px;"
+					<span style="position: absolute; white-space: nowrap; left: 32.7px; top: 320.2px;"
 						>地点</span
 					>
-					<span class="value" style="left: 34.8px; top: 367.6px;"
+					<span style="position: absolute; white-space: nowrap; left: 34.8px; top: 367.6px;"
 						>詳細等</span
 					>
 					<div class="divider" style="top: 425.5px;"></div>
 					<div
-						class="vehicle"
-						style="position: absolute; left: 34px; top: 454.5px;"
+						style="position: absolute; top: 454.5px; display: flex;"
+						transition:fade={{ duration: 140 }}
 					>
-						<VehicleSelect />
-					</div>
-					<div
-						class="action"
-						style="position: absolute; left: 283px; top: 453.5px;"
-					>
+						<div style="flex: 0 0 44px;"></div>
+						<div transition:fade={{ duration: 140 }}>
+							<VehicleSelect />
+						</div>
+						<div style="flex: 0 0 25px;"></div>
 						<GreenButton
-							label="再検索"
-							width={80}
+							label="検索"
+							width={60}
 							onclick={startSearch}
 						/>
 					</div>
@@ -351,12 +356,12 @@
 		out:fade={{ duration: 500 }}
 	>
 		<TitleScreen />
-			<img
-				class="splash-logo"
-				src={widenaviLogo}
-				alt="Wide Navi"
-				in:fly={{ y: -600, duration: 958, easing: backOut }}
-			/>
+		<img
+			class="splash-logo"
+			src={widenaviLogo}
+			alt="Wide Navi"
+			in:fly={{ delay: 500, y: -600, duration: 958, easing: backOut }}
+		/>
 	</button>
 {/if}
 
@@ -419,34 +424,6 @@
 		z-index: 101;
 	}
 
-	.field {
-		position: absolute;
-		left: 49px;
-	}
-	.field-start {
-		top: 128px;
-	}
-	.field-end {
-		top: 209px;
-	}
-
-	.vehicle {
-		position: absolute;
-		left: 44px;
-		top: 312px;
-	}
-
-	.action {
-		position: absolute;
-		left: 289px;
-		top: 312px;
-	}
-
-	.label,
-	.value {
-		position: absolute;
-		white-space: nowrap;
-	}
 	.divider {
 		position: absolute;
 		left: 16px;
