@@ -2,13 +2,6 @@ import { CalculateCost } from "./cost_calculator";
 import { canTraverseBackward, canTraverseForward } from "./utils/direction";
 import { distanceOf } from "./utils/haversine";
 
-type SearchPath = {
-  cost: number;
-  base_node: App.MapVCrossNode | App.SplittedNode;
-  node: App.MapVCrossNode | App.SplittedNode;
-  path: App.EdgeId[];
-};
-
 function calculateEdgeLength(edge: App.ComputedEdge) {
   return edge.segments
     .map(x => distanceOf(x.begin_coordinate, x.end_coordinate))
@@ -31,10 +24,10 @@ function calculateEdgeCost(edge: App.ComputedEdge | App.MapVCrossEdge, params: A
   return cost;
 }
 
-function traversable(edge: App.SearchGraph["edges"][string], old_path: SearchPath) {
+function traversable(edge: App.SearchGraph["edges"][string], node: App.NodeId) {
   return (
-    (edge.begin === old_path.node.id && canTraverseForward(edge.direction)) ||
-    (edge.end === old_path.node.id && canTraverseBackward(edge.direction))
+    (edge.begin === node && canTraverseForward(edge.direction)) ||
+    (edge.end === node && canTraverseBackward(edge.direction))
   );
 }
 
@@ -67,85 +60,70 @@ export function pathFind(graph: App.SearchGraph, params: App.SearchParameters, b
     return [];
   }
 
-  let paths: SearchPath[] = [];
-  for (const nodeId of begin) {
-    const node = graph.nodes[nodeId];
-    if (!node) {
-      throw new Error(`Node with ID ${nodeId} not found in the graph.`);
+  let endNodeSet = new Set(endNodes);
+  let prevMap: Map<App.NodeId, App.EdgeId> = new Map();
+  let nodeCostMap: Map<App.NodeId, number> = new Map();
+  let edgeCostCache: Map<App.EdgeId, number> = new Map();
+
+  const updateCost = (edgeId: App.EdgeId, nextNodeId: App.NodeId, cost: number) => {
+    const prevCost = nodeCostMap.get(nextNodeId);
+    if (prevCost === undefined || cost < prevCost) {
+      nodeCostMap.set(nextNodeId, cost);
+      prevMap.set(nextNodeId, edgeId);
+      return true;
     }
-    paths.push({
-      cost: 0,
-      base_node: node,
-      node: node,
-      path: [],
-    });
+    return false;
   }
 
-  let endNodeSet = new Set(endNodes);
-  let nodeCostMap: Map<App.NodeId, number> = new Map();
-  let edgeCostCache: Map<App.NodeId, number> = new Map();
+  let queue: [App.NodeId, number][] = begin.map((nodeId) => [nodeId, 0]);
+  for (const nodeId of begin) {
+    nodeCostMap.set(nodeId, 0);
+  }
 
-  let min_cost = 0;
-  while (true) {
-    min_cost = Math.min(
-      ...paths
-        .filter((p) => endNodeSet.has(p.node.id))
-        .map((p) => p.cost),
-    );
+  while (queue.length > 0) {
+    queue.sort((a, b) => (a[1] ?? Infinity) - (b[1] ?? Infinity));
 
-    let newPaths: Map<App.NodeId, SearchPath> = new Map();
-    const addPath = (path: SearchPath) => {
-      if (path.cost > min_cost) return;
+    let [currentNodeId, currentCost] = queue.shift()!;
+    if (nodeCostMap.get(currentNodeId) !== currentCost) {
+      continue;
+    }
+    let currentNode = graph.nodes[currentNodeId];
 
-      const existing_path = newPaths.get(path.node.id)!;
-      if (path.cost > existing_path?.cost) {
-        return;
+    if (endNodeSet.has(currentNodeId)) {
+      let path: App.EdgeId[] = [];
+      let nodeId = currentNodeId;
+      while (prevMap.has(nodeId)) {
+        const edgeId = prevMap.get(nodeId)!;
+        path.push(edgeId);
+        const edge = graph.edges[edgeId];
+        nodeId = edge.begin === nodeId ? edge.end : edge.begin;
       }
-
-      newPaths.set(path.node.id, path);
+      return path.reverse();
     }
 
-
-    for (const old_path of paths) {
-      if (endNodeSet.has(old_path.node.id)) {
-        addPath(old_path);
+    // 隣接ノードを探索
+    for (const edgeId of currentNode.edges) {
+      const edge = graph.edges[edgeId];
+      if (!edge) continue;
+      if (!traversable(edge, currentNodeId)) {
         continue;
       }
 
-      for (const edgeId of (old_path.node.edges ?? [])) {
-        // 一方通行を考慮し、進行可能な向きのエッジだけを隣接として扱う。
-        const edge = graph.edges[edgeId];
-        if (!edge) continue;
-        if (!traversable(edge, old_path)) {
-          continue;
-        }
+      const nextNodeId = edge.begin === currentNodeId ? edge.end : edge.begin;
+      const computedEdge = getComputedNode(graph, edge);
 
+      const edgeCost = edgeCostCache.get(edge.id) ?? calculateEdgeCost(computedEdge, params);
+      edgeCostCache.set(edge.id, edgeCost);
 
-        const neighbor = getComputedNode(graph, edge);
+      const totalCost = currentCost + edgeCost;
 
-        // 閉路を避けるために、すでに通ったエッジを再度通らないようにする
-        if (old_path.path.includes(neighbor.id)) continue;
-
-        const edgeCost = edgeCostCache.get(neighbor.id) ?? calculateEdgeCost(neighbor, params);
-        edgeCostCache.set(neighbor.id, edgeCost);
-
-        const new_cost = old_path.cost + edgeCost;
-
-        addPath({
-          base_node: old_path.base_node,
-          cost: new_cost,
-          node: neighbor.begin === old_path.node.id ? graph.nodes[neighbor.end] : graph.nodes[neighbor.begin],
-          path: [...old_path.path, neighbor.id],
-        });
+      const updated = updateCost(edge.id, nextNodeId, totalCost);
+      if (updated) {
+        queue.push([nextNodeId, totalCost]);
       }
     }
-
-    paths = Array.from(newPaths.values());
-    if (paths.length === 0) {
-      return [];
-    }
-    if (paths.every(p => endNodeSet.has(p.node.id) && p.cost === min_cost)) {
-      return paths[0].path;
-    }
   }
+
+  // 経路が見つからなかった場合は空の配列を返す
+  return [];
 }
