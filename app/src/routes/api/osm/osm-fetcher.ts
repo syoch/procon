@@ -1,5 +1,4 @@
 import { type Boundary } from "./boundary";
-import { type OSMData } from "./osm-data";
 import { type OSMFetcher } from "./types";
 import { env } from "$env/dynamic/private";
 
@@ -11,7 +10,7 @@ function getOverpassEndpoint(): string {
   return endpoint;
 }
 
-export const fetchOverpassData: OSMFetcher = async function (boundaries: Boundary[]): Promise<OSMData> {
+export const fetchOverpassData: OSMFetcher = async function (boundaries: Boundary[]): Promise<App.OSMData> {
   let queryRequireSet = ""
   for (const boundary of boundaries) {
     // 生に近いデータのキャッシュを取りたいので、最低限のフィルタで取得する

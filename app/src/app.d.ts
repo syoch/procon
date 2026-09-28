@@ -229,6 +229,24 @@ declare global {
 			width_score_weight: number;
 			lambda: number;
 		};
+
+		type OSMRawWay = {
+			type: "way";
+			id: number;
+			nodes: number[];
+			tags: Record<string, string>;
+		}
+
+		type OSMRawNode = {
+			type: "node";
+			id: number;
+			lat: number;
+			lon: number;
+		};
+
+		type OSMData = {
+			elements: (OSMRawWay | OSMRawNode)[]
+		};
 	}
 }
 
