@@ -1,8 +1,8 @@
 import { expect, test } from "vitest";
-import { mergeOSMData, trimOSMData, type OSMData, type OSMRawNode } from "../../src/routes/api/osm/osm-data";
+import { mergeOSMData, trimOSMData } from "../../src/routes/api/osm/osm-data";
 import { boundaryContains, type Boundary } from "../../src/routes/api/osm/boundary";
 
-const DATA1: OSMData = {
+const DATA1: App.OSMData = {
   elements: [
     { "type": "node", id: 10, lat: 2, lon: -1 },
     { "type": "node", id: 11, lat: 2, lon: +1 },
@@ -13,7 +13,7 @@ const DATA1: OSMData = {
     { "type": "way", id: 2, nodes: [20, 21], tags: { highway: "residential" } },
   ]
 };
-const DATA2: OSMData = {
+const DATA2: App.OSMData = {
   elements: [
     { "type": "node", id: 30, lat: -2, lon: -1 },
     { "type": "node", id: 31, lat: -2, lon: +1 },
@@ -33,7 +33,7 @@ const TRIM_BOUND: Boundary = {
 };
 
 test("mergeOSMData generated non duplicate elements", () => {
-  const merged: OSMData = { elements: [] };
+  const merged: App.OSMData = { elements: [] };
   mergeOSMData(merged, DATA1);
   mergeOSMData(merged, DATA2);
 
@@ -51,7 +51,7 @@ test("mergeOSMData generated non duplicate elements", () => {
 });
 
 test("mergeOSMData merged all elements", () => {
-  const merged: OSMData = { elements: [] };
+  const merged: App.OSMData = { elements: [] };
   mergeOSMData(merged, DATA1);
   mergeOSMData(merged, DATA2);
 
@@ -75,13 +75,13 @@ test("mergeOSMData merged all elements", () => {
 });
 
 test("trimOSMData does not include way such as every nodes are out of bounds", () => {
-  const merged: OSMData = { elements: [] };
+  const merged: App.OSMData = { elements: [] };
   mergeOSMData(merged, DATA1);
   mergeOSMData(merged, DATA2);
 
   const trimmed = trimOSMData(merged, TRIM_BOUND);
 
-  const nodeMap = new Map<number, OSMRawNode>();
+  const nodeMap = new Map<number, App.OSMRawNode>();
   for (const element of trimmed.elements) {
     if (element.type === "node") {
       nodeMap.set(element.id, element);
