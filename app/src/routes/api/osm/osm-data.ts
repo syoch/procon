@@ -85,7 +85,7 @@ export function trimOSMData(data: OSMData, boundary: Boundary): OSMData {
     return trimmedData;
 }
 
-export function trimOSMDataByWayHighway(data: OSMData, wayHighwayExcludes: string[]): OSMData {
+export function trimOSMDataByWayHighway(data: OSMData, wayHighway: string[]): OSMData {
     const trimmedData: OSMData = {
         elements: []
     };
@@ -98,7 +98,7 @@ export function trimOSMDataByWayHighway(data: OSMData, wayHighwayExcludes: strin
         if (!highwayTag) {
             continue;
         }
-        if (wayHighwayExcludes.includes(highwayTag)) {
+        if (!wayHighway.includes(highwayTag)) {
             continue;
         }
 

@@ -11,54 +11,76 @@
 		duration?: number;
 	} = $props();
 
-	const N = 10;
-	const base = $derived(
-		variant === "green" ? "var(--wn-spinner-green)" : "var(--wn-spinner-gray)",
-	);
-	const opacities = [1, 0.7, 0.4, 0.1, 1, 1, 1, 1, 1, 1];
-	const dots = $derived(
-		Array.from({ length: N }, (_, i) => {
-			const a = ((-90 + i * 36) * Math.PI) / 180;
-			return {
-				x: ringRadius * Math.cos(a),
-				y: ringRadius * Math.sin(a),
-				color: i < 4 ? base : "var(--wn-white)",
-				opacity: opacities[i],
-			};
-		}),
-	);
-	const span = $derived((ringRadius + dotRadius) * 2);
+	const DOTS = 10;
+	const dots = Array.from({ length: DOTS });
+	const dotSize = $derived(dotRadius * 2);
+	const size = $derived((ringRadius + dotRadius) * 2);
 </script>
 
-<svg
+<div
 	class="spinner"
-	viewBox="{-(span / 2)} {-(span / 2)} {span} {span}"
-	width={span}
-	height={span}
-	style="--dur: {duration}ms"
-	aria-label="読み込み中"
 	role="img"
+	aria-label="読み込み中"
+	data-variant={variant}
+	style="--dot: {dotSize}px; --radius: {ringRadius}px; --size: {size}px; --dur: {duration}ms"
 >
-	<g>
-		{#each dots as d}
-			<circle cx={d.x} cy={d.y} r={dotRadius} fill={d.color} fill-opacity={d.opacity} />
-		{/each}
-	</g>
-</svg>
+	{#each dots as _, i (i)}
+		<span class="dot" style="--i: {i}"></span>
+	{/each}
+</div>
 
 <style>
 	.spinner {
+		position: relative;
+		width: var(--size);
+		height: var(--size);
+		/* 10分割で回転（Figma のバリアント巡回 = 100ms 相当） */
 		animation: wn-spin var(--dur) steps(10) infinite;
-		transform-origin: center;
 	}
+
+	.dot {
+		position: absolute;
+		top: 50%;
+		left: 50%;
+		width: var(--dot);
+		height: var(--dot);
+		margin: calc(var(--dot) / -2) 0 0 calc(var(--dot) / -2);
+		border-radius: 50%;
+		background: var(--wn-white);
+		/* transform-origin は自身の中心 = コンテナ中心なので、
+		   translateY で円周上に置いてから rotate で角度を割り当てる */
+		transform: rotate(calc(var(--i) * 36deg)) translateY(calc(-1 * var(--radius)));
+	}
+
+	/* 先頭4つが尾(濃い色)。残りは白 */
+	.spinner[data-variant="green"] .dot:nth-child(-n + 4) {
+		background: var(--wn-spinner-green);
+	}
+	.spinner[data-variant="gray"] .dot:nth-child(-n + 4) {
+		background: var(--wn-spinner-gray);
+	}
+	.dot:nth-child(1) {
+		opacity: 1;
+	}
+	.dot:nth-child(2) {
+		opacity: 0.7;
+	}
+	.dot:nth-child(3) {
+		opacity: 0.4;
+	}
+	.dot:nth-child(4) {
+		opacity: 0.1;
+	}
+
 	@keyframes wn-spin {
 		to {
 			transform: rotate(360deg);
 		}
 	}
+
 	@media (prefers-reduced-motion: reduce) {
 		.spinner {
-			animation-duration: 3s;
+			animation-duration: calc(var(--dur) * 3);
 		}
 	}
 </style>

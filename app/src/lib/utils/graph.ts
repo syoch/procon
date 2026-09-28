@@ -9,26 +9,9 @@ export type Graph<NodeType extends Node, EdgeType extends Edge> = {
   edges: Record<App.EdgeId, EdgeType>,
 };
 
-let assertionsEnabled = true;
-
-/**
- * assertGraph の有効 / 無効を切り替える。
- *
- * assertGraph は O(V+E) の走査を行うため、要素ごとに呼ばれると全体が O((V+E)^2) になる。
- * 開発時に一括処理を高速化したいときは無効化する (開発画面 routes/+page.svelte から切り替える想定)。
- */
-export function setGraphAssertionsEnabled(enabled: boolean) {
-  assertionsEnabled = enabled;
-}
-
-/** assertGraph が現在有効かどうか */
-export function isGraphAssertionsEnabled(): boolean {
-  return assertionsEnabled;
-}
-
 
 export function assertGraph<N extends Node, E extends Edge>(assertTag: string, graph: Graph<N, E>) {
-  if (!assertionsEnabled) return;
+  return;
   if (import.meta.env?.DEV === false) return;
 
   for (const edge of Object.values(graph.edges)) {
