@@ -1,6 +1,7 @@
 import { CalculateCost } from "./cost_calculator";
 import { canTraverseBackward, canTraverseForward } from "./utils/direction";
 import { distanceOf } from "./utils/haversine";
+import { PriorityQueue } from "./utils/priorityQueue";
 
 function calculateEdgeLength(edge: App.ComputedEdge) {
   return edge.segments
@@ -75,15 +76,14 @@ export function pathFind(graph: App.SearchGraph, params: App.SearchParameters, b
     return false;
   }
 
-  let queue: [App.NodeId, number][] = begin.map((nodeId) => [nodeId, 0]);
+  let queue = new PriorityQueue<[App.NodeId, number]>();
   for (const nodeId of begin) {
+    queue.enqueue([nodeId, 0], 0);
     nodeCostMap.set(nodeId, 0);
   }
 
-  while (queue.length > 0) {
-    queue.sort((a, b) => (a[1] ?? Infinity) - (b[1] ?? Infinity));
-
-    let [currentNodeId, currentCost] = queue.shift()!;
+  while (!queue.isEmpty()) {
+    let [currentNodeId, currentCost] = queue.dequeue()!;
     if (nodeCostMap.get(currentNodeId) !== currentCost) {
       continue;
     }
@@ -119,7 +119,7 @@ export function pathFind(graph: App.SearchGraph, params: App.SearchParameters, b
 
       const updated = updateCost(edge.id, nextNodeId, totalCost);
       if (updated) {
-        queue.push([nextNodeId, totalCost]);
+        queue.enqueue([nextNodeId, totalCost], totalCost);
       }
     }
   }
