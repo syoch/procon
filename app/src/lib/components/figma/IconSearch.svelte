@@ -10,10 +10,10 @@
 	xmlns="http://www.w3.org/2000/svg"
 	aria-hidden="true"
 >
-	<circle cx="7" cy="7" r="7" stroke="var(--wn-icon-stroke)" stroke-width="2" />
+	<circle cx="7" cy="7" r="7" stroke="var(--wn-ink)" stroke-width="2" />
 	<path
 		d="M12.2 12.2L19 19"
-		stroke="var(--wn-icon-stroke)"
+		stroke="var(--wn-ink)"
 		stroke-width="2"
 		stroke-linecap="round"
 	/>

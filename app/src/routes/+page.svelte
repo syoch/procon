@@ -9,12 +9,16 @@
 	import MapViewer from "$lib/components/MapViewer.svelte";
 	import DetailButton from "$lib/components/figma/DetailButton.svelte";
 	import DetailPanel from "$lib/components/figma/DetailPanel.svelte";
-	import { fade, fly } from "svelte/transition";
-	import { MainAppContext } from "$lib/app_state.svelte";
+	import TitleScreen from "$lib/components/figma/TitleScreen.svelte";
+	import LoadingScreen from "$lib/components/figma/LoadingScreen.svelte";
+	import SearchingOverlay from "$lib/components/figma/SearchingOverlay.svelte";
+	import { fade } from "svelte/transition";
+	import { onMount } from "svelte";
+	import { MainAppContext, type ParameterVariant } from "$lib/app_state.svelte";
 
 	class SelectMarker {
-		public point = $state<App.Coordinate | null>(null);
-		public projectedPoint = $state<App.Coordinate | null>(null);
+		private point = $state<App.Coordinate | null>(null);
+		private projectedPoint = $state<App.Coordinate | null>(null);
 		private marker: L.Marker | null = null;
 
 		constructor(map: L.Map) {
@@ -60,10 +64,39 @@
 		}
 	}
 
+	// 車種ごとの探索パラメータ(重み)。+page.svelte 側で定義し AppState に渡す。
+	const parameterVariants: ParameterVariant[] = [
+		{
+			name: "徒歩",
+			lambda: 1,
+			mix_score_weight: 0.3,
+			view_score_weight: 0.5,
+			width_score_weight: 0.2,
+		},
+		{
+			name: "自転車",
+			lambda: 1,
+			mix_score_weight: 0.3,
+			view_score_weight: 0.4,
+			width_score_weight: 0.3,
+		},
+		{
+			name: "車",
+			lambda: 1,
+			mix_score_weight: 0.3,
+			view_score_weight: 0.2,
+			width_score_weight: 0.5,
+		},
+	];
+
 	const ctx = MainAppContext.create(async (q) => {
-		console.log(q);
-		return [];
-	});
+		const res = await fetch(`/api/location?q=${encodeURIComponent(q)}&limit=5`);
+		if (!res.ok) return [];
+		const data = (await res.json()) as {
+			candidates?: import("$lib/app_state.svelte").LocationCandidate[];
+		};
+		return data.candidates ?? [];
+	}, parameterVariants);
 
 	let map: L.Map | undefined = $state(undefined);
 	let error: string | null = $state(null);
@@ -100,39 +133,8 @@
 		console.log("app locationSelection", ctx.state.locationSelection);
 	});
 
-	function doFindPath() {
-		assertGraph("doFindPath top", mapData);
-		if (!beginMarker || !endMarker) {
-			console.error("Begin or end marker is not set");
-			return;
-		}
-		if (!beginMarker.projectedPoint || !endMarker.projectedPoint) {
-			console.error("Begin or end marker projected point is not set");
-			return;
-		}
-		if (
-			beginMarker.projectedPoint.lat === 0 &&
-			beginMarker.projectedPoint.lng === 0
-		) {
-			console.error("Begin marker is not set");
-			return;
-		}
-		if (
-			endMarker.projectedPoint.lat === 0 &&
-			endMarker.projectedPoint.lng === 0
-		) {
-			console.error("End marker is not set");
-			return;
-		}
-
-		const beginNodeId = transientSplit(mapData, beginMarker.projectedPoint);
-		const endNodeId = transientSplit(mapData, endMarker.projectedPoint);
-
-		console.time("pathFind"); //parms
-		const result = pathFind(mapData, params, [beginNodeId], [endNodeId]);
-		console.timeEnd("pathFind");
-
-		pathResult = result
+	function pathToCoordinates(edgeIds: App.EdgeId[]): App.Coordinate[] {
+		return edgeIds
 			.map((x) => {
 				const edge = mapData.edges[x];
 				const beginNode = mapData.nodes[edge.begin];
@@ -157,11 +159,65 @@
 			.flat()
 			.filter(Boolean);
 	}
-	let params = $state<App.SearchParameters>({
-		lambda: 1,
-		mix_score_weight: 0.3,
-		view_score_weight: 0.3,
-		width_score_weight: 0.3,
+
+	/**
+	 * 始点/終点から経路を探索する。
+	 * - 選択中の座標は MainAppContext (候補選択 or 地図タッチ) から取得
+	 * - 計算中は SearchingOverlay を表示し、完了後に検索結果へ切り替える
+	 */
+	async function startSearch() {
+		const begin = ctx.state.begin.coordinate;
+		const end = ctx.state.end.coordinate;
+		if (!begin || !end) {
+			error = "始点と終点を指定してください";
+			console.error("[startSearch]", error);
+			return;
+		}
+		if (Object.keys(mapData.edges).length === 0) {
+			error = "地図データを読み込み中です。少し待って再度お試しください";
+			console.error("[startSearch]", error);
+			return;
+		}
+
+		error = null;
+		searching = true;
+		// オーバーレイを描画してから重い計算に入る
+		await new Promise((resolve) => setTimeout(resolve, 0));
+
+		try {
+			assertGraph("startSearch", mapData);
+
+			const beginNodeId = transientSplit(mapData, begin);
+			const endNodeId = transientSplit(mapData, end);
+
+			console.time("pathFind");
+			const result = pathFind(mapData, params, [beginNodeId], [endNodeId]);
+			console.timeEnd("pathFind");
+
+			pathResult = pathToCoordinates(result);
+			view = "result";
+		} catch (e) {
+			console.error("[startSearch] 経路探索に失敗", e);
+			error = e instanceof Error ? e.message : String(e);
+		} finally {
+			searching = false;
+		}
+	}
+	// 選択中の車種(パラメータプリセット)から探索パラメータを生成する
+	const params = $derived.by<App.SearchParameters>(() => {
+		const variant: ParameterVariant = ctx.selectedVariant ?? {
+			name: "デフォルト",
+			lambda: 1,
+			mix_score_weight: 0.3,
+			view_score_weight: 0.3,
+			width_score_weight: 0.3,
+		};
+		return {
+			lambda: variant.lambda,
+			mix_score_weight: variant.mix_score_weight,
+			view_score_weight: variant.view_score_weight,
+			width_score_weight: variant.width_score_weight,
+		};
 	});
 
 	$effect(() => {
@@ -171,7 +227,32 @@
 		}
 	});
 
+	// 選択中の始点/終点を地図上にピン表示する
+	$effect(() => {
+		const coordinate = ctx.state.begin.coordinate;
+		if (coordinate && beginMarker) {
+			beginMarker.setCoordinate(coordinate, coordinate);
+		}
+	});
+	$effect(() => {
+		const coordinate = ctx.state.end.coordinate;
+		if (coordinate && endMarker) {
+			endMarker.setCoordinate(coordinate, coordinate);
+		}
+	});
+
 	let view: "map" | "search" | "result" = $state("search");
+	let splash: "title" | "loading" | null = $state("title");
+	let searching = $state(false);
+
+	onMount(() => {
+		const toLoading = setTimeout(() => (splash = "loading"), 900);
+		const toDone = setTimeout(() => (splash = null), 2200);
+		return () => {
+			clearTimeout(toLoading);
+			clearTimeout(toDone);
+		};
+	});
 </script>
 
 <MapViewer
@@ -221,16 +302,31 @@
 {#if view !== "map"}
 	<div
 		class="panel-layer"
-		transition:fly={{ x: -40, duration: 220, opacity: 0 }}
+		transition:fade={{ duration: 300 }}
 	>
 		<DetailPanel
 			{view}
 			onback={() => {
 				view = view === "result" ? "search" : "map";
 			}}
-			onsearch={() => (view = "result")}
+			onsearch={startSearch}
+			onresearch={startSearch}
 		/>
 	</div>
+{/if}
+
+{#if searching}
+	<SearchingOverlay />
+{/if}
+
+{#if error}
+	<div class="error-banner" transition:fade={{ duration: 150 }}>{error}</div>
+{/if}
+
+{#if splash === "title"}
+	<div class="splash" transition:fade={{ duration: 300 }}><TitleScreen /></div>
+{:else if splash === "loading"}
+	<div class="splash" transition:fade={{ duration: 300 }}><LoadingScreen /></div>
 {/if}
 
 <style>
@@ -246,5 +342,22 @@
 		top: var(--wn-panel-top);
 		left: var(--wn-panel-left);
 		z-index: 20;
+	}
+
+	.error-banner {
+		position: fixed;
+		top: 12px;
+		left: 50%;
+		transform: translateX(-50%);
+		z-index: 60;
+		max-width: 70vw;
+		padding: 8px 16px;
+		border: 1px solid var(--wn-green-dark);
+		border-radius: 4px;
+		background: var(--wn-white);
+		color: var(--wn-ink);
+		font-family: var(--wn-font);
+		font-size: 14px;
+		box-shadow: var(--wn-shadow);
 	}
 </style>

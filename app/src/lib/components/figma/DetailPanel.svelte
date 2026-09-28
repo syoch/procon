@@ -2,43 +2,59 @@
 	import { fade } from "svelte/transition";
 	import BackButton from "./BackButton.svelte";
 	import SearchField from "./SearchField.svelte";
+	import VehicleSelect from "./VehicleSelect.svelte";
+	import GreenButton from "./GreenButton.svelte";
+	import WideNaviLogo from "./WideNaviLogo.svelte";
 
 	let {
 		view = "search",
 		onback,
 		onsearch,
+		onresearch,
 	}: {
 		view?: "search" | "result";
 		onback?: (e: MouseEvent) => void;
 		onsearch?: (e: MouseEvent) => void;
+		onresearch?: (e: MouseEvent) => void;
 	} = $props();
 </script>
 
 <div class="panel">
-	<BackButton onclick={onback} />
+	<div class="back-layer">
+		<BackButton onclick={onback} />
+	</div>
 
-	<div class="divider"></div>
+	<div class="logo" transition:fade={{ duration: 140 }}><WideNaviLogo /></div>
 
 	{#if view === "search"}
-		<div class="logo" transition:fade={{ duration: 140 }}>Wide Navi</div>
 		<div class="field field-start" transition:fade={{ duration: 140 }}>
 			<SearchField placeholder="始点を入力" target="begin" />
 		</div>
 		<div class="field field-end" transition:fade={{ duration: 140 }}>
 			<SearchField placeholder="終点を入力" target="end" />
 		</div>
-		<button
-			type="button"
-			class="search-button wn-pressable"
-			onclick={onsearch}
-			transition:fade={{ duration: 140 }}
-		>
-			探索開始
-		</button>
+		<div class="vehicle" transition:fade={{ duration: 140 }}>
+			<VehicleSelect />
+		</div>
+		<div class="action" transition:fade={{ duration: 140 }}>
+			<GreenButton label="検索" width={60} onclick={onsearch} />
+		</div>
 	{:else}
-		<div class="result-text" transition:fade={{ duration: 140 }}>
-			<div>地点Aから地点B</div>
-			<div class="coord">経度:37&nbsp;&nbsp;緯度:100</div>
+		<div class="result" transition:fade={{ duration: 140 }}>
+			<span class="label" style="left: 18.3px; top: 104px;">出発点</span>
+			<span class="value" style="left: 30.7px; top: 146px;">地名</span>
+			<span class="value" style="left: 32.8px; top: 196px;">詳細等</span>
+			<div class="divider" style="top: 253px;"></div>
+			<span class="label" style="left: 18.5px; top: 278.6px;">終着点</span>
+			<span class="value" style="left: 32.7px; top: 320.2px;">地点</span>
+			<span class="value" style="left: 34.8px; top: 367.6px;">詳細等</span>
+			<div class="divider" style="top: 425.5px;"></div>
+			<div class="vehicle" style="position: absolute; left: 34px; top: 454.5px;">
+				<VehicleSelect />
+			</div>
+			<div class="action" style="position: absolute; left: 283px; top: 453.5px;">
+				<GreenButton label="再検索" width={80} onclick={onresearch} />
+			</div>
 		</div>
 	{/if}
 </div>
@@ -48,30 +64,25 @@
 		position: relative;
 		width: var(--wn-panel-width);
 		height: var(--wn-panel-height);
-		background: var(--wn-panel);
+		background: var(--wn-white);
 		box-shadow: var(--wn-shadow);
 		overflow: hidden;
 	}
 
-	.divider {
-		position: absolute;
-		left: 16px;
-		top: 289px;
-		width: 369px;
-		height: 2px;
-		background: var(--wn-white);
-	}
-
 	.logo {
 		position: absolute;
-		left: 45px;
-		top: 22px;
-		font-family: var(--wn-font);
-		font-size: 40px;
-		line-height: 1;
-		font-weight: 400;
-		color: var(--wn-white);
-		white-space: nowrap;
+		left: 44.7px;
+		top: 32px;
+	}
+
+	/* 結果コンテンツ(.result)より前面に置き、確実にクリックできるようにする */
+	.back-layer {
+		position: absolute;
+		top: 0;
+		right: 0;
+		width: 64px;
+		height: 64px;
+		z-index: 2;
 	}
 
 	.field {
@@ -85,33 +96,36 @@
 		top: 209px;
 	}
 
-	.search-button {
+	.vehicle {
 		position: absolute;
-		left: 71px;
-		top: 895px;
-		width: 245px;
-		height: 79px;
-		border: none;
-		background: var(--wn-main);
-		color: var(--wn-black);
-		font-family: var(--wn-font);
-		font-size: 32px;
-		font-weight: 400;
-		cursor: pointer;
+		left: 44px;
+		top: 312px;
 	}
 
-	.result-text {
+	.action {
 		position: absolute;
-		left: 0;
-		right: 0;
-		top: 156px;
-		text-align: center;
+		left: 289px;
+		top: 312px;
+	}
+
+	.result {
+		position: absolute;
+		inset: 0;
 		font-family: var(--wn-font);
 		font-size: 20px;
-		line-height: 24px;
-		color: var(--wn-black);
+		line-height: 1;
+		color: var(--wn-ink);
 	}
-	.result-text .coord {
-		margin-top: 24px;
+	.label,
+	.value {
+		position: absolute;
+		white-space: nowrap;
+	}
+	.divider {
+		position: absolute;
+		left: 16px;
+		width: 369px;
+		height: 1px;
+		background: var(--wn-divider);
 	}
 </style>

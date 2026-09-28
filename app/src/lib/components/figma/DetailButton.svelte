@@ -19,7 +19,7 @@
 		height: 64px;
 		padding: 0;
 		border: none;
-		background: var(--wn-panel);
+		background: var(--wn-white);
 		box-shadow: var(--wn-shadow);
 		cursor: pointer;
 		display: grid;

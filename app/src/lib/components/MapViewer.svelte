@@ -7,6 +7,7 @@
     mapData = $bindable(),
     pathResult = $bindable(),
     error = $bindable(),
+    showMapEdges = false,
     doLoadMap,
     onClick,
   }: {
@@ -14,6 +15,7 @@
     mapData: App.GenericMap;
     pathResult: App.Coordinate[];
     error: string | null;
+    showMapEdges?: boolean;
     doLoadMap: (
       minLat: number,
       minLng: number,
@@ -38,6 +40,13 @@
       }
     });
 
+    if (pathResult.length > 0) {
+      L.polyline(pathResult, { color: "purple", weight: 5 })
+        .addTo(map)
+        .bindPopup(`Found path with ${pathResult.length} nodes`);
+    }
+
+    if (!showMapEdges) return;
     let i = 0;
     for (const edge of Object.values(mapData.edges)) {
       const fromNode = mapData.nodes[edge.begin];
@@ -88,12 +97,6 @@
       })
         .addTo(map)
         .bindPopup(`Edge ID: ${edge.id} (one node missing)`);
-    }
-
-    if (pathResult.length > 0) {
-      L.polyline(pathResult, { color: "purple", weight: 5 })
-        .addTo(map)
-        .bindPopup(`Found path with ${pathResult.length} nodes`);
     }
   });
 
