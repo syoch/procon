@@ -13,7 +13,15 @@
  */
 export async function loadOSMMap(minLat, minLon, maxLat, maxLon) {
   const data = await fetchOverpassData(minLat, minLon, maxLat, maxLon);
-  const { rawNodes, rawWays } = splitElements(data);
+  return transformOSMMapToOSMGraph(data);
+}
+
+/**
+ * @brief OSM の返答情報を OSMGraph 型へ変換する
+ * @param {App.OSMData} osmMap 
+ */
+export function transformOSMMapToOSMGraph(osmMap) {
+  const { rawNodes, rawWays } = splitElements(osmMap);
   return buildGraphFromWays(rawNodes, rawWays);
 }
 
@@ -23,7 +31,7 @@ export async function loadOSMMap(minLat, minLon, maxLat, maxLon) {
  * @param {number} minLon
  * @param {number} maxLat
  * @param {number} maxLon
- * @returns {Promise<{elements: Array<any>}>}
+ * @returns {Promise<App.OSMData>}
  */
 async function fetchOverpassData(minLat, minLon, maxLat, maxLon) {
   const res = await fetch("/api/osm", {

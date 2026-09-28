@@ -1,14 +1,14 @@
 
 import { type OSMCacheManager, type OSMFetcher } from './types';
-import { mergeOSMData, trimOSMData, type OSMData } from './osm-data';
+import { mergeOSMData, trimOSMData } from './osm-data';
 import { divideBoundary, simplifyBoundaries, type Boundary } from './boundary';
 
 
-export async function requireOSMData(boundary: Boundary, { readCache, saveCache }: OSMCacheManager, fetchOSM: OSMFetcher): Promise<OSMData> {
+export async function requireOSMData(boundary: Boundary, { readCache, saveCache }: OSMCacheManager, fetchOSM: OSMFetcher): Promise<App.OSMData> {
   const dividedBoundaries = divideBoundary(boundary);
 
   const boundariesToGet: Boundary[] = [];
-  const cachedChunks: OSMData[] = [];
+  const cachedChunks: App.OSMData[] = [];
   for (const b of dividedBoundaries) {
     const cache = await readCache(b);
     if (cache === null) {
@@ -30,7 +30,7 @@ export async function requireOSMData(boundary: Boundary, { readCache, saveCache 
     }
   }
 
-  const mergedData: OSMData = { elements: [] };
+  const mergedData: App.OSMData = { elements: [] };
   for (const chunk of cachedChunks) {
     mergeOSMData(mergedData, chunk);
   }

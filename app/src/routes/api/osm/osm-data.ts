@@ -1,24 +1,8 @@
 import { boundaryContains, type Boundary } from "./boundary";
 
-export type OSMRawWay = {
-    type: "way";
-    id: number;
-    nodes: number[];
-    tags: Record<string, string>;
-}
 
-export type OSMRawNode = {
-    type: "node";
-    id: number;
-    lat: number;
-    lon: number;
-};
 
-export type OSMData = {
-    elements: (OSMRawWay | OSMRawNode)[]
-};
-
-export function mergeOSMData(data: OSMData, other: OSMData) {
+export function mergeOSMData(data: App.OSMData, other: App.OSMData) {
     const dataWays = new Set(
         data.elements
             .filter(e => e.type === "way")
@@ -41,7 +25,7 @@ export function mergeOSMData(data: OSMData, other: OSMData) {
     }
 }
 
-export function trimOSMData(data: OSMData, boundary: Boundary): OSMData {
+export function trimOSMData(data: App.OSMData, boundary: Boundary): App.OSMData {
     const outputNodes = new Set<number>();
     const savedNodes = new Set<number>();
     for (const element of data.elements) {
@@ -55,7 +39,7 @@ export function trimOSMData(data: OSMData, boundary: Boundary): OSMData {
         outputNodes.add(element.id);
     }
 
-    const trimmedData: OSMData = {
+    const trimmedData: App.OSMData = {
         elements: []
     };
     for (const element of data.elements) {
@@ -85,8 +69,8 @@ export function trimOSMData(data: OSMData, boundary: Boundary): OSMData {
     return trimmedData;
 }
 
-export function trimOSMDataByWayHighway(data: OSMData, wayHighway: string[]): OSMData {
-    const trimmedData: OSMData = {
+export function trimOSMDataByWayHighway(data: App.OSMData, wayHighway: string[]): App.OSMData {
+    const trimmedData: App.OSMData = {
         elements: []
     };
 

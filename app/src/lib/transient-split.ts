@@ -1,7 +1,6 @@
-import L from "leaflet"
 import { addEdge, addNode, removeEdge } from "./utils/graph";
 
-function distance_point_to_edge(point: App.Coordinate, edge: [App.Coordinate, App.Coordinate], map?: L.Map): { distance: number, projection: App.Coordinate } | null {
+function distance_point_to_edge(point: App.Coordinate, edge: [App.Coordinate, App.Coordinate]): { distance: number, projection: App.Coordinate } | null {
   const [begin, end] = edge;
 
   const edge_dx = end.lat - begin.lat;
@@ -45,21 +44,10 @@ function distance_point_to_edge(point: App.Coordinate, edge: [App.Coordinate, Ap
   //   d = w・n
   const distance = Math.abs(w_x * n_x + w_y * n_y);
 
-  if (map) {
-    // visualize w, d
-    const p_point = L.circleMarker(point, { color: "blue", radius: 3 }).addTo(map);
-    const d_line = L.polyline([point, { lat: proj_x, lng: proj_y }], { color: "red", weight: 1 }).addTo(map);
-
-    setTimeout(() => {
-      map.removeLayer(d_line);
-      map.removeLayer(p_point);
-    }, 100);
-  }
-
   return { distance, projection: { lat: proj_x, lng: proj_y } };
 }
 
-export function findNearestEdge(graph: App.SearchGraph, point: App.Coordinate, map?: L.Map): {
+export function findNearestEdge(graph: App.SearchGraph, point: App.Coordinate): {
   edgeId: App.EdgeId;
   segment_index: number; // ComputedEdge の場合は -1 となる
   distance: number;
@@ -71,7 +59,7 @@ export function findNearestEdge(graph: App.SearchGraph, point: App.Coordinate, m
   let minSegmentIndex: number | null = null;
 
   const updateNearestEdge = (begin: App.Coordinate, end: App.Coordinate, edgeId: App.EdgeId, segmentIndex: number) => {
-    const dist = distance_point_to_edge(point, [begin, end], map);
+    const dist = distance_point_to_edge(point, [begin, end]);
     if (dist && dist.distance < minDistance) {
       minDistance = dist.distance;
       nearestEdgeId = edgeId;
@@ -98,7 +86,7 @@ export function findNearestEdge(graph: App.SearchGraph, point: App.Coordinate, m
     : null;
 }
 
-export function transientSplit(graph: App.SearchGraph, point: App.Coordinate, map?: L.Map): App.NodeId {
+export function transientSplit(graph: App.SearchGraph, point: App.Coordinate): App.NodeId {
   const nodeId = `tr-${point.lat}-${point.lng}`;
 
   // すでに同じ場所に分割ノードが存在する場合は何もしない
@@ -106,7 +94,7 @@ export function transientSplit(graph: App.SearchGraph, point: App.Coordinate, ma
     return nodeId;
   }
 
-  const nearestEdge = findNearestEdge(graph, point, map);
+  const nearestEdge = findNearestEdge(graph, point);
   if (!nearestEdge) {
     throw new Error("垂線を下ろせるエッジが見つかりません");
   }

@@ -1,4 +1,5 @@
-import L from "leaflet";
+import { distanceOf } from "./utils/haversine";
+
 /**
  * @brief コスト計算を行う
  * @param {App.FoldedEdge} folded_edge
@@ -278,11 +279,11 @@ function calculateViewScore(folded_edge,primary_highway) {
     const angle = Math.PI - Math.acos(cosAngle);
 
     // 距離の計算: Leaflet を使い前後のセグメント長の平均を算出
-    const firstnode1 = L.latLng(firstSeg.begin_coordinate.lat, firstSeg.begin_coordinate.lng);
-    const firstnode2 = L.latLng(firstSeg.end_coordinate.lat, firstSeg.end_coordinate.lng);
-    const nextnode1 = L.latLng(nextSeg.begin_coordinate.lat, nextSeg.begin_coordinate.lng);
-    const nextnode2 = L.latLng(nextSeg.end_coordinate.lat, nextSeg.end_coordinate.lng);
-    const distance = (firstnode1.distanceTo(firstnode2) + nextnode1.distanceTo(nextnode2)) / 2;
+    const firstnode1 = firstSeg.begin_coordinate;
+    const firstnode2 = firstSeg.end_coordinate;
+    const nextnode1 = nextSeg.begin_coordinate;
+    const nextnode2 = nextSeg.end_coordinate;
+    const distance = (distanceOf(firstnode1,firstnode2) + distanceOf(nextnode1, nextnode2)) / 2;
 
     if (distance > 0) {
       const curv = angle / distance;
