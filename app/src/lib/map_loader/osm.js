@@ -13,8 +13,7 @@
  */
 export async function loadOSMMap(minLat, minLon, maxLat, maxLon) {
   const data = await fetchOverpassData(minLat, minLon, maxLat, maxLon);
-  const { rawNodes, rawWays } = splitElements(data);
-  return buildGraphFromWays(rawNodes, rawWays);
+  return transformOSMMapToOSMGraph(data);
 }
 
 /**
