@@ -1,6 +1,6 @@
-import { LatLng } from "leaflet";
 import { CalculateCost } from "./cost_calculator";
 import { canTraverseBackward, canTraverseForward } from "./utils/direction";
+import { distanceOf } from "./utils/haversine";
 
 type SearchPath = {
   cost: number;
@@ -15,7 +15,7 @@ type SearchState = {
 
 function calculateEdgeLength(edge: App.ComputedEdge) {
   return edge.segments
-    .map(x => new LatLng(x.begin_coordinate.lat, x.begin_coordinate.lng).distanceTo(new LatLng(x.end_coordinate.lat, x.end_coordinate.lng)))
+    .map(x => distanceOf(x.begin_coordinate, x.end_coordinate))
     .reduce((prev, acc) => acc + prev, 0);
 }
 
