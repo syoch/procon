@@ -41,14 +41,14 @@ export function CalculateCost(folded_edge) {
     viewScore = calculateViewScore(folded_edge,primaryHighway);
 
     /* 計算結果を表示 */
-    console.log("scores",{
+    /* console.log("scores",{
       id: folded_edge.id,
       widthScore: widthScore,
       mixScore: mixScore,
       viewScore: viewScore,
-    });
+    }); */
     /*folded_edgeの表示*/
-    console.log("FoldedEdge", {
+    /* console.log("FoldedEdge", {
       id: folded_edge.id, 
       begin: folded_edge.begin,
       end: folded_edge.end,
@@ -56,7 +56,7 @@ export function CalculateCost(folded_edge) {
       first_segments_end: folded_edge.segments[0].end_coordinate,
       last_segments_begin: folded_edge.segments[folded_edge.segments.length - 1].begin_coordinate,
       last_segments_end: folded_edge.segments[folded_edge.segments.length - 1].end_coordinate,
-    });
+    }); */
 
 
     // --- 3. computedEdge の生成 ---
@@ -229,7 +229,7 @@ function calculateMixScore(sidewalk, highway) {
  */
 function calculateViewScore(folded_edge,primary_highway) {
   if(folded_edge.segments.length < 2){
-    console.log("folded_edgeのセグメントが1つしかないため、視界スコアを最大値に設定します。");
+    /* console.log("folded_edgeのセグメントが1つしかないため、視界スコアを最大値に設定します。"); */
     return 1.0; // 直線道路の場合は視界スコアを最大値に設定
   }
   const scores = [];

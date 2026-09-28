@@ -13,7 +13,7 @@ const requestSchema = z.object({
   minLng: z.number(),
   maxLat: z.number(),
   maxLng: z.number(),
-  wayHighwayExcludes: z.array(z.string()),
+  wayHighway: z.array(z.string()),
 });
 export const POST: RequestHandler = async ({ request }) => {
   try {
@@ -25,7 +25,7 @@ export const POST: RequestHandler = async ({ request }) => {
 
     const osmData = await requireOSMData(query.data, cacheManager, fetchOverpassData);
 
-    const result = trimOSMDataByWayHighway(osmData, query.data.wayHighwayExcludes);
+    const result = trimOSMDataByWayHighway(osmData, query.data.wayHighway);
 
     return json(result);
   } catch (error) {

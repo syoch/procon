@@ -1,0 +1,32 @@
+/* WideNavi デザイントークン (Figma「プロコン (コピー)」より抽出) */
+:root {
+	/* 色 */
+	--wn-green: #609382; /* アクセント / 検索・再検索ボタン */
+	--wn-green-dark: #406357; /* 緑ボタンの枠線 */
+	--wn-ink: #4b4b4b; /* アイコン・本文 */
+	--wn-logo-dark: #4e4b63; /* ロゴ "Wide" */
+	--wn-orange: #e5a422; /* ロゴのドット */
+	--wn-white: #ffffff;
+	--wn-placeholder: #8f8f8f; /* プレースホルダ・入力枠 */
+	--wn-caret: #b9b9b9; /* セレクトの矢印 */
+	--wn-divider: #8f8f8f; /* 区切り線 */
+
+	/* 検索中オーバーレイ */
+	--wn-scrim: rgba(255, 255, 255, 0.3);
+
+	/* スピナー */
+	--wn-spinner-green: #304b42;
+	--wn-spinner-gray: #808080;
+
+	/* エフェクト */
+	--wn-shadow: 4px 4px 4px rgba(0, 0, 0, 0.25);
+
+	/* タイポグラフィ */
+	--wn-font: "Noto Sans JP", sans-serif;
+
+	/* レイアウト (Figma パネル幅 398 / 高さは画面いっぱい) */
+	--wn-panel-width: 398px;
+	--wn-panel-height: 100dvh;
+	--wn-panel-left: 0px;
+	--wn-panel-top: 0px;
+}
