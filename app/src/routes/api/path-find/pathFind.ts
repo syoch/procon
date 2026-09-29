@@ -23,7 +23,7 @@ function pathToCoordinates(mapData: App.SearchGraph, edgeIds: App.EdgeId[]): App
                 );
                 return [];
             }
-            if (edge.type === "FoldedEdge") {
+            if (edge.type === "FoldedEdge" || edge.type === "ComputedEdge") {
                 return [
                     beginNode.coordinate,
                     ...edge.segments
