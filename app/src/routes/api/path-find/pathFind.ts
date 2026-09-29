@@ -1,4 +1,5 @@
 import { transientSplit } from '$lib/transient-split';
+import { largestComponentEdges } from '$lib/utils/graph';
 import { pathFind } from '$lib/path_finder';
 import { requireOSMData } from '../osm';
 import { cacheManager } from '../osm/fs-cache-manager';
@@ -47,8 +48,11 @@ async function startSearch(mapData: App.SearchGraph, params: App.SearchParameter
     }
 
 
-    const beginNodeId = transientSplit(mapData, begin);
-    const endNodeId = transientSplit(mapData, end);
+    // 孤立した小さな道路網 (敷地内の道など) に吸着すると経路が見つからないため、
+    // 最大連結成分のエッジだけを吸着の候補にする
+    const mainEdges = largestComponentEdges(mapData);
+    const beginNodeId = transientSplit(mapData, begin, mainEdges);
+    const endNodeId = transientSplit(mapData, end, mainEdges);
 
     console.time("pathFind");
     const result = pathFind(

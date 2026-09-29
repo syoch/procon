@@ -138,3 +138,45 @@ export function transformGraph<
   assertGraph("After transformGraph", newGraph);
   return newGraph;
 }
+
+/**
+ * 最大の連結成分に含まれるエッジ ID の集合を返す
+ *
+ * 始点・終点を道路網から孤立した小さな成分 (敷地内の道など) に吸着させないために使う。
+ * 連結判定は無向グラフとして行う (一方通行は考慮しない)。
+ *
+ * @param graph 対象のグラフ
+ * @returns 最大連結成分に含まれるエッジ ID の集合
+ */
+export function largestComponentEdges<N extends Node, E extends Edge>(graph: Graph<N, E>): Set<App.EdgeId> {
+  const visited = new Set<App.NodeId>();
+  let largest = new Set<App.EdgeId>();
+
+  for (const startId of Object.keys(graph.nodes)) {
+    if (visited.has(startId)) continue;
+
+    // 幅優先探索で startId を含む連結成分のエッジを集める
+    const componentEdges = new Set<App.EdgeId>();
+    const queue: App.NodeId[] = [startId];
+    visited.add(startId);
+    while (queue.length > 0) {
+      const nodeId = queue.pop()!;
+      for (const edgeId of graph.nodes[nodeId]?.edges ?? []) {
+        const edge = graph.edges[edgeId];
+        if (!edge) continue;
+        componentEdges.add(edgeId);
+        const next = edge.begin === nodeId ? edge.end : edge.begin;
+        if (!visited.has(next)) {
+          visited.add(next);
+          queue.push(next);
+        }
+      }
+    }
+
+    if (componentEdges.size > largest.size) {
+      largest = componentEdges;
+    }
+  }
+
+  return largest;
+}

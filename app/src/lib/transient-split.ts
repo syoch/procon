@@ -47,7 +47,10 @@ function distance_point_to_edge(point: App.Coordinate, edge: [App.Coordinate, Ap
   return { distance, projection: { lat: proj_x, lng: proj_y } };
 }
 
-export function findNearestEdge(graph: App.SearchGraph, point: App.Coordinate): {
+/**
+ * @param allowedEdges 指定した場合、この集合に含まれるエッジだけを吸着の候補にする
+ */
+export function findNearestEdge(graph: App.SearchGraph, point: App.Coordinate, allowedEdges?: Set<App.EdgeId>): {
   edgeId: App.EdgeId;
   segment_index: number; // ComputedEdge の場合は -1 となる
   distance: number;
@@ -73,6 +76,9 @@ export function findNearestEdge(graph: App.SearchGraph, point: App.Coordinate): 
     if (edge.type === "MapVCrossEdge") {
       continue;
     }
+    if (allowedEdges && !allowedEdges.has(edgeId)) {
+      continue;
+    }
     
     for (const subEdge of edge.segments) {
       const begin = subEdge.begin_coordinate;
@@ -86,7 +92,12 @@ export function findNearestEdge(graph: App.SearchGraph, point: App.Coordinate): 
     : null;
 }
 
-export function transientSplit(graph: App.SearchGraph, point: App.Coordinate): App.NodeId {
+/**
+ * @param allowedEdges 指定した場合、この集合に含まれるエッジだけに吸着する。
+ *   分割したエッジが集合に含まれていた場合、分割後の 2 エッジを集合に追加する
+ *   (同じエッジ上に始点・終点がある場合に、2 回目の分割で候補から外れないようにするため)
+ */
+export function transientSplit(graph: App.SearchGraph, point: App.Coordinate, allowedEdges?: Set<App.EdgeId>): App.NodeId {
   const nodeId = `tr-${point.lat}-${point.lng}`;
 
   // すでに同じ場所に分割ノードが存在する場合は何もしない
@@ -94,7 +105,7 @@ export function transientSplit(graph: App.SearchGraph, point: App.Coordinate): A
     return nodeId;
   }
 
-  const nearestEdge = findNearestEdge(graph, point);
+  const nearestEdge = findNearestEdge(graph, point, allowedEdges);
   if (!nearestEdge) {
     throw new Error("垂線を下ろせるエッジが見つかりません");
   }
@@ -175,6 +186,12 @@ export function transientSplit(graph: App.SearchGraph, point: App.Coordinate): A
   removeEdge(graph, edgeId);
   addEdge(graph, newEdge1);
   addEdge(graph, newEdge2);
+
+  if (allowedEdges?.has(edgeId)) {
+    allowedEdges.delete(edgeId);
+    allowedEdges.add(newEdgeId1);
+    allowedEdges.add(newEdgeId2);
+  }
 
   return nodeId;
 }
