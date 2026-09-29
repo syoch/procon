@@ -25,7 +25,16 @@ function calculateEdgeCost(edge: App.ComputedEdge | App.MapVCrossEdge, params: A
   return cost;
 }
 
-function traversable(edge: App.SearchGraph["edges"][string], node: App.NodeId) {
+/** 探索のオプション */
+export type PathFindOptions = {
+  /** 一方通行を無視する (徒歩モード用) */
+  ignoreOneway?: boolean;
+};
+
+function traversable(edge: App.SearchGraph["edges"][string], node: App.NodeId, options: PathFindOptions = {}) {
+  if (options.ignoreOneway) {
+    return edge.begin === node || edge.end === node;
+  }
   return (
     (edge.begin === node && canTraverseForward(edge.direction)) ||
     (edge.end === node && canTraverseBackward(edge.direction))
@@ -53,9 +62,10 @@ function getComputedNode(graph: App.SearchGraph, edge: App.SearchGraph["edges"][
  * @param graph 探索対象のグラフ
  * @param begin 探索開始地点
  * @param endNodes 探索終了地点
+ * @param options 探索のオプション (一方通行を無視するか など)
  * @returns 経路の辺リスト
  */
-export function pathFind(graph: App.SearchGraph, params: App.SearchParameters, begin: App.NodeId[], endNodes: App.NodeId[]): App.EdgeId[] {
+export function pathFind(graph: App.SearchGraph, params: App.SearchParameters, begin: App.NodeId[], endNodes: App.NodeId[], options: PathFindOptions = {}): App.EdgeId[] {
 
   if (begin.length === 0 || endNodes.length === 0) {
     return [];
@@ -105,7 +115,7 @@ export function pathFind(graph: App.SearchGraph, params: App.SearchParameters, b
     for (const edgeId of currentNode.edges) {
       const edge = graph.edges[edgeId];
       if (!edge) continue;
-      if (!traversable(edge, currentNodeId)) {
+      if (!traversable(edge, currentNodeId, options)) {
         continue;
       }
 

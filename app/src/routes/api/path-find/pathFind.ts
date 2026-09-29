@@ -1,45 +1,60 @@
 import { transientSplit } from '$lib/transient-split';
 import { largestComponentEdges } from '$lib/utils/graph';
-import { pathFind } from '$lib/path_finder';
+import { pathFind, type PathFindOptions } from '$lib/path_finder';
+import { MODE_PROFILES, type ModeId } from '$lib/mode_profiles';
 import { requireOSMData } from '../osm';
 import { cacheManager } from '../osm/fs-cache-manager';
 import { fetchOverpassData } from '../osm/osm-fetcher';
 import { CrossConvert } from '$lib/cross_transform';
 import { transformOSMMapToOSMGraph } from '$lib/map_loader/osm';
 import { fold2DegreeEdges } from '$lib/fold2degree';
-import { trimOSMDataByWayHighway } from '../osm/osm-data';
+import { trimOSMDataByMode, trimOSMDataByWayHighway } from '../osm/osm-data';
 
 
 
 
-function pathToCoordinates(mapData: App.SearchGraph, edgeIds: App.EdgeId[]): App.Coordinate[] {
+/**
+ * 経路の辺リストを、進行方向に並んだ座標列に変換する
+ *
+ * @param startNodeId 経路の始点ノード。辺を end → begin の向きに通る場合に座標を反転するため、
+ *   どちらの端から入ったかを追跡するのに使う
+ */
+function pathToCoordinates(mapData: App.SearchGraph, edgeIds: App.EdgeId[], startNodeId: App.NodeId): App.Coordinate[] {
+    // 現在いるノード (次の辺にどちらの端から入るかの判定に使う)
+    let currentNodeId = startNodeId;
     return edgeIds
         .map((x) => {
             const edge = mapData.edges[x];
             const beginNode = mapData.nodes[edge.begin];
             const endNode = mapData.nodes[edge.end];
+            // segments は begin → end の向きに並んでいるので、end 側から入った場合は反転する
+            const reversed = edge.begin !== currentNodeId && edge.end === currentNodeId;
+            currentNodeId = reversed ? edge.begin : edge.end;
             if (!beginNode || !endNode) {
                 console.warn(
                     `Edge ${edge.id} has missing nodes: begin=${edge.begin}, end=${edge.end}`,
                 );
                 return [];
             }
+            let coordinates: App.Coordinate[];
             if (edge.type === "FoldedEdge" || edge.type === "ComputedEdge") {
-                return [
+                coordinates = [
                     beginNode.coordinate,
                     ...edge.segments
                         .map((s) => [s.begin_coordinate, s.end_coordinate])
                         .flat(),
                     endNode.coordinate,
                 ].filter(Boolean);
+            } else {
+                coordinates = [beginNode.coordinate, endNode.coordinate];
             }
-            return [beginNode.coordinate, endNode.coordinate];
+            return reversed ? coordinates.toReversed() : coordinates;
         })
         .flat()
         .filter(Boolean);
 }
 
-async function startSearch(mapData: App.SearchGraph, params: App.SearchParameters, begin: App.Coordinate, end: App.Coordinate) {
+async function startSearch(mapData: App.SearchGraph, params: App.SearchParameters, begin: App.Coordinate, end: App.Coordinate, options: PathFindOptions = {}) {
     if (!begin || !end) {
         throw new Error("始点と終点を指定してください");
     }
@@ -60,10 +75,11 @@ async function startSearch(mapData: App.SearchGraph, params: App.SearchParameter
         params,
         [beginNodeId],
         [endNodeId],
+        options,
     );
     console.timeEnd("pathFind");
 
-    return pathToCoordinates(mapData, result);
+    return pathToCoordinates(mapData, result, beginNodeId);
 
 }
 
@@ -83,15 +99,24 @@ function getBoundaryBox(begin: App.Coordinate, end: App.Coordinate): {
     }
 }
 
+/**
+ * @param wayHighway 通行できる highway 種別 (mode を指定した場合は使わない)
+ * @param mode 移動モード。指定した場合、通行可否・一方通行の扱いは mode_profiles.ts のルールで決まる
+ */
 export async function doPathFind(
     begin: App.Coordinate,
     end: App.Coordinate,
     parameters: App.SearchParameters,
     wayHighway: string[],
+    mode?: ModeId,
 ) {
     const bbox = getBoundaryBox(begin, end);
     const rawOsmData = await requireOSMData(bbox, cacheManager, fetchOverpassData);
-    const osmData = trimOSMDataByWayHighway(rawOsmData, wayHighway);
+    const profile = mode ? MODE_PROFILES[mode] : undefined;
+    // mode 指定時はモードのルールで、未指定時は従来どおり highway 種別だけで絞り込む
+    const osmData = profile
+        ? trimOSMDataByMode(rawOsmData, profile)
+        : trimOSMDataByWayHighway(rawOsmData, wayHighway);
     const osmGraph = transformOSMMapToOSMGraph(osmData);
     const ccGraph = CrossConvert(osmGraph);
     if (ccGraph instanceof Error) {
@@ -102,5 +127,5 @@ export async function doPathFind(
         throw f2dGraph;
     }
 
-    return await startSearch(f2dGraph, parameters, begin, end);
+    return await startSearch(f2dGraph, parameters, begin, end, { ignoreOneway: profile?.ignoreOneway });
 }

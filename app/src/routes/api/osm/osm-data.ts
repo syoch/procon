@@ -1,4 +1,5 @@
 import { boundaryContains, type Boundary } from "./boundary";
+import { isAccessible, type ModeProfile } from "$lib/mode_profiles";
 
 
 
@@ -60,6 +61,46 @@ export function trimOSMData(data: App.OSMData, boundary: Boundary): App.OSMData 
         if (element.type !== "node") continue;
 
         if (!outputNodes.has(element.id)) {
+            continue;
+        }
+
+        trimmedData.elements.push(element);
+    }
+
+    return trimmedData;
+}
+
+/**
+ * 移動モードで通行できる way (と、それが参照するノード) だけを残す
+ *
+ * trimOSMDataByWayHighway が highway 種別だけで判定するのに対し、
+ * こちらは access 系タグ・自動車専用道路・寸法制限なども含めて mode_profiles.ts のルールで判定する。
+ *
+ * @param data OSM データ
+ * @param profile 移動モード
+ * @returns 通行できる way とそのノードだけを含む OSM データ
+ */
+export function trimOSMDataByMode(data: App.OSMData, profile: ModeProfile): App.OSMData {
+    const trimmedData: App.OSMData = {
+        elements: []
+    };
+
+    const savedNodes = new Set<number>();
+    for (const element of data.elements) {
+        if (element.type !== "way") continue;
+        if (!isAccessible(profile, element.tags ?? {})) continue;
+
+        trimmedData.elements.push(element);
+
+        for (const nodeId of element.nodes) {
+            savedNodes.add(nodeId);
+        }
+    }
+
+    for (const element of data.elements) {
+        if (element.type !== "node") continue;
+
+        if (!savedNodes.has(element.id)) {
             continue;
         }
 
