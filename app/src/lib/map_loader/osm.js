@@ -3,6 +3,8 @@
  * @brief OSM(Overpass API)からデータを読み込み、OSM Graph を構築する
  */
 
+import { canTraverseBackward, canTraverseForward, flipDirection } from "../utils/direction";
+
 /**
  * @brief OSM データを読み込み、OSM Graph を作成する
  * @param {number} minLat - 最小緯度
@@ -116,6 +118,11 @@ function buildGraphFromWays(rawNodes, rawWays) {
   const nodes = {};
   /** @type {{[id:string]: App.OSMEdge}} */
   const edges = {};
+  // 同じ 2 ノード間のエッジ (多重辺) を 1 本にまとめるための索引 ("小さいID|大きいID" -> edgeId)
+  // way が同じ区間を往復する場合 (a→b→a) や、別の way が同じ区間を重ねて通る場合に多重辺ができ、
+  // 交差点変換 (CrossConvert) で同じ ID のノードが二重に作られてしまうため
+  /** @type {Map<string, string>} */
+  const pairIndex = new Map();
 
   /**
    * @param {string} rawId
@@ -155,7 +162,21 @@ function buildGraphFromWays(rawNodes, rawWays) {
       const endNode = ensureMapNode(endId);
       if (!beginNode || !endNode) continue; // bbox境界などで座標が無いノードはスキップ
 
+      const pairKey = beginId < endId ? `${beginId}|${endId}` : `${endId}|${beginId}`;
+      const existingEdgeId = pairIndex.get(pairKey);
+      if (existingEdgeId) {
+        // 既存のエッジに、この区間の進行可能な向きを足し合わせる (どちらかで通れる向きは通れる)
+        const existing = edges[existingEdgeId];
+        const sameOrientation = existing.begin === beginId;
+        const dir = sameOrientation ? direction : flipDirection(direction);
+        const forward = canTraverseForward(existing.direction) || canTraverseForward(dir);
+        const backward = canTraverseBackward(existing.direction) || canTraverseBackward(dir);
+        existing.direction = forward && backward ? "both" : forward ? "forward" : backward ? "backward" : "none";
+        continue;
+      }
+
       const edgeId = `${wayId}_${i}`;
+      pairIndex.set(pairKey, edgeId);
 
       /** @type {App.OSMEdge} */
       const edge = {
