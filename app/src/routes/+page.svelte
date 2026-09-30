@@ -287,6 +287,11 @@
 			}
 		})();
 	});
+
+	//スライダー初期値
+	let slider1 = $state(30);
+    let slider2 = $state(50);
+    let slider3 = $state(80);
 </script>
 
 <MapViewer bind:map bind:pathResult {onClick}></MapViewer>
@@ -338,6 +343,29 @@
 							onclick={startSearch}
 						/>
 					</div>
+					<div class="slider-container">
+    <!-- スライダー（動かすと自動で sliderValue の値がリアルタイムに変わる） -->
+    <div class="slider-group">
+    <div class="slider-item">
+        <label>視界スコア: {slider1}<br>
+        <input type="range" min="0" max="100" bind:value={slider1} class="custom-slider"/>
+		</label>
+    </div>
+    <div class="slider-item">
+        <label>混在スコア: {slider2}<br>
+        <input type="range" min="0" max="100" bind:value={slider2} class="custom-slider"/>
+		</label>
+    </div>
+
+    <div class="slider-item">
+        <label>曲率スコア: {slider3}<br>
+        <input type="range" min="0" max="100" bind:value={slider3} class="custom-slider"/>
+		</label>
+    </div>
+	</div>
+
+
+</div>
 				{:else}
 					<span
 						style="position: absolute; white-space: nowrap; left: 18.3px; top: 104px;"
@@ -626,5 +654,28 @@
     .text-sub {
         font-size: 16px;
         color: var(--gray);
+    }
+
+
+.slider-group {
+        display: flex;
+        flex-direction: column; /* 縦向きに並べる */
+        gap: 15px;              /* スライダー同士の隙間をあける */
+        padding: 15px;
+        background: white;
+        border-radius: 8px;
+		position: absolute;
+        top: 400px; /* 画面の下から30pxの位置に配置 */
+        left: 50px;   /* 画面の左から50pxの位置に配置 */
+        z-index: 1000; /* 地図などの手前に表示させる */
+    }
+    .slider-item {
+        display: flex;
+        flex-direction: column;
+        gap: 5px;
+    }
+	.custom-slider {
+        accent-color: #2f7731; /* 緑色にする例（好きなカラーコードや色名） */
+		width: 250px;
     }
 </style>
