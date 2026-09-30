@@ -14,6 +14,14 @@
 	import TitleScreen from "$lib/components/figma/TitleScreen.svelte";
 	import SearchingOverlay from "$lib/components/figma/SearchingOverlay.svelte";
 	import widenaviLogo from "$lib/assets/widenavi-logo.svg";
+	import straightLogo from "$lib/assets/straight-Logo.svg";
+	import turnrightLogo from "$lib/assets/turnright-Logo.svg";
+	import turnleftLogo from "$lib/assets/turnleft-Logo.svg"
+	import margeLogo from "$lib/assets/marge-Logo.svg";
+	import forkLogo from "$lib/assets/fork-Logo.svg";
+	import startpointLogo from "$lib/assets/startpoint-Logo.svg";
+	import finishpointLogo from "$lib/assets/finishpoint-Logo.svg";
+
 	import {
 		MainAppContext,
 		type ParameterVariant,
@@ -354,46 +362,56 @@
 							onclick={startSearch}
 						/>
 					</div>
-          <div class="view"><div class="text-wrapper-7">再検索</div></div>
-<div class="view-2"><div class="view-3"><div class="text-wrapper-8">車種を選択</div></div></div>
-<img class="image-2" src="https://c.animaapp.com/BIDz40mk/img/--.svg" /></div>
-<div class="view-4"><div class="div-2"><div class="base"><div class="frame-5"><div class="text-wrapper-9">State1</div></div>
-<div class="text-wrapper-10">State2</div></div>
-<div class="base-icon"><div class="rectangle"></div></div>
-<div class="rectangle-2"></div></div></div>
-<div class="div-wrapper-2"><div class="text-wrapper-11">S</div></div></div>
-<div class="div-2"><div class="base"><div class="frame-6"><div class="text-wrapper-12">State1</div></div>
-<div class="text-wrapper-10">State2</div></div>
-<div class="base-icon"><div class="rectangle"></div></div>
-<div class="rectangle-2"></div></div>
-<img class="img-2" src="https://c.animaapp.com/BIDz40mk/img/tyokusinn.svg" /></div>
-<div class="div-2"><div class="base"><div class="frame-6"><div class="text-wrapper-12">State1</div></div>
-<div class="text-wrapper-10">State2</div></div>
-<div class="base-icon"><div class="rectangle"></div></div>
-<div class="rectangle-2"></div></div>
-<img class="img-3" src="https://c.animaapp.com/BIDz40mk/img/usetu.svg" /></div>
-<div class="div-2"><div class="base"><div class="frame-6"><div class="text-wrapper-12">State1</div></div>
-<div class="text-wrapper-10">State2</div></div>
-<div class="base-icon"><div class="rectangle"></div></div>
-<div class="rectangle-2"></div></div>
-<img class="img-3" src="https://c.animaapp.com/BIDz40mk/img/sasetu.svg" /></div>
-<div class="div-2"><div class="base"><div class="frame-6"><div class="text-wrapper-12">State1</div></div>
-<div class="text-wrapper-10">State2</div></div>
-<div class="base-icon"><div class="rectangle"></div></div>
-<div class="rectangle-2"></div></div>
-<img class="img-2" src="https://c.animaapp.com/BIDz40mk/img/goryu.svg" /></div>
-<div class="div-2"><div class="base"><div class="frame-6"><div class="text-wrapper-12">State1</div></div>
-<div class="text-wrapper-10">State2</div></div>
-<div class="base-icon"><div class="rectangle"></div></div>
-<div class="rectangle-2"></div></div>
-<img class="img-2" src="https://c.animaapp.com/BIDz40mk/img/bunki.svg" /></div>
-<div class="div-2"><div class="base"><div class="frame-7"><div class="text-wrapper-9">State1</div></div>
-<div class="text-wrapper-10">State2</div></div>
-<div class="base-icon"><div class="rectangle"></div></div>
-<div class="div-wrapper-2"><div class="text-wrapper-13">F</div></div></div>
-<div class="base-icon-2"><div class="rectangle"></div></div>
-<div class="rectangle-2"></div>
-<div class="text-wrapper-14">経路案内</div>
+
+	    <div class="text-wrapper-14">経路案内</div>
+    
+    <div class="route-scroll-container">
+    <div class="view-4"><div class="div-2"><div class="base"><div class="frame-5"><div class="text-wrapper-9">開始地点</div></div>
+    <div class="text-wrapper-10">State2</div></div>
+    <div class="base-icon"><div class="rectangle"></div></div>
+    <div class="rectangle-2"></div></div></div>
+	<img class="image-2" src={startpointLogo} alt="" />
+    
+    <div class="div-2"><div class="base"><div class="frame-6"><div class="text-wrapper-12">直進</div></div>
+    <div class="text-wrapper-10">State2</div></div>
+    <div class="base-icon"><div class="rectangle"></div></div>
+    <div class="rectangle-2"></div></div>
+    <img class="img-2" src={straightLogo} alt="" />
+    
+    <div class="div-2"><div class="base"><div class="frame-6"><div class="text-wrapper-12">左折</div></div>
+    <div class="text-wrapper-10">State2</div></div>
+    <div class="base-icon"><div class="rectangle"></div></div>
+    <div class="rectangle-2"></div></div>
+    <img class="img-3" src={turnleftLogo} alt="" />
+    
+    <div class="div-2"><div class="base"><div class="frame-6"><div class="text-wrapper-12">右折</div></div>
+    <div class="text-wrapper-10">State2</div></div>
+    <div class="base-icon"><div class="rectangle"></div></div>
+    <div class="rectangle-2"></div></div>
+    <img class="img-3" src={turnrightLogo} alt="" />
+    
+    <div class="div-2"><div class="base"><div class="frame-6"><div class="text-wrapper-12">合流</div></div>
+    <div class="text-wrapper-10">State2</div></div>
+    <div class="base-icon"><div class="rectangle"></div></div>
+    <div class="rectangle-2"></div></div>
+    <img class="img-2" src={margeLogo} alt="" />
+    
+    <div class="div-2"><div class="base"><div class="frame-6"><div class="text-wrapper-12">分岐</div></div>
+    <div class="text-wrapper-10">State2</div></div>
+    <div class="base-icon"><div class="rectangle"></div></div>
+    <div class="rectangle-2"></div></div>
+    <img class="img-2" src={forkLogo} alt="" />
+    
+    <div class="div-2"><div class="base"><div class="frame-7"><div class="text-wrapper-9">終点</div></div>
+    <div class="text-wrapper-10">State2</div></div></div>
+    <div class="base-icon"><div class="rectangle"></div></div>
+    <img class="img-2" src={finishpointLogo} alt="" />
+
+    <div class="base-icon-2"><div class="rectangle"></div></div>
+    <div class="rectangle-2"></div>
+
+	</div>
+
 				{/if}
 			{/snippet}
 		</DetailPanel>
@@ -482,4 +500,35 @@
 		height: 1px;
 		background: var(--wn-divider);
 	}
+	.route-scroll-container {
+    max-height: 400px; /* 表示する最大の高さ（パネルに合わせて調整してください） */
+    overflow-y: auto;  /* 高さを超えた場合に縦スクロールバーを表示する */
+    overflow-x: hidden;
+}
+
+/* スクロールバーをすっきりさせたい場合（オプション） */
+.route-scroll-container::-webkit-scrollbar {
+    width: 6px;
+}
+.route-scroll-container::-webkit-scrollbar-thumb {
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 3px;
+}
+
+.view-4 {
+  display: flex;
+  width: 222px;
+  height: 42px;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 8px 89px 8px 91px;
+  position: absolute;
+  top: -1px;
+  left: -1px;
+  background-color: var(--background-white);
+  border: 1px solid;
+  border-color: var(--gray);
+}
+
 </style>
