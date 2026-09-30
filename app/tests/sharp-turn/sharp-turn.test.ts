@@ -212,4 +212,10 @@ describe("collectRoadJunctions", () => {
     expect(detectSharpTurns(corner, { minRadius: 0, bounds: inside })).toHaveLength(1);
     expect(detectSharpTurns(corner, { minRadius: 0, bounds: south })).toEqual([]);
   });
+
+  test("半径 20m 未満は「急カーブ」、20m 以上は「注意」", () => {
+    expect(detectSharpTurns(road(curvedRoad(12, 180)), CAR).map((t) => t.level)).toEqual(["sharp"]);
+    expect(detectSharpTurns(road(curvedRoad(25, 90)), CAR).map((t) => t.level)).toEqual(["caution"]);
+  });
 });
+

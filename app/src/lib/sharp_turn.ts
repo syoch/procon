@@ -29,6 +29,11 @@ export type SharpTurn = {
   direction: "left" | "right";
   /** カーブがある道の highway 種別 */
   highway: string;
+  /**
+   * 危険度。半径が SHARP_LEVEL_RADIUS_M 未満なら "sharp" (急カーブ・ヘアピンなど)、
+   * それ以上なら "caution" (注意が必要なカーブ)
+   */
+  level: "sharp" | "caution";
 };
 
 export type SharpTurnOptions = {
@@ -112,6 +117,11 @@ export const MIN_TOTAL_ANGLE_DEG = 50;
  * (道路構造令 第15条で設計速度 30km/h の最小曲線半径が 30m のため)
  */
 export const SHARP_RADIUS_CAP_M = 30;
+/**
+ * これ未満の半径のカーブを「急カーブ」、それ以上を「注意」とする [m] (仮の値)
+ * 道路構造令 第15条で設計速度 20km/h の最小曲線半径が 15m、30km/h が 30m であり、その間の目安として 20m とした
+ */
+export const SHARP_LEVEL_RADIUS_M = 20;
 /** これ未満の曲がり角の頂点は直進とみなす [度] */
 const MIN_VERTEX_ANGLE_DEG = 1;
 /** 曲がる頂点同士がこれ以上離れていたら別のカーブとみなす [m] */
@@ -255,6 +265,7 @@ export function detectSharpTurns(segments: App.Segment[], options: SharpTurnOpti
       radius,
       direction: g.sum > 0 ? "left" : "right",
       highway,
+      level: radius < SHARP_LEVEL_RADIUS_M ? "sharp" : "caution",
     });
   }
   return result;
