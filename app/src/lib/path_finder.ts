@@ -1,6 +1,7 @@
 import { CalculateCost } from "./cost_calculator";
 import { canTraverseBackward, canTraverseForward } from "./utils/direction";
 import { distanceOf } from "./utils/haversine";
+import { isKnownWidth } from "./road_width";
 import { PriorityQueue } from "./utils/priorityQueue";
 
 /**
@@ -10,7 +11,7 @@ import { PriorityQueue } from "./utils/priorityQueue";
 function calculateEdgeLength(edge: App.ComputedEdge, highwayCostFactor?: Readonly<Record<string, number>>) {
   return edge.segments
     .map(x => {
-      const widthUnknown = x.width === null || x.width === undefined;
+      const widthUnknown = !isKnownWidth(x.width);
       const factor = widthUnknown ? (highwayCostFactor?.[x.highway] ?? 1) : 1;
       return distanceOf(x.begin_coordinate, x.end_coordinate) * factor;
     })

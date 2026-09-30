@@ -1,5 +1,5 @@
 import { describe, expect, test, vi } from "vitest";
-import { applyGsiWidths, GsiRoadIndex, parseGsiRoadTile, removeNarrowEdges, widthClassToMeters } from "../../src/lib/road_width";
+import { applyGsiWidths, GsiRoadIndex, isKnownWidth, MATCH_HIGHWAYS, parseGsiRoadTile, removeNarrowEdges, widthClassToMeters } from "../../src/lib/road_width";
 import { coordinateToTile, requireGsiRoadSegments, tilesForBoundary } from "../../src/routes/api/gsi";
 
 const feature = (coords: number[][], props: Record<string, unknown>) => ({
@@ -87,6 +87,34 @@ describe("applyGsiWidths / removeNarrowEdges", () => {
     oneway.edges.e1.direction = "forward";
     expect(removeNarrowEdges(oneway, limit)).toBe(0);
   });
+
+  test("幅不明の表し方 (null / -1 / NaN) によらず、幅不明として扱う", () => {
+    expect([null, undefined, -1, 0, NaN].map(isKnownWidth)).toEqual([false, false, false, false, false]);
+    expect(isKnownWidth(4)).toBe(true);
+
+    const graph = makeGraph();
+    graph.edges.e1.width = -1;
+    expect(applyGsiWidths(graph, index)).toBe(1);
+    expect(graph.edges.e1.width).toBe(4);
+
+    const unknown = makeGraph();
+    unknown.edges.e1.width = -1;
+    expect(removeNarrowEdges(unknown, { twoWay: 5.5, oneWay: 3.0 })).toBe(0);
+  });
+
+  test("道を取り除いてつながる道が無くなったノードも取り除く", () => {
+    const graph = makeGraph();
+    graph.edges.e2.width = 2;
+    graph.edges.e3.width = 2;
+    applyGsiWidths(graph, index);
+    expect(removeNarrowEdges(graph, { twoWay: 5.5, oneWay: 3.0 })).toBe(3);
+    expect(graph.nodes).toEqual({});
+  });
+
+  test("幅員を補う対象は車両が通る道", () => {
+    expect(MATCH_HIGHWAYS.has("residential")).toBe(true);
+    expect(MATCH_HIGHWAYS.has("footway")).toBe(false);
+  });
 });
 
 describe("タイル", () => {
@@ -116,5 +144,27 @@ describe("タイル", () => {
     expect(fetchTile).not.toHaveBeenCalledWith(expect.objectContaining({ x: 58045 }));
     expect(saved.every((key) => Number(key.split("/")[0]) % 2 === 1)).toBe(true);
     expect(segments.length).toBe(saved.length);
+  });
+
+  const noCache = { readCache: async () => null, saveCache: async () => {} };
+  const bigBoundary = { minLat: 37.4375, maxLat: 37.453125, minLng: 138.84375, maxLng: 138.859375 };
+
+  test("タイル数が上限を超えるときは取得せず、幅員なしで続ける", async () => {
+    const fetchTile = vi.fn(async () => ({ features: [] }));
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const segments = await requireGsiRoadSegments(bigBoundary, noCache, fetchTile, { maxTiles: 4 });
+    expect(segments).toEqual([]);
+    expect(fetchTile).not.toHaveBeenCalled();
+    expect(warn).toHaveBeenCalled();
+    warn.mockRestore();
+  });
+
+  test("時間の上限を過ぎたら残りのタイルは取得しない", async () => {
+    const fetchTile = vi.fn(async () => ({ features: [] }));
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    await requireGsiRoadSegments(bigBoundary, noCache, fetchTile, { budgetMs: 0 });
+    expect(fetchTile).not.toHaveBeenCalled();
+    expect(warn).toHaveBeenCalled();
+    warn.mockRestore();
   });
 });

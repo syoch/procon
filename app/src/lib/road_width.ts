@@ -35,6 +35,14 @@ const WIDTH_CLASS_TO_METERS: Record<string, number> = {
   "19.5m以上": 20.0,
 };
 
+/**
+ * 幅が分かっているか (正の数か)
+ * 幅不明の表し方は null (osm.js) や -1 (debug.ts) など複数あるため、cost_calculator.js の平均幅と同じく「正の数なら判明」で判定する
+ */
+export function isKnownWidth(width: unknown): width is number {
+  return typeof width === "number" && Number.isFinite(width) && width > 0;
+}
+
 /** 幅員区分の文字列を代表値 [m] に直す (不明な区分は undefined) */
 export function widthClassToMeters(rnkWidth: unknown): number | undefined {
   return typeof rnkWidth === "string" ? WIDTH_CLASS_TO_METERS[rnkWidth] : undefined;
@@ -73,7 +81,7 @@ export const MATCH_MAX_DISTANCE_M = 12;
 export const MATCH_MAX_ANGLE_DEG = 30;
 
 /** 幅員を補う OSM の道の種類 (車両が通る道。歩道などには車道の幅員を移さない) */
-const MATCH_HIGHWAYS = new Set([
+export const MATCH_HIGHWAYS: ReadonlySet<string> = new Set([
   "motorway", "motorway_link", "trunk", "trunk_link", "primary", "primary_link",
   "secondary", "secondary_link", "tertiary", "tertiary_link",
   "unclassified", "residential", "living_street", "service", "track", "road", "busway",
@@ -178,7 +186,7 @@ export function applyGsiWidths(graph: App.OSMGraph, index: GsiRoadIndex): number
   let applied = 0;
   for (const edge of Object.values(graph.edges)) {
     // OSM の width タグがある道はそちらを優先する
-    if (edge.width !== null && edge.width !== undefined) continue;
+    if (isKnownWidth(edge.width)) continue;
     if (!MATCH_HIGHWAYS.has(edge.highway)) continue;
     const begin = graph.nodes[edge.begin]?.coordinate;
     const end = graph.nodes[edge.end]?.coordinate;
@@ -203,21 +211,23 @@ export type RoadWidthLimit = {
 
 /**
  * 幅が分かっていて、下限より狭い道をグラフから取り除く (graph を直接書き換える)
- * 幅が分からない道は取り除かない
+ * 幅が分からない道は取り除かない。道を取り除いてつながる道が無くなったノードも取り除く
  *
  * @returns 取り除いた区間の数
  */
 export function removeNarrowEdges(graph: App.OSMGraph, limit: RoadWidthLimit): number {
   let removed = 0;
   for (const [edgeId, edge] of Object.entries(graph.edges)) {
-    if (edge.width === null || edge.width === undefined) continue;
+    if (!isKnownWidth(edge.width)) continue;
     const required = edge.direction === "both" ? limit.twoWay : limit.oneWay;
     if (edge.width >= required) continue;
 
     delete graph.edges[edgeId];
     for (const nodeId of [edge.begin, edge.end]) {
       const node = graph.nodes[nodeId];
-      if (node) node.edges = node.edges.filter((id) => id !== edgeId);
+      if (!node) continue;
+      node.edges = node.edges.filter((id) => id !== edgeId);
+      if (node.edges.length === 0) delete graph.nodes[nodeId];
     }
     removed++;
   }
