@@ -10,7 +10,11 @@ import { fetchOverpassData } from '../osm/osm-fetcher';
 import { trimOSMDataByWayHighway } from '../osm/osm-data';
 import { distanceOf } from '$lib/utils/haversine';
 
-function pathToNodeIds(mapData: App.SearchGraph, edgeIds: App.EdgeId[], begin: App.NodeId): App.NodeId[] {
+/**
+ * 経路の辺列から、始点を含むノード列を走行順に復元する。
+ * pathToCoordinates と同じ走査を行う。
+ */
+export function pathToNodeIds(mapData: App.SearchGraph, edgeIds: App.EdgeId[], begin: App.NodeId): App.NodeId[] {
     let current: App.NodeId = begin;
     const res: App.NodeId[] = [];
     res.push(begin);
@@ -24,6 +28,22 @@ function pathToNodeIds(mapData: App.SearchGraph, edgeIds: App.EdgeId[], begin: A
         current = nextNodeId;
     }
     return res;
+}
+
+/**
+ * 経路が通過した交差点の数を数える。
+ *
+ * CrossConvert は次数 3 以上の交差点 X を、隣接ノードごとに 1 つずつの
+ * MapVCrossNode（X_{隣接}）を作り、それらの完全グラフで置き換える。
+ * そのため X に入ってから出るまでのあいだに、必ず 2 つの MapVCrossNode を通る。
+ * 物理的な交差点 1 個あたりの MapVCrossNode 数は 2 なので、
+ * 2 で割ったものが交差点数になる。
+ *
+ * @param pathNodes 走行順のノード列（pathToNodeIds の戻り値）
+ */
+export function countPassedIntersections(mapData: App.SearchGraph, pathNodes: App.NodeId[]): number {
+    const crossNodeCount = pathNodes.filter((id) => mapData.nodes[id]?.type === "MapVCrossNode").length;
+    return Math.floor(crossNodeCount / 2);
 }
 
 export function pathToCoordinates(mapData: App.SearchGraph, edgeIds: App.EdgeId[], begin: App.NodeId): App.Coordinate[] {
@@ -130,12 +150,10 @@ export async function doPathFind(
     const pathCoords = pathToCoordinates(mapData, pathEdges, beginNodeId);
     const pathNodes = pathToNodeIds(mapData, pathEdges, beginNodeId);
 
-    // 交差点を通過する際 2 回 MapVCrossNode を通るため、 /2 している
-    const intersections = Math.floor(pathNodes.filter(id => mapData.nodes[id].type === "MapVCrossNode").length / 2);
     return {
         found: true,
         coords: pathCoords,
         totalDistance: calcTotalDistance(pathCoords),
-        totalIntersections: intersections,
-    };
+        totalIntersections: countPassedIntersections(mapData, pathNodes),
+    }
 }
