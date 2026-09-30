@@ -12,6 +12,10 @@ import { cacheManager } from '../osm/fs-cache-manager';
 import { fetchOverpassData } from '../osm/osm-fetcher';
 import { trimOSMDataByMode, trimOSMDataByWayHighway } from '../osm/osm-data';
 import { distanceOf } from '$lib/utils/haversine';
+import { applyGsiWidths, GsiRoadIndex, removeNarrowEdges } from '$lib/road_width';
+import { requireGsiRoadSegments } from '../gsi';
+import { gsiCacheManager } from '../gsi/fs-cache-manager';
+import { fetchGsiRoadTile } from '../gsi/gsi-fetcher';
 
 /**
  * 経路の辺列から、始点を含むノード列を走行順に復元する。
@@ -173,6 +177,15 @@ export async function doPathFind(
         ? trimOSMDataByMode(rawOsmData, profile)
         : trimOSMDataByWayHighway(rawOsmData, wayHighway);
     const osmGraph = transformOSMMapToOSMGraph(osmData);
+
+    // 国土地理院の幅員区分で、幅が分からない車道の幅を補う (取得できなかったタイルは幅なしのまま続行する)
+    const gsiSegments = await requireGsiRoadSegments(bbox, gsiCacheManager, fetchGsiRoadTile);
+    applyGsiWidths(osmGraph, new GsiRoadIndex(gsiSegments));
+    // 大型トラックなど、幅の下限があるモードでは狭すぎる道を取り除く (幅が分からない道は残す)
+    if (profile?.minRoadWidth) {
+        removeNarrowEdges(osmGraph, profile.minRoadWidth);
+    }
+
     const ccGraph = CrossConvert(osmGraph);
     if (ccGraph instanceof Error) {
         throw ccGraph;

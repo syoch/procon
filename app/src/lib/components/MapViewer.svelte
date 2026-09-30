@@ -63,8 +63,10 @@
 
     // タイルレイヤの追加
     L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      // 経路探索では道路の幅員に国土地理院の道路中心線 (提供実験) を使っているため、出典を併記する
       attribution:
-        'Map data &copy; <a href="https://www.openstreetmap.org/">OpenStreetMap</a> contributors',
+        'Map data &copy; <a href="https://www.openstreetmap.org/">OpenStreetMap</a> contributors' +
+        ' | 道路幅員: <a href="https://github.com/gsi-cyberjapan/experimental_rdcl">国土地理院</a>',
       maxZoom: 18,
     }).addTo(map);
 

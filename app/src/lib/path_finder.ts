@@ -4,11 +4,16 @@ import { distanceOf } from "./utils/haversine";
 import { PriorityQueue } from "./utils/priorityQueue";
 
 /**
- * エッジの長さ [m]。highwayCostFactor を指定した場合は、区間ごとに highway 種別の倍率を掛けた「実質的な長さ」を返す
+ * エッジの長さ [m]。highwayCostFactor を指定した場合は、幅が分からない区間に highway 種別の倍率を掛けた「実質的な長さ」を返す
+ * (幅が分かる区間は、幅員スコアで評価できるので倍率を掛けない)
  */
 function calculateEdgeLength(edge: App.ComputedEdge, highwayCostFactor?: Readonly<Record<string, number>>) {
   return edge.segments
-    .map(x => distanceOf(x.begin_coordinate, x.end_coordinate) * (highwayCostFactor?.[x.highway] ?? 1))
+    .map(x => {
+      const widthUnknown = x.width === null || x.width === undefined;
+      const factor = widthUnknown ? (highwayCostFactor?.[x.highway] ?? 1) : 1;
+      return distanceOf(x.begin_coordinate, x.end_coordinate) * factor;
+    })
     .reduce((prev, acc) => acc + prev, 0);
 }
 
@@ -37,7 +42,7 @@ export type PathFindOptions = {
   /** 一方通行を無視する (徒歩モード用) */
   ignoreOneway?: boolean;
   /**
-   * highway 種別ごとのコストの倍率 (例: 車モードの track は 2 倍)。
+   * highway 種別ごとのコストの倍率 (例: 車モードの track は 2 倍)。幅が分からない区間にだけ掛ける。
    * 通れるが、なるべく避けたい道 (抜け道には使わず、そこしか道が無いときだけ通る) に使う
    */
   highwayCostFactor?: Readonly<Record<string, number>>;

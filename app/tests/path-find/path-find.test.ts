@@ -5,9 +5,15 @@ let mapData: App.OSMData = { elements: [] };
 vi.mock("../../src/routes/api/osm", () => ({ requireOSMData: vi.fn(async () => structuredClone(mapData)) }));
 vi.mock("../../src/routes/api/osm/fs-cache-manager", () => ({ cacheManager: {} }));
 vi.mock("../../src/routes/api/osm/osm-fetcher", () => ({ fetchOverpassData: vi.fn() }));
+// 国土地理院の幅員も同様にモックし、テストごとに用意した区間を返す
+let gsiSegments: GsiRoadSegment[] = [];
+vi.mock("../../src/routes/api/gsi", () => ({ requireGsiRoadSegments: vi.fn(async () => gsiSegments) }));
+vi.mock("../../src/routes/api/gsi/fs-cache-manager", () => ({ gsiCacheManager: {} }));
+vi.mock("../../src/routes/api/gsi/gsi-fetcher", () => ({ fetchGsiRoadTile: vi.fn() }));
 
 import { doPathFind, getBoundaryBox, MAX_SNAP_DISTANCE_M } from "../../src/routes/api/path-find/pathFind";
 import { MODE_PROFILES } from "../../src/lib/mode_profiles";
+import type { GsiRoadSegment } from "../../src/lib/road_width";
 
 const CELL = 0.015625;
 const node = (id: number, lat: number, lon: number): App.OSMRawNode => ({ type: "node", id, lat, lon });
@@ -111,6 +117,53 @@ describe("doPathFind: 到達できない場合のエラー", () => {
     const begin = { lat: 0, lng: -0.0015 }, end = { lat: 0, lng: 0.0115 };
     expect(maxLat(await doPathFind(begin, end, car, [], "car"))).toBeGreaterThan(0.0019);
     expect(maxLat(await doPathFind(begin, end, MODE_PROFILES.walk.defaultParameters, [], "walk"))).toBeLessThan(0.0001);
+  });
+
+  describe("国土地理院の幅員", () => {
+    // 西 (0,0) と東 (0,0.01) を結ぶ 2 本の道: 直進の residential と、北に膨らむ tertiary
+    const twoRoads = (): App.OSMData => ({
+      elements: [
+        { type: "way", id: 1, nodes: [1, 2], tags: { highway: "residential" } },
+        { type: "way", id: 2, nodes: [1, 3, 2], tags: { highway: "tertiary" } },
+        { type: "way", id: 3, nodes: [4, 1], tags: { highway: "tertiary" } },
+        { type: "way", id: 4, nodes: [2, 5], tags: { highway: "tertiary" } },
+        node(1, 0, 0), node(2, 0, 0.01), node(3, 0.003, 0.005), node(4, 0, -0.002), node(5, 0, 0.012),
+      ],
+    });
+    const maxLat = (res: Awaited<ReturnType<typeof doPathFind>>) =>
+      res.found ? Math.max(...res.coords.map((c) => c.lat)) : NaN;
+    const begin = { lat: 0, lng: -0.0015 }, end = { lat: 0, lng: 0.0115 };
+    const truck = MODE_PROFILES.truck.defaultParameters;
+
+    test("大型トラックは幅 5.5m 未満の対面通行の道を通らない (車は通る)", async () => {
+      mapData = twoRoads();
+      // 直進の residential は 3m-5.5m (代表値 4m)
+      gsiSegments = [{ begin: { lat: 0, lng: 0 }, end: { lat: 0, lng: 0.01 }, width: 4 }];
+      expect(maxLat(await doPathFind(begin, end, truck, [], "truck"))).toBeGreaterThan(0.0029);
+      expect(maxLat(await doPathFind(begin, end, car, [], "car"))).toBeLessThan(0.0001);
+    });
+
+    test("幅が十分なら大型トラックも通る", async () => {
+      mapData = twoRoads();
+      gsiSegments = [{ begin: { lat: 0, lng: 0 }, end: { lat: 0, lng: 0.01 }, width: 8 }];
+      expect(maxLat(await doPathFind(begin, end, truck, [], "truck"))).toBeLessThan(0.0001);
+    });
+
+    test("幅が分かった service には割高の倍率を掛けない", async () => {
+      // 前のテストと同じ地図で、service を幅 8m (5.5m-13m) とすると車も service を通る
+      mapData = {
+        elements: [
+          { type: "way", id: 1, nodes: [1, 2], tags: { highway: "service" } },
+          { type: "way", id: 2, nodes: [1, 3, 2], tags: { highway: "residential" } },
+          { type: "way", id: 3, nodes: [4, 1], tags: { highway: "residential" } },
+          { type: "way", id: 4, nodes: [2, 5], tags: { highway: "residential" } },
+          node(1, 0, 0), node(2, 0, 0.01), node(3, 0.002, 0.005), node(4, 0, -0.002), node(5, 0, 0.012),
+        ],
+      };
+      gsiSegments = [{ begin: { lat: 0, lng: 0 }, end: { lat: 0, lng: 0.01 }, width: 8 }];
+      expect(maxLat(await doPathFind(begin, end, car, [], "car"))).toBeLessThan(0.0001);
+      gsiSegments = [];
+    });
   });
 });
 
