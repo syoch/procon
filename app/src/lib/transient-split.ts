@@ -1,10 +1,20 @@
 import { addEdge, addNode, removeEdge } from "./utils/graph";
 
+/**
+ * 点から線分への最短距離と、線分上の最も近い点 (射影点) を求める
+ *
+ * 経度 1° の長さは緯度 1° の cos(緯度) 倍しかないため、経度方向の差に cos(緯度) を掛けてから計算する
+ * (掛けないと東西方向の距離を長く見積もり、近い道より遠い道を選んでしまう)。
+ * 返す distance はこの補正後の「度」単位で、候補同士の比較にだけ使う。
+ */
 function distance_point_to_edge(point: App.Coordinate, edge: [App.Coordinate, App.Coordinate]): { distance: number, projection: App.Coordinate } | null {
   const [begin, end] = edge;
 
+  // 経度方向の縮み (cos(緯度))
+  const k = Math.cos(point.lat * Math.PI / 180);
+
   const edge_dx = end.lat - begin.lat;
-  const edge_dy = end.lng - begin.lng;
+  const edge_dy = (end.lng - begin.lng) * k;
   const edge_length = Math.sqrt(edge_dx * edge_dx + edge_dy * edge_dy);
   if (edge_length === 0) {
     console.warn(`エッジの長さがゼロです: ${begin}, ${end}`);
@@ -26,23 +36,25 @@ function distance_point_to_edge(point: App.Coordinate, edge: [App.Coordinate, Ap
   // 始点から point までのベクトル w
   //   w = (point.lat - start.lat, point.lng - start.lng)
   const w_x = point.lat - begin.lat;
-  const w_y = point.lng - begin.lng;
+  const w_y = (point.lng - begin.lng) * k;
 
   // w を v に射影した長さ t
   //   t = w・v
-  const t = w_x * v_x + w_y * v_y;
-
-  if (t < 0 || t > edge_length) {
-    return null;
-  }
+  // 垂線の足が線分の外に落ちる場合は、近い方の端点を最も近い点とする
+  // (道の曲がり角の外側にある点は、どの区間にも垂線の足が落ちないため、除外すると近くの道に吸着できない)
+  const t_raw = w_x * v_x + w_y * v_y;
+  const t = Math.min(Math.max(t_raw, 0), edge_length);
 
   // 射影点の座標
   const proj_x = begin.lat + t * v_x;
-  const proj_y = begin.lng + t * v_y;
+  const proj_y = begin.lng + (t * v_y) / k;
 
   // 射影点から点までの距離
-  //   d = w・n
-  const distance = Math.abs(w_x * n_x + w_y * n_y);
+  //   垂線の足が線分の内側: d = |w・n|
+  //   端点を使う場合:       d = |w - t・v|
+  const distance = t === t_raw
+    ? Math.abs(w_x * n_x + w_y * n_y)
+    : Math.hypot(w_x - t * v_x, w_y - t * v_y);
 
   return { distance, projection: { lat: proj_x, lng: proj_y } };
 }
