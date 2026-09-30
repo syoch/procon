@@ -41,5 +41,8 @@
 		"vite": "^8.3.0",
 		"vitest": "^5.0.1",
 		"zod": "^4.6.5"
+	},
+	"dependencies": {
+		"sveltekit-search-params": "^4.0.0"
 	}
 }

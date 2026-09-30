@@ -14,10 +14,7 @@
 	import TitleScreen from "$lib/components/figma/TitleScreen.svelte";
 	import SearchingOverlay from "$lib/components/figma/SearchingOverlay.svelte";
 	import widenaviLogo from "$lib/assets/widenavi-logo.svg";
-	import {
-		MainAppContext,
-		type ParameterVariant,
-	} from "$lib/app_state.svelte";
+	import { MainAppContext, type ParameterVariant } from "$lib/app_state.svelte";
 	import { SelectMarker } from "$lib/utils/selectMarker.svelte";
 	import VehicleSelect from "$lib/components/figma/VehicleSelect.svelte";
 	import GreenButton from "$lib/components/figma/GreenButton.svelte";
@@ -31,6 +28,8 @@
 	let mapData = $state<App.SearchGraph>({ edges: {}, nodes: {} });
 	let pathResult: App.Coordinate[] = $state([]);
 	let isLoading = $state(false);
+	/** 手動・自動を問わず検索を実行済みか（$state ではない） */
+	let hasSearched = false;
 
 	const parameterVariants: ParameterVariant[] = [
 		{
@@ -56,9 +55,7 @@
 		},
 	];
 	const locationProvider = async (q: string) => {
-		const res = await fetch(
-			`/api/location?q=${encodeURIComponent(q)}&limit=5`,
-		);
+		const res = await fetch(`/api/location?q=${encodeURIComponent(q)}&limit=5`);
 		if (!res.ok) return [];
 		const data = (await res.json()) as {
 			candidates?: import("$lib/app_state.svelte").LocationCandidate[];
@@ -81,69 +78,42 @@
 		}
 
 		let locationState =
-			ctx.state.locationSelection === "begin"
-				? ctx.state.begin
-				: ctx.state.end;
+			ctx.state.locationSelection === "begin" ? ctx.state.begin : ctx.state.end;
 		locationState.state = "confirmed";
 		locationState.query = `${res.projection.lat}, ${res.projection.lng}`;
-		locationState.coordinate = res.projection;
+		ctx.state.setCoordinate(ctx.state.locationSelection, res.projection);
 	}
-
 	$effect(() => {
-		const coordinate = ctx.state.begin.coordinate;
+		const coordinate = ctx.state.coordinate("begin");
 		if (coordinate) {
 			beginMarker?.setCoordinate(coordinate);
 		}
 	});
 	$effect(() => {
-		const coordinate = ctx.state.end.coordinate;
+		const coordinate = ctx.state.coordinate("end");
 		if (coordinate) {
 			endMarker?.setCoordinate(coordinate);
 		}
 	});
 
-	function pathToCoordinates(edgeIds: App.EdgeId[]): App.Coordinate[] {
-		return edgeIds
-			.map((x) => {
-				const edge = mapData.edges[x];
-				const beginNode = mapData.nodes[edge.begin];
-				const endNode = mapData.nodes[edge.end];
-				if (!beginNode || !endNode) {
-					console.warn(
-						`Edge ${edge.id} has missing nodes: begin=${edge.begin}, end=${edge.end}`,
-					);
-					return [];
-				}
-				if (edge.type === "FoldedEdge") {
-					return [
-						beginNode.coordinate,
-						...edge.segments
-							.map((s) => [s.begin_coordinate, s.end_coordinate])
-							.flat(),
-						endNode.coordinate,
-					].filter(Boolean);
-				}
-				return [beginNode.coordinate, endNode.coordinate];
-			})
-			.flat()
-			.filter(Boolean);
-	}
-
-	async function startSearch() {
-		const begin = ctx.state.begin.coordinate;
-		const end = ctx.state.end.coordinate;
+	async function startSearch(): Promise<boolean> {
+		const begin = ctx.state.coordinate("begin");
+		const end = ctx.state.coordinate("end");
 		if (!begin) {
 			error = "始点が指定されていません";
+			return false;
 		}
 		if (!end) {
-			error = "始点が指定されていません";
+			error = "終点が指定されていません";
+			return false;
 		}
 		if (Object.keys(mapData.edges).length === 0) {
 			error = "地図データを読み込み中です。少し待って再度お試しください";
 			console.error("[startSearch]", error);
-			return;
+			return false;
 		}
 		error = null;
+		hasSearched = true;
 
 		isLoading = true;
 		const res = await fetch("/api/path-find", {
@@ -167,7 +137,8 @@
 		isLoading = false;
 
 		if (!res.ok) {
-			throw new Error(`/api/path-find API エラー: ${res.status}`);
+			error = `/api/path-find API エラー: ${res.status}`;
+			return false;
 		}
 
 		try {
@@ -176,7 +147,9 @@
 			ctx.state.appState = "menu-result";
 		} catch (e) {
 			error = "サーバー応答の読み取りエラーが発生しました";
+			return false;
 		}
+		return true;
 	}
 	const doLoadMap = async (
 		minLat: number,
@@ -242,24 +215,41 @@
 		}
 	}
 
-	// タイトル表示後、0.1s でロゴを降下
+	// 起動演出。booted が立つまで appState は "boot" を返すので、
+	// テンプレートの分岐順は従来どおりでよい。
 	$effect(() => {
-		(async () => {
-			ctx.state.appState = "boot";
-			await new Promise((resolve) => setTimeout(resolve, 1500));
-			ctx.state.appState = "menu-detail";
-		})();
-
-		return;
+		const timer = setTimeout(() => (ctx.state.booted = true), 1500);
+		return () => clearTimeout(timer);
 	});
+
 	// Leaflet.Map オブジェクトが生成された後の処理
 	$effect(() => {
 		if (!map) return;
 
 		beginMarker = new SelectMarker(map);
 		endMarker = new SelectMarker(map);
-		map.whenReady(loadMap);
-		map.on("moveend", loadMap);
+
+		// 地図の viewpoint と URL の同期は状態モジュールが受け持つ
+		ctx.state.bindMap(map, loadMap);
+	});
+
+	/**
+	 * 共有リンク (v=menu-result) で開かれた場合は経路検索も実行する。
+	 * 経路そのものは URL に載せない（サイズが大きいため）ので、復元時に
+	 * 取り直す。地図データと起動演出の完了を待ってから実行する。
+	 */
+	$effect(() => {
+		if (!ctx.state.booted) return;
+		if (ctx.state.appState !== "menu-result") return;
+		if (hasSearched) return;
+		if (Object.keys(mapData.edges).length === 0) return;
+
+		(async () => {
+			if (!(await startSearch())) {
+				// 経路が出せない共有リンクでは詳細メニューへ戻す
+				ctx.state.appState = "menu-detail";
+			}
+		})();
 	});
 </script>
 
@@ -277,9 +267,7 @@
 		<DetailPanel
 			onback={() => {
 				ctx.state.appState =
-					ctx.state.appState === "menu-result"
-						? "menu-detail"
-						: "app";
+					ctx.state.appState === "menu-result" ? "menu-detail" : "app";
 			}}
 		>
 			{#snippet content()}
@@ -306,11 +294,7 @@
 							<VehicleSelect />
 						</div>
 						<div style="flex: 0 0 25px;"></div>
-						<GreenButton
-							label="検索"
-							width={60}
-							onclick={startSearch}
-						/>
+						<GreenButton label="検索" width={60} onclick={startSearch} />
 					</div>
 				{:else}
 					<span
@@ -348,11 +332,7 @@
 							<VehicleSelect />
 						</div>
 						<div style="flex: 0 0 25px;"></div>
-						<GreenButton
-							label="検索"
-							width={60}
-							onclick={startSearch}
-						/>
+						<GreenButton label="検索" width={60} onclick={startSearch} />
 					</div>
 				{/if}
 			{/snippet}
