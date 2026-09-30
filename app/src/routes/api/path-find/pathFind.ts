@@ -48,8 +48,7 @@ function calcTotalDistance(path: App.Coordinate[]) {
     let distance = 0;
     for (let i = 1; i < path.length; i++) {
         const nextPoint = path[i];
-        const subDistance =  distanceOf(current, nextPoint);
-        console.log(`Adding distance ${subDistance}: ${current.lat}, ${current.lng} --> ${nextPoint.lat}, ${nextPoint.lng}`)
+        const subDistance = distanceOf(current, nextPoint);
 
         distance += subDistance;
         current = nextPoint;
@@ -80,6 +79,10 @@ export async function doPathFind(
     parameters: App.SearchParameters,
     wayHighway: string[],
 ) {
+    if (!begin || !end) {
+        throw new Error("始点と終点を指定してください");
+    }
+
     const bbox = getBoundaryBox(begin, end);
     const rawOsmData = await requireOSMData(bbox, cacheManager, fetchOverpassData);
     const osmData = trimOSMDataByWayHighway(rawOsmData, wayHighway);
@@ -91,10 +94,6 @@ export async function doPathFind(
     const mapData = fold2DegreeEdges(ccGraph);
     if (mapData instanceof Error) {
         throw mapData;
-    }
-
-    if (!begin || !end) {
-        throw new Error("始点と終点を指定してください");
     }
     if (Object.keys(mapData.edges).length === 0) {
         throw new Error("地図データを読み込み中です。少し待って再度お試しください");
