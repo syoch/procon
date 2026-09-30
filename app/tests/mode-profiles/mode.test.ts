@@ -158,3 +158,25 @@ describe("trimOSMDataByMode: モード専用の一方通行タグ", () => {
   });
 });
 
+describe("isAccessible: track / service の扱い", () => {
+  test("車・バイクは舗装された track だけ通れる", () => {
+    for (const mode of [car, motorcycle]) {
+      expect(isAccessible(mode, { highway: "track", tracktype: "grade1" })).toBe(true);
+      expect(isAccessible(mode, { highway: "track", surface: "asphalt" })).toBe(true);
+      expect(isAccessible(mode, { highway: "track" })).toBe(false);
+      expect(isAccessible(mode, { highway: "track", tracktype: "grade3" })).toBe(false);
+    }
+  });
+  test("車・バイク・トラックは service を通れる", () => {
+    for (const mode of [car, motorcycle, truck]) {
+      expect(isAccessible(mode, { highway: "service" })).toBe(true);
+    }
+  });
+  test("大型トラックは舗装されていても track を通れない", () => {
+    expect(isAccessible(truck, { highway: "track", tracktype: "grade1" })).toBe(false);
+  });
+  test("舗装された track でも規制タグがあれば通れない", () => {
+    expect(isAccessible(car, { highway: "track", tracktype: "grade1", motor_vehicle: "no" })).toBe(false);
+  });
+});
+

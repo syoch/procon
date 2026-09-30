@@ -3,17 +3,20 @@ import { canTraverseBackward, canTraverseForward } from "./utils/direction";
 import { distanceOf } from "./utils/haversine";
 import { PriorityQueue } from "./utils/priorityQueue";
 
-function calculateEdgeLength(edge: App.ComputedEdge) {
+/**
+ * エッジの長さ [m]。highwayCostFactor を指定した場合は、区間ごとに highway 種別の倍率を掛けた「実質的な長さ」を返す
+ */
+function calculateEdgeLength(edge: App.ComputedEdge, highwayCostFactor?: Readonly<Record<string, number>>) {
   return edge.segments
-    .map(x => distanceOf(x.begin_coordinate, x.end_coordinate))
+    .map(x => distanceOf(x.begin_coordinate, x.end_coordinate) * (highwayCostFactor?.[x.highway] ?? 1))
     .reduce((prev, acc) => acc + prev, 0);
 }
 
-function calculateEdgeCost(edge: App.ComputedEdge | App.MapVCrossEdge, params: App.SearchParameters): number {
+function calculateEdgeCost(edge: App.ComputedEdge | App.MapVCrossEdge, params: App.SearchParameters, options: PathFindOptions = {}): number {
   let view_score = edge.type === "ComputedEdge" ? edge.view_score : edge.type === "MapVCrossEdge" ? edge.view_score : 0;
   let width_score = edge.type === "ComputedEdge" ? edge.width_score : edge.type === "MapVCrossEdge" ? 0 : 0;
   let mix_score = edge.type === "ComputedEdge" ? edge.mix_score : edge.type === "MapVCrossEdge" ? 0 : 0;
-  let distance = edge.type === "ComputedEdge" ? calculateEdgeLength(edge) : 10;
+  let distance = edge.type === "ComputedEdge" ? calculateEdgeLength(edge, options.highwayCostFactor) : 10;
 
   const lambda = params.lambda;
   const a1 = params.view_score_weight;
@@ -33,6 +36,11 @@ function calculateEdgeCost(edge: App.ComputedEdge | App.MapVCrossEdge, params: A
 export type PathFindOptions = {
   /** 一方通行を無視する (徒歩モード用) */
   ignoreOneway?: boolean;
+  /**
+   * highway 種別ごとのコストの倍率 (例: 車モードの track は 2 倍)。
+   * 通れるが、なるべく避けたい道 (抜け道には使わず、そこしか道が無いときだけ通る) に使う
+   */
+  highwayCostFactor?: Readonly<Record<string, number>>;
 };
 
 function traversable(edge: App.SearchGraph["edges"][string], node: App.NodeId, options: PathFindOptions = {}) {
@@ -126,7 +134,7 @@ export function pathFind(graph: App.SearchGraph, params: App.SearchParameters, b
       const nextNodeId = edge.begin === currentNodeId ? edge.end : edge.begin;
       const computedEdge = getComputedNode(graph, edge);
 
-      const edgeCost = edgeCostCache.get(edge.id) ?? calculateEdgeCost(computedEdge, params);
+      const edgeCost = edgeCostCache.get(edge.id) ?? calculateEdgeCost(computedEdge, params, options);
       edgeCostCache.set(edge.id, edgeCost);
 
       const totalCost = currentCost + edgeCost;

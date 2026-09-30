@@ -211,7 +211,10 @@ export async function doPathFind(
         };
     }
 
-    const pathEdges = pathFind(mapData, parameters, [beginNodeId], [endNodeId], { ignoreOneway: profile?.ignoreOneway });
+    const pathEdges = pathFind(mapData, parameters, [beginNodeId], [endNodeId], {
+        ignoreOneway: profile?.ignoreOneway,
+        highwayCostFactor: profile?.highwayCostFactor,
+    });
     if (pathEdges.length <= 0) {
         return {
             found: false,

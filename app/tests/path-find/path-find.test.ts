@@ -82,4 +82,35 @@ describe("doPathFind: 到達できない場合のエラー", () => {
     expect(await doPathFind({ lat: 0, lng: 0.009 }, { lat: 0, lng: 0.001 }, bicycle, [], "bicycle")).toMatchObject({ found: true });
     expect(await doPathFind({ lat: 0, lng: 0.009 }, { lat: 0, lng: 0.001 }, car, [], "car")).toMatchObject({ found: false });
   });
+
+  test("車は舗装された track の先にある目的地 (展望台など) にも行ける", async () => {
+    mapData = {
+      elements: [
+        { type: "way", id: 1, nodes: [1, 2], tags: { highway: "tertiary" } },
+        { type: "way", id: 2, nodes: [2, 3], tags: { highway: "track", tracktype: "grade1" } },
+        node(1, 0, 0), node(2, 0, 0.005), node(3, 0.004, 0.009),
+      ],
+    };
+    const res = await doPathFind({ lat: 0, lng: 0.001 }, { lat: 0.004, lng: 0.009 }, car, [], "car");
+    expect(res).toMatchObject({ found: true });
+  });
+
+  test("車は割高な service を抜け道に使わず、遠回りでも一般道を通る (徒歩は近い方を通る)", async () => {
+    // A (0,0) → B (0,0.01) を結ぶ service (約 1.1km) と、北に膨らむ residential (約 1.2km)
+    mapData = {
+      elements: [
+        { type: "way", id: 1, nodes: [1, 2], tags: { highway: "service" } },
+        { type: "way", id: 2, nodes: [1, 3, 2], tags: { highway: "residential" } },
+        { type: "way", id: 3, nodes: [4, 1], tags: { highway: "residential" } },
+        { type: "way", id: 4, nodes: [2, 5], tags: { highway: "residential" } },
+        node(1, 0, 0), node(2, 0, 0.01), node(3, 0.002, 0.005), node(4, 0, -0.002), node(5, 0, 0.012),
+      ],
+    };
+    const maxLat = (res: Awaited<ReturnType<typeof doPathFind>>) =>
+      res.found ? Math.max(...res.coords.map((c) => c.lat)) : NaN;
+    const begin = { lat: 0, lng: -0.0015 }, end = { lat: 0, lng: 0.0115 };
+    expect(maxLat(await doPathFind(begin, end, car, [], "car"))).toBeGreaterThan(0.0019);
+    expect(maxLat(await doPathFind(begin, end, MODE_PROFILES.walk.defaultParameters, [], "walk"))).toBeLessThan(0.0001);
+  });
 });
+

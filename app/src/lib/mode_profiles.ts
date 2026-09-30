@@ -30,6 +30,16 @@ export type ModeProfile = {
   /** 通行できる highway 種別 */
   highways: ReadonlySet<string>;
   /**
+   * 舗装されている (tracktype=grade1 か、surface が舗装) ときだけ通行できる highway 種別
+   * 例: 車の track (農道・林道) は、舗装されていれば通れる
+   */
+  pavedOnlyHighways?: ReadonlySet<string>;
+  /**
+   * highway 種別ごとのコストの倍率。通れるが、なるべく避けたい道に使う (path_finder.ts の PathFindOptions)
+   * 幅員の情報が入るまでのつなぎとして、幅が分からない track / service を割高にしている (仮の値)
+   */
+  highwayCostFactor?: Readonly<Record<string, number>>;
+  /**
    * タグで明示的に許可されている (yes / designated / permissive) ときだけ通行できる highway 種別
    * 例: 自転車の footway は bicycle=yes (自転車歩道通行可) のときだけ通れる
    */
@@ -56,7 +66,10 @@ export type ModeProfile = {
   defaultParameters: App.SearchParameters;
 };
 
-/** 自動車が通る一般的な道路 (track / service は幅員情報が入るまで車系モードでは使わない) */
+/**
+ * 自動車が通る一般的な道路
+ * (track / service は幅が分からないため、車系モードでは条件付き・割高で別に扱う)
+ */
 const MOTOR_ROADS = [
   "motorway", "motorway_link",
   "trunk", "trunk_link",
@@ -75,6 +88,17 @@ const withoutMotorways = MOTOR_ROADS.filter((h) => !MOTORWAYS.includes(h));
 const DENY_VALUES = new Set(["no", "private", "agricultural", "forestry", "permit", "military"]);
 /** 明示的な許可とみなす値 (conditionalHighways の判定に使う) */
 const EXPLICIT_ALLOW_VALUES = new Set(["yes", "designated", "permissive"]);
+
+/** 舗装とみなす surface タグの値 */
+const PAVED_SURFACES = new Set(["paved", "asphalt", "concrete", "concrete:plates", "concrete:lanes", "paving_stones", "sett", "chipseal"]);
+
+/** 舗装されている道か (tracktype=grade1 は「舗装または固く締まった路面」) */
+export function isPaved(tags: Record<string, string>): boolean {
+  return tags.tracktype === "grade1" || PAVED_SURFACES.has(tags.surface);
+}
+
+/** 車・バイクで、幅が分からない道を割高にする倍率 (仮の値) */
+const MOTOR_COST_FACTOR: Readonly<Record<string, number>> = { service: 2, track: 2 };
 
 export const MODE_PROFILES: Record<ModeId, ModeProfile> = {
   walk: {
@@ -101,7 +125,10 @@ export const MODE_PROFILES: Record<ModeId, ModeProfile> = {
   car: {
     id: "car",
     name: "車",
-    highways: new Set(MOTOR_ROADS),
+    // service (駐車場・施設内の道) は通れるが割高、track (農道・林道) は舗装されていれば通れるが割高
+    highways: new Set([...MOTOR_ROADS, "service"]),
+    pavedOnlyHighways: new Set(["track"]),
+    highwayCostFactor: MOTOR_COST_FACTOR,
     conditionalHighways: new Set(),
     accessKeys: ["access", "vehicle", "motor_vehicle", "motorcar"],
     allowMotorroad: true,
@@ -115,7 +142,10 @@ export const MODE_PROFILES: Record<ModeId, ModeProfile> = {
     id: "motorcycle",
     name: "バイク",
     // 原付は対象外とし、全てのバイクが高速道路を通行できるものとして扱う
-    highways: new Set(MOTOR_ROADS),
+    // track / service の扱いは車と同じ
+    highways: new Set([...MOTOR_ROADS, "service"]),
+    pavedOnlyHighways: new Set(["track"]),
+    highwayCostFactor: MOTOR_COST_FACTOR,
     conditionalHighways: new Set(),
     accessKeys: ["access", "vehicle", "motor_vehicle", "motorcycle"],
     allowMotorroad: true,
@@ -128,7 +158,9 @@ export const MODE_PROFILES: Record<ModeId, ModeProfile> = {
   truck: {
     id: "truck",
     name: "大型トラック",
-    highways: new Set(MOTOR_ROADS.filter((h) => h !== "living_street")),
+    // track (農道・林道) は舗装されていても通れない。service (配送先の敷地など) は通れるが割高
+    highways: new Set([...MOTOR_ROADS.filter((h) => h !== "living_street"), "service"]),
+    highwayCostFactor: { service: 2 },
     conditionalHighways: new Set(),
     accessKeys: ["access", "vehicle", "motor_vehicle", "hgv"],
     allowMotorroad: true,
@@ -193,7 +225,10 @@ export function isAccessible(profile: ModeProfile, tags: Record<string, string>)
   const access = resolveAccessValue(profile, tags);
 
   // 1. highway 種別
-  if (!profile.highways.has(highway)) {
+  if (profile.pavedOnlyHighways?.has(highway)) {
+    // 舗装されている場合だけ通れる
+    if (!isPaved(tags)) return false;
+  } else if (!profile.highways.has(highway)) {
     if (!profile.conditionalHighways.has(highway)) return false;
     // タグで明示的に許可されている場合だけ通れる
     if (access === undefined || !EXPLICIT_ALLOW_VALUES.has(access)) return false;
