@@ -122,7 +122,7 @@
 		}
 		error = null;
 		hasSearched = true;
-		pathResult = []
+		pathResult = [];
 		totalDistance = 0;
 
 		isLoading = true;
@@ -215,7 +215,7 @@
 		const minLng = bounds.getWest();
 		const maxLat = bounds.getNorth();
 		const maxLng = bounds.getEast();
-		
+
 		isLoading = true;
 		try {
 			const foldGraph = await doLoadMap(minLat, minLng, maxLat, maxLng);
