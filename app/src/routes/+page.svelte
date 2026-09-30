@@ -157,7 +157,7 @@
 				totalDistance: number;
 			} = await res.json();
 
-			if (resObj.coords.length == 0) {
+			if (resObj.coords.length === 0) {
 				error = "経路が見つかりませんでした。";
 				return false;
 			}

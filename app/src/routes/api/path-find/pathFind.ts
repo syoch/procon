@@ -44,6 +44,9 @@ export function pathToCoordinates(mapData: App.SearchGraph, edgeIds: App.EdgeId[
 }
 
 function calcTotalDistance(path: App.Coordinate[]) {
+    if (path.length === 0)
+        return 0;
+
     let current = path[0];
     let distance = 0;
     for (let i = 1; i < path.length; i++) {
@@ -107,6 +110,6 @@ export async function doPathFind(
 
     return {
         coords: pathCoords,
-        totalDistance: calcTotalDistance(pathCoords)
+        totalDistance: calcTotalDistance(pathCoords),
     };
 }
