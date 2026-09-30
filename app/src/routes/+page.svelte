@@ -9,6 +9,8 @@
 	import { assertGraph } from "$lib/utils/graph";
 	import { loadOSMMap } from "$lib/map_loader/osm";
 	import MapViewer from "$lib/components/MapViewer.svelte";
+	import type { SharpTurn } from "$lib/sharp_turn";
+	import type { PathFindResult } from "./api/path-find/pathFind";
 	import DetailButton from "$lib/components/figma/DetailButton.svelte";
 	import DetailPanel from "$lib/components/figma/DetailPanel.svelte";
 	import TitleScreen from "$lib/components/figma/TitleScreen.svelte";
@@ -19,6 +21,7 @@
 		type ParameterVariant,
 	} from "$lib/app_state.svelte";
 	import { SelectMarker } from "$lib/utils/selectMarker.svelte";
+	import { MODE_IDS, MODE_PROFILES } from "$lib/mode_profiles";
 	import VehicleSelect from "$lib/components/figma/VehicleSelect.svelte";
 	import GreenButton from "$lib/components/figma/GreenButton.svelte";
 	import SearchField from "$lib/components/figma/SearchField.svelte";
@@ -30,35 +33,20 @@
 
 	let mapData = $state<App.SearchGraph>({ edges: {}, nodes: {} });
 	let pathResult: App.Coordinate[] = $state([]);
+	let sharpTurns: SharpTurn[] = $state([]);
 	let totalDistance = $state<number | undefined>(undefined);
 	let totalIntersections = $state<number | undefined>(undefined);
 	let isLoading = $state(false);
 	/** 手動・自動を問わず検索を実行済みか（$state ではない） */
 	let hasSearched = false;
 
-	const parameterVariants: ParameterVariant[] = [
-		{
-			name: "徒歩",
-			lambda: 1,
-			mix_score_weight: 0.3,
-			view_score_weight: 0.5,
-			width_score_weight: 0.2,
-		},
-		{
-			name: "自転車",
-			lambda: 1,
-			mix_score_weight: 0.3,
-			view_score_weight: 0.4,
-			width_score_weight: 0.3,
-		},
-		{
-			name: "車",
-			lambda: 1,
-			mix_score_weight: 0.3,
-			view_score_weight: 0.2,
-			width_score_weight: 0.5,
-		},
-	];
+	// 移動モード (徒歩・自転車・車・バイク・大型トラック) ごとのプリセット。
+	// 表示名と重みは mode_profiles.ts を唯一の定義元とし、ここでは並べるだけにする
+	const parameterVariants: ParameterVariant[] = MODE_IDS.map((mode) => ({
+		name: MODE_PROFILES[mode].name,
+		mode,
+		...MODE_PROFILES[mode].defaultParameters,
+	}));
 	const locationProvider = async (q: string) => {
 		const res = await fetch(
 			`/api/location?q=${encodeURIComponent(q)}&limit=5`,
@@ -70,7 +58,8 @@
 		return data.candidates ?? [];
 	};
 
-	const ctx = MainAppContext.create(locationProvider, parameterVariants, 2);
+	// 初期選択は「車」
+	const ctx = MainAppContext.create(locationProvider, parameterVariants, MODE_IDS.indexOf("car"));
 
 	function onClick(lat: number, lng: number) {
 		console.debug("Clicked at", lat, lng);
@@ -126,25 +115,36 @@
 		pathResult = [];
 		totalDistance = 0;
 		totalIntersections = 0;
+		sharpTurns = [];
 
 		isLoading = true;
+		// 送るのは重みの数値だけ (プリセットの表示名などは含めない)
+		const { lambda, mix_score_weight, view_score_weight, width_score_weight } = ctx.searchParameters;
+		const parameters = { lambda, mix_score_weight, view_score_weight, width_score_weight };
+		const mode = ctx.searchMode;
 		const res = await fetch("/api/path-find", {
 			method: "POST",
 			headers: { "Content-Type": "application/json" },
-			body: JSON.stringify({
-				begin,
-				end,
-				parameters: ctx.searchParameters,
-				wayHighway: [
-					"motorway",
-					"trunk",
-					"primary",
-					"secondary",
-					"tertiary",
-					"unclassified",
-					"residential",
-				],
-			}),
+			// モードがあるプリセットは mode で (通れる道はサーバー側のモード定義で決まる)、
+			// 無いプリセットは従来どおり wayHighway で探索する
+			body: JSON.stringify(
+				mode
+					? { begin, end, parameters, mode }
+					: {
+							begin,
+							end,
+							parameters,
+							wayHighway: [
+								"motorway",
+								"trunk",
+								"primary",
+								"secondary",
+								"tertiary",
+								"unclassified",
+								"residential",
+							],
+						},
+			),
 		});
 		isLoading = false;
 
@@ -154,21 +154,18 @@
 		}
 
 		try {
-			const resObj: {found: false} | {
-				found: true
-				coords: App.Coordinate[];
-				totalDistance: number;
-				totalIntersections: number;
-			} = await res.json();
+			const resObj: PathFindResult = await res.json();
 
 			if (!resObj.found) {
-				error = "経路が見つかりませんでした。";
+				// 到達できない理由 (目的地の近くに通れる道が無い など) をそのまま表示する
+				error = resObj.message ?? "経路が見つかりませんでした。";
 				return false;
 			}
 
 			pathResult = resObj.coords;
 			totalDistance = resObj.totalDistance;
 			totalIntersections = resObj.totalIntersections;
+			sharpTurns = resObj.sharpTurns ?? [];
 			ctx.state.appState = "menu-result";
 		} catch (e) {
 			error = "サーバー応答の読み取りエラーが発生しました";
@@ -278,7 +275,7 @@
 	});
 </script>
 
-<MapViewer bind:map bind:pathResult {onClick}></MapViewer>
+<MapViewer bind:map bind:pathResult {sharpTurns} {onClick}></MapViewer>
 
 {#if ctx.state.appState === "app"}
 	<div class="menu-button" transition:fade={{ duration: 120 }}>

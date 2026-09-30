@@ -1,5 +1,8 @@
 import { transientSplit } from '$lib/transient-split';
 import { pathFind } from '$lib/path_finder';
+import { largestComponentEdges } from '$lib/utils/graph';
+import { MODE_PROFILES, type ModeId } from '$lib/mode_profiles';
+import { collectRoadJunctions, detectSharpTurnsOnPath, type SharpTurn } from '$lib/sharp_turn';
 import { CrossConvert } from '$lib/cross_transform';
 import { transformOSMMapToOSMGraph } from '$lib/map_loader/osm';
 import { fold2DegreeEdges } from '$lib/fold2degree';
@@ -7,7 +10,7 @@ import { fold2DegreeEdges } from '$lib/fold2degree';
 import { requireOSMData } from '../osm';
 import { cacheManager } from '../osm/fs-cache-manager';
 import { fetchOverpassData } from '../osm/osm-fetcher';
-import { trimOSMDataByWayHighway } from '../osm/osm-data';
+import { trimOSMDataByMode, trimOSMDataByWayHighway } from '../osm/osm-data';
 import { distanceOf } from '$lib/utils/haversine';
 
 /**
@@ -98,33 +101,77 @@ function calcTotalDistance(path: App.Coordinate[]) {
 
 const deltaLatitude = 0.015625; // 1/64
 const deltaLongitude = 0.015625; // 1/64
-function getBoundaryBox(begin: App.Coordinate, end: App.Coordinate): {
+/**
+ * 始点・終点を囲む範囲に足す余白 (格子のマス数)
+ * 余白が無いと、範囲の外を回る道 (山道など) が切れて道路網から切り離されたり、
+ * 範囲の外で交わる道が見えず交差点をカーブと誤判定したりするため
+ */
+const BOUNDARY_MARGIN_CELLS = 1;
+/**
+ * 経路探索に使う地図データの範囲を求める (1/64° の格子に合わせ、周りに余白を足す)
+ */
+export function getBoundaryBox(begin: App.Coordinate, end: App.Coordinate): {
     minLat: number;
     minLng: number;
     maxLat: number;
     maxLng: number;
 } {
     return {
-        minLat: Math.floor(Math.min(begin.lat, end.lat) / deltaLatitude) * deltaLatitude,
-        minLng: Math.floor(Math.min(begin.lng, end.lng) / deltaLongitude) * deltaLongitude,
-        maxLat: Math.ceil(Math.max(begin.lat, end.lat) / deltaLatitude) * deltaLatitude,
-        maxLng: Math.ceil(Math.max(begin.lng, end.lng) / deltaLongitude) * deltaLongitude,
+        minLat: (Math.floor(Math.min(begin.lat, end.lat) / deltaLatitude) - BOUNDARY_MARGIN_CELLS) * deltaLatitude,
+        minLng: (Math.floor(Math.min(begin.lng, end.lng) / deltaLongitude) - BOUNDARY_MARGIN_CELLS) * deltaLongitude,
+        maxLat: (Math.ceil(Math.max(begin.lat, end.lat) / deltaLatitude) + BOUNDARY_MARGIN_CELLS) * deltaLatitude,
+        maxLng: (Math.ceil(Math.max(begin.lng, end.lng) / deltaLongitude) + BOUNDARY_MARGIN_CELLS) * deltaLongitude,
     }
 }
 
+/**
+ * 始点・終点を道に吸着したときに許すずれの上限 [m]
+ * これより遠い道にしか吸着できない場合は、間違った場所への経路を黙って返さないように「到達できない」とする (仮の値)
+ */
+export const MAX_SNAP_DISTANCE_M = 200;
+
+/** /api/path-find の応答 */
+export type PathFindResult =
+    | {
+        found: false;
+        /** 見つからなかった理由 */
+        reason: "BEGIN_UNREACHABLE" | "END_UNREACHABLE" | "NO_ROUTE";
+        /** ユーザーに表示するメッセージ */
+        message: string;
+    }
+    | {
+        found: true;
+        coords: App.Coordinate[];
+        totalDistance: number;
+        totalIntersections: number;
+        /** 経路上の急カーブ (道の途中のカーブのみ。検出しないモードでは空) */
+        sharpTurns: SharpTurn[];
+        /** 指定された始点・終点から、吸着した道の上の点までの距離 [m] */
+        snapDistance: { begin: number; end: number };
+    };
+
+/**
+ * @param wayHighway 通行できる highway 種別 (mode を指定した場合は使わない)
+ * @param mode 移動モード。指定した場合、通行可否・一方通行の扱いは mode_profiles.ts のルールで決まる
+ */
 export async function doPathFind(
     begin: App.Coordinate,
     end: App.Coordinate,
     parameters: App.SearchParameters,
     wayHighway: string[],
-) {
+    mode?: ModeId,
+): Promise<PathFindResult> {
     if (!begin || !end) {
         throw new Error("始点と終点を指定してください");
     }
 
     const bbox = getBoundaryBox(begin, end);
     const rawOsmData = await requireOSMData(bbox, cacheManager, fetchOverpassData);
-    const osmData = trimOSMDataByWayHighway(rawOsmData, wayHighway);
+    const profile = mode ? MODE_PROFILES[mode] : undefined;
+    // mode 指定時はモードのルールで、未指定時は従来どおり highway 種別だけで絞り込む
+    const osmData = profile
+        ? trimOSMDataByMode(rawOsmData, profile)
+        : trimOSMDataByWayHighway(rawOsmData, wayHighway);
     const osmGraph = transformOSMMapToOSMGraph(osmData);
     const ccGraph = CrossConvert(osmGraph);
     if (ccGraph instanceof Error) {
@@ -138,22 +185,63 @@ export async function doPathFind(
         throw new Error("地図データを読み込み中です。少し待って再度お試しください");
     }
 
-    const beginNodeId = transientSplit(mapData, begin);
-    const endNodeId = transientSplit(mapData, end);
+    // 孤立した小さな道路網 (敷地内の道など) に吸着すると経路が見つからないため、
+    // 最大連結成分のエッジだけを吸着の候補にする
+    const mainEdges = largestComponentEdges(mapData);
+    const beginNodeId = transientSplit(mapData, begin, mainEdges);
+    const endNodeId = transientSplit(mapData, end, mainEdges);
 
-    const pathEdges = pathFind(mapData, parameters, [beginNodeId], [endNodeId]);
+    // 吸着先が遠すぎる場合 (近くの道が道路網から切り離されている場合など) は、間違った経路を返さず「到達できない」とする
+    const snapDistance = {
+        begin: distanceOf(begin, mapData.nodes[beginNodeId].coordinate),
+        end: distanceOf(end, mapData.nodes[endNodeId].coordinate),
+    };
+    if (snapDistance.begin > MAX_SNAP_DISTANCE_M) {
+        return {
+            found: false,
+            reason: "BEGIN_UNREACHABLE",
+            message: `出発地の近く (${MAX_SNAP_DISTANCE_M}m 以内) に、このモードで通れる道が見つかりません`,
+        };
+    }
+    if (snapDistance.end > MAX_SNAP_DISTANCE_M) {
+        return {
+            found: false,
+            reason: "END_UNREACHABLE",
+            message: `目的地の近く (${MAX_SNAP_DISTANCE_M}m 以内) に、このモードで通れる道が見つかりません`,
+        };
+    }
+
+    const pathEdges = pathFind(mapData, parameters, [beginNodeId], [endNodeId], {
+        ignoreOneway: profile?.ignoreOneway,
+        highwayCostFactor: profile?.highwayCostFactor,
+    });
     if (pathEdges.length <= 0) {
         return {
             found: false,
-        }
+            reason: "NO_ROUTE",
+            message: "経路が見つかりませんでした。",
+        };
     }
     const pathCoords = pathToCoordinates(mapData, pathEdges, beginNodeId);
     const pathNodes = pathToNodeIds(mapData, pathEdges, beginNodeId);
+
+    // 急カーブの検出 (mode 未指定時は車と同じ基準 (道の基準値のみ) で検出する)
+    // 交差点は絞り込む前のデータで判定する (モードで外れた道との交差点も区切るため)
+    const sharpTurnMinRadius = profile ? profile.sharpTurnMinRadius : 0;
+    const sharpTurns = sharpTurnMinRadius === undefined
+        ? []
+        : detectSharpTurnsOnPath(mapData, pathEdges, beginNodeId, {
+            minRadius: sharpTurnMinRadius,
+            junctions: collectRoadJunctions(rawOsmData),
+            bounds: bbox,
+        });
 
     return {
         found: true,
         coords: pathCoords,
         totalDistance: calcTotalDistance(pathCoords),
         totalIntersections: countPassedIntersections(mapData, pathNodes),
-    }
+        sharpTurns,
+        snapDistance,
+    };
 }

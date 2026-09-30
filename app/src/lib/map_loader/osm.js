@@ -3,6 +3,8 @@
  * @brief OSM(Overpass API)からデータを読み込み、OSM Graph を構築する
  */
 
+import { canTraverseBackward, canTraverseForward, flipDirection } from "../utils/direction";
+
 /**
  * @brief OSM データを読み込み、OSM Graph を作成する
  * @param {number} minLat - 最小緯度
@@ -102,6 +104,60 @@ function resolveDirection(tags) {
 }
 
 /**
+ * 多重辺をまとめるときの highway 種別の優先順 (先頭ほど「強い」道。一覧に無い種別は最も弱い)
+ */
+const HIGHWAY_RANK = [
+  "motorway", "motorway_link", "trunk", "trunk_link", "primary", "primary_link",
+  "secondary", "secondary_link", "tertiary", "tertiary_link",
+  "unclassified", "residential", "living_street", "service", "track",
+  "cycleway", "path", "pedestrian", "footway", "steps",
+];
+
+/**
+ * @brief 多重辺の highway 種別を合成する (強い方の種別を採る)
+ * @param {string} a
+ * @param {string} b
+ * @returns {string}
+ */
+function mergeHighway(a, b) {
+  const rank = (/** @type {string} */ h) => {
+    const i = HIGHWAY_RANK.indexOf(h);
+    return i === -1 ? HIGHWAY_RANK.length : i;
+  };
+  if (rank(a) !== rank(b)) return rank(a) < rank(b) ? a : b;
+  // 同じ順位 (どちらも一覧に無い種別など) の場合も順序によらないよう、辞書順で決める
+  return a <= b ? a : b;
+}
+
+/**
+ * @brief 多重辺の幅員を合成する (分かっている方の大きい値を採る)
+ * @param {number | null} a
+ * @param {number | null} b
+ * @returns {number | null}
+ */
+function mergeWidth(a, b) {
+  if (a === null || a === undefined) return b ?? null;
+  if (b === null || b === undefined) return a;
+  return Math.max(a, b);
+}
+
+/**
+ * @brief 多重辺の歩道情報を合成する (歩道がある方を優先し、左右が揃えば両側とする)
+ * @param {string | null} a
+ * @param {string | null} b
+ * @returns {string | null}
+ */
+function mergeSidewalk(a, b) {
+  if (a === b) return a;
+  const values = new Set([a, b]);
+  if (values.has("both") || (values.has("left") && values.has("right"))) return "both";
+  const rank = (/** @type {string | null} */ s) =>
+    s === "separate" ? 4 : s === "left" || s === "right" || s === "yes" ? 3 : s === "no" || s === "none" ? 2 : s ? 1 : 0;
+  if (rank(a) !== rank(b)) return rank(a) > rank(b) ? a : b;
+  return (a ?? "") <= (b ?? "") ? a : b;
+}
+
+/**
  * @brief 生データ(rawNodes, rawWays)から OSM Graph を構築する
  *
  * 交差点判定・セグメント化(次数によるノードの分類や、交差点間の座標列の畳み込み)は
@@ -116,6 +172,11 @@ function buildGraphFromWays(rawNodes, rawWays) {
   const nodes = {};
   /** @type {{[id:string]: App.OSMEdge}} */
   const edges = {};
+  // 同じ 2 ノード間のエッジ (多重辺) を 1 本にまとめるための索引 ("小さいID|大きいID" -> edgeId)
+  // way が同じ区間を往復する場合 (a→b→a) や、別の way が同じ区間を重ねて通る場合に多重辺ができ、
+  // 交差点変換 (CrossConvert) で同じ ID のノードが二重に作られてしまうため
+  /** @type {Map<string, string>} */
+  const pairIndex = new Map();
 
   /**
    * @param {string} rawId
@@ -155,7 +216,25 @@ function buildGraphFromWays(rawNodes, rawWays) {
       const endNode = ensureMapNode(endId);
       if (!beginNode || !endNode) continue; // bbox境界などで座標が無いノードはスキップ
 
+      const pairKey = beginId < endId ? `${beginId}|${endId}` : `${endId}|${beginId}`;
+      const existingEdgeId = pairIndex.get(pairKey);
+      if (existingEdgeId) {
+        // 既存のエッジに、この区間の進行可能な向きを足し合わせる (どちらかで通れる向きは通れる)
+        const existing = edges[existingEdgeId];
+        const sameOrientation = existing.begin === beginId;
+        const dir = sameOrientation ? direction : flipDirection(direction);
+        const forward = canTraverseForward(existing.direction) || canTraverseForward(dir);
+        const backward = canTraverseBackward(existing.direction) || canTraverseBackward(dir);
+        existing.direction = forward && backward ? "both" : forward ? "forward" : backward ? "backward" : "none";
+        // タグも両方の way から合成する (way の返却順によらず同じ結果になるようにするため)
+        existing.highway = mergeHighway(existing.highway, tags.highway ?? "");
+        existing.width = mergeWidth(existing.width, width);
+        existing.sidewalk = mergeSidewalk(existing.sidewalk, tags.sidewalk ?? null);
+        continue;
+      }
+
       const edgeId = `${wayId}_${i}`;
+      pairIndex.set(pairKey, edgeId);
 
       /** @type {App.OSMEdge} */
       const edge = {

@@ -2,6 +2,7 @@ import { getContext, setContext } from "svelte";
 import L from "leaflet";
 import { queryParameters, ssp } from "sveltekit-search-params";
 import type { Readable, Writable } from "svelte/store";
+import type { ModeId } from "$lib/mode_profiles";
 
 export interface LocationCandidate {
   /** 短い表示名(例: "長岡駅") */
@@ -40,6 +41,11 @@ export type ParameterVariant = {
   view_score_weight: number;
   /** 道幅スコアの重み */
   width_score_weight: number;
+  /**
+   * 移動モード (mode_profiles.ts)。指定すると、通れる道・一方通行・急カーブの基準がサーバー側でモードごとに決まる。
+   * 未指定のプリセットは従来どおり wayHighway で探索する
+   */
+  mode?: ModeId;
 };
 
 /** URL で共有する画面。`boot` は起動演出専用なので含めない。 */
@@ -244,6 +250,11 @@ export class MainAppContext {
     if (!params) throw "無効なプリセットインデックスが指定されています";
 
     return params;
+  }
+
+  /** 選択中のプリセットの移動モード (未指定なら undefined) */
+  get searchMode(): ModeId | undefined {
+    return this.state.parameterVariants[this.state.selectedVariantIndex]?.mode;
   }
 
   static getInstance(): MainAppContext {
