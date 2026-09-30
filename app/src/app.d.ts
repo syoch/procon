@@ -247,6 +247,10 @@ declare global {
 		type OSMData = {
 			elements: (OSMRawWay | OSMRawNode)[]
 		};
+		type informationGraph = {
+    type: string[];      // 例: ["直進", "右折", ...] のような判定結果や種別
+    distance: number[];  // 曲がるまでの累積距離
+};
 	}
 }
 

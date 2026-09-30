@@ -43,6 +43,7 @@
 	let isLoading = $state(false);
 	/** 手動・自動を問わず検索を実行済みか（$state ではない） */
 	let hasSearched = false;
+	let informationGraph=$state<App.informationGraph>({ type: [], distance: [] })
 
 	const parameterVariants: ParameterVariant[] = [
 		{
@@ -167,6 +168,7 @@
 				coords: App.Coordinate[];
 				totalDistance: number;
 				totalIntersections: number;
+				infoGraph: App.informationGraph;
 			} = await res.json();
 
 			if (!resObj.found) {
@@ -177,6 +179,7 @@
 			pathResult = resObj.coords;
 			totalDistance = resObj.totalDistance;
 			totalIntersections = resObj.totalIntersections;
+			informationGraph = resObj.infoGraph;
 			ctx.state.appState = "menu-result";
 		} catch (e) {
 			error = "サーバー応答の読み取りエラーが発生しました";
@@ -361,6 +364,7 @@
 						総走行距離: {((totalDistance ?? 0) / 1000).toFixed(2)} km <br>
 						総通過交差点数: {totalIntersections ?? 0} 個
 					</span>
+
 					<div class="divider" style="top: 425.5px;"></div>
 					<div
 						style="position: absolute; top: 454.5px; display: flex;"
@@ -380,72 +384,111 @@
 
 	    
     
-    <div class="route-scroll-container">
-	<div class="text-title">経路案内</div>
+<div class="route-scroll-container">
+        <div class="text-title">経路案内</div>
 
-    <div class="route-row">
-    <img src={startpointLogo} alt="" class="route-icon" />
-    <div class="route-info">
-        <div class="text-title">開始地点</div>
-        <div class="text-sub">State2</div>
+        <!-- 開始地点 -->
+        <div class="route-row">
+            <img src={startpointLogo} alt="" class="route-icon" />
+            <div class="route-info">
+                <div class="text-title">開始地点</div>
+                <div class="text-sub">State2</div>
+            </div>
+        </div>
+
+        {#if informationGraph && informationGraph.type.length > 0}
+            <!-- 累積用の変数とステップ分割ロジック -->
+            {@const steps = (() => {
+                const aggregated = [];
+                let accumDist = 0;
+                let accumCross = 0;
+
+                for (let i = 0; i < informationGraph.type.length; i++) {
+                    const t = informationGraph.type[i];
+                    const d = informationGraph.distance[i];
+
+                    accumDist += d;
+
+                    if (t === "交差点を直進") {
+                        accumCross++;
+                    }
+                    else if (t === "右折" || t === "左折") {
+                        if (accumCross > 0 || accumDist > 0) {
+                            aggregated.push({
+                                type: "直進",
+                                distance: Math.round(accumDist),
+                                cross: accumCross
+                            });
+                        }
+
+                        aggregated.push({
+                            type: t,
+                            distance: 0,
+                            cross: accumCross + 1
+                        });
+
+                        accumDist = 0;
+                        accumCross = 0;
+                    } 
+                    else if (i === informationGraph.type.length - 1) {
+                        if (accumDist > 0 || accumCross > 0) {
+                            aggregated.push({
+                                type: "到着",
+                                distance: Math.round(accumDist),
+                                cross: accumCross
+                            });
+                        }
+                    }
+                }
+                return aggregated;
+            })()}
+
+            <!-- まとめたステップをループして表示 -->
+            {#each steps as step}
+                <div class="route-row">
+                    <img 
+                        src={
+                            step.type === "右折" ? turnrightLogo :
+                            step.type === "左折" ? turnleftLogo : straightLogo
+                        } 
+                        alt={step.type} 
+                        class="route-icon" 
+                    />
+
+                    <div class="route-info">
+                        <div class="text-title">
+                            {#if step.type === "直進"}
+                                直進
+                            {:else if step.type === "到着"}
+                                目的地付近
+                            {:else}
+                                {step.cross}個目の交差点を{step.type}
+                            {/if}
+                        </div>
+
+                        <div class="text-sub">
+                            {#if step.type === "直進"}
+                                {step.distance}m直進
+                            {:else if step.type === "到着"}
+                                State2
+                            {:else}
+                                State2
+                            {/if}
+                        </div>
+                    </div>
+                </div>
+            {/each}
+        {/if}
+
+        <!-- 終点 -->
+        <div class="route-row">
+            <img src={finishpointLogo} alt="終点" class="route-icon" />
+            <div class="route-info">
+                <div class="text-title">終点</div>
+                <div class="text-sub">State2</div>
+            </div>
+        </div>
     </div>
-</div>
-
-<!-- 2行目：直進 -->
-<div class="route-row">
-    <img src={straightLogo} alt="直進" class="route-icon" />
-    <div class="route-info">
-        <div class="text-title">直進</div>
-        <div class="text-sub">State2</div>
-    </div>
-</div>
-
-<!-- 3行目：左折 -->
-<div class="route-row">
-    <img src={turnleftLogo} alt="左折" class="route-icon" />
-    <div class="route-info">
-        <div class="text-title">左折</div>
-        <div class="text-sub">State2</div>
-    </div>
-</div>
-
-<!-- 4行目：右折 -->
-<div class="route-row">
-    <img src={turnrightLogo} alt="右折" class="route-icon" />
-    <div class="route-info">
-        <div class="text-title">右折</div>
-        <div class="text-sub">State2</div>
-    </div>
-</div>
-
-<!-- 5行目：合流 -->
-<div class="route-row">
-    <img src={margeLogo} alt="合流" class="route-icon" />
-    <div class="route-info">
-        <div class="text-title">合流</div>
-        <div class="text-sub">State2</div>
-    </div>
-</div>
-
-<!-- 6行目：分岐 -->
-<div class="route-row">
-    <img src={forkLogo} alt="分岐" class="route-icon" />
-    <div class="route-info">
-        <div class="text-title">分岐</div>
-        <div class="text-sub">State2</div>
-    </div>
-</div>
-
-<!-- 7行目：終点 -->
-<div class="route-row">
-    <img src={finishpointLogo} alt="終点" class="route-icon" />
-    <div class="route-info">
-        <div class="text-title">終点</div>
-        <div class="text-sub">State2</div>
-    </div>
-	</div>
-	</div>
-
 				{/if}
 			{/snippet}
 		</DetailPanel>
