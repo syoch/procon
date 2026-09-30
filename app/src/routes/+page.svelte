@@ -31,6 +31,7 @@
 	let mapData = $state<App.SearchGraph>({ edges: {}, nodes: {} });
 	let pathResult: App.Coordinate[] = $state([]);
 	let totalDistance = $state<number | undefined>(undefined);
+	let totalIntersections = $state<number | undefined>(undefined);
 	let isLoading = $state(false);
 	/** 手動・自動を問わず検索を実行済みか（$state ではない） */
 	let hasSearched = false;
@@ -155,6 +156,7 @@
 			const resObj: {
 				coords: App.Coordinate[];
 				totalDistance: number;
+				totalIntersections: number;
 			} = await res.json();
 
 			if (resObj.coords.length === 0) {
@@ -164,6 +166,7 @@
 
 			pathResult = resObj.coords;
 			totalDistance = resObj.totalDistance;
+			totalIntersections = resObj.totalIntersections;
 			ctx.state.appState = "menu-result";
 		} catch (e) {
 			error = "サーバー応答の読み取りエラーが発生しました";
@@ -344,10 +347,10 @@
 						style="position: absolute; white-space: nowrap; left: 32.7px; top: 320.2px;"
 						>地点</span
 					>
-					<span
-						style="position: absolute; white-space: nowrap; left: 34.8px; top: 367.6px;"
-						>総走行距離: {((totalDistance ?? 0) / 1000).toFixed(2)} km</span
-					>
+					<span style="position: absolute; white-space: nowrap; left: 34.8px; top: 367.6px;">
+						総走行距離: {((totalDistance ?? 0) / 1000).toFixed(2)} km <br>
+						総通過交差点数: {totalIntersections} 個
+					</span>
 					<div class="divider" style="top: 425.5px;"></div>
 					<div
 						style="position: absolute; top: 454.5px; display: flex;"

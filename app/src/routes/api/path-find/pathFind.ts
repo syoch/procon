@@ -10,6 +10,22 @@ import { fetchOverpassData } from '../osm/osm-fetcher';
 import { trimOSMDataByWayHighway } from '../osm/osm-data';
 import { distanceOf } from '$lib/utils/haversine';
 
+function pathToNodeIds(mapData: App.SearchGraph, edgeIds: App.EdgeId[], begin: App.NodeId): App.NodeId[] {
+    let current: App.NodeId = begin;
+    const res: App.NodeId[] = [];
+    res.push(begin);
+
+    for (const edgeId of edgeIds) {
+        const edge = mapData.edges[edgeId];
+        const reversed = current === edge.end;
+        const nextNodeId = reversed ? edge.begin : edge.end;
+
+        res.push(nextNodeId);
+        current = nextNodeId;
+    }
+    return res;
+}
+
 export function pathToCoordinates(mapData: App.SearchGraph, edgeIds: App.EdgeId[], begin: App.NodeId): App.Coordinate[] {
     let current: App.NodeId = begin;
     if (!mapData.nodes[begin]) {
@@ -107,9 +123,13 @@ export async function doPathFind(
 
     const pathEdges = pathFind(mapData, parameters, [beginNodeId], [endNodeId]);
     const pathCoords = pathToCoordinates(mapData, pathEdges, beginNodeId);
+    const pathNodes = pathToNodeIds(mapData, pathEdges, beginNodeId);
 
+    // 交差点を通過する際 2 回 MapVCrossNode を通るため、 /2 している
+    const intersections = Math.floor(pathNodes.filter(id => mapData.nodes[id].type === "MapVCrossNode").length / 2);
     return {
         coords: pathCoords,
         totalDistance: calcTotalDistance(pathCoords),
+        totalIntersections: intersections,
     };
 }
