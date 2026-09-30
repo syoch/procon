@@ -153,13 +153,14 @@
 		}
 
 		try {
-			const resObj: {
+			const resObj: {found: false} | {
+				found: true
 				coords: App.Coordinate[];
 				totalDistance: number;
 				totalIntersections: number;
 			} = await res.json();
 
-			if (resObj.coords.length === 0) {
+			if (!resObj.found) {
 				error = "経路が見つかりませんでした。";
 				return false;
 			}

@@ -122,12 +122,18 @@ export async function doPathFind(
     const endNodeId = transientSplit(mapData, end);
 
     const pathEdges = pathFind(mapData, parameters, [beginNodeId], [endNodeId]);
+    if (pathEdges.length <= 0) {
+        return {
+            found: false,
+        }
+    }
     const pathCoords = pathToCoordinates(mapData, pathEdges, beginNodeId);
     const pathNodes = pathToNodeIds(mapData, pathEdges, beginNodeId);
 
     // 交差点を通過する際 2 回 MapVCrossNode を通るため、 /2 している
     const intersections = Math.floor(pathNodes.filter(id => mapData.nodes[id].type === "MapVCrossNode").length / 2);
     return {
+        found: true,
         coords: pathCoords,
         totalDistance: calcTotalDistance(pathCoords),
         totalIntersections: intersections,
