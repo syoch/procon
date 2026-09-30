@@ -159,28 +159,32 @@ test("交差点 1 個（clique を 2 ノードで通過）", () => {
 });
 
 test("交差点 3 個（6 ノード）", () => {
-	// T1, T2, T3 の 3 交差点を通過
-	const nodes: App.NodeId[] = ["S"];
-	const edges: Record<string, any> = {};
-	const g = { nodes: {} as any, edges } as App.SearchGraph;
-	const add = (n: App.NodeId, lat: number) => {
-		g.nodes[n] = crossNode(n, lat, [n]);
-	};
-	g.nodes["S"] = splittedNode("S", 0);
-	add("T1_a", 1); add("T1_b", 1);
-	add("T2_a", 2); add("T2_b", 2);
-	add("T3_a", 3); add("T3_b", 3);
-	g.nodes["E"] = splittedNode("E", 4);
-	edges["S-T1"] = computedEdge("S-T1", "S", 0, "T1_a", 1);
-	edges["T1x"] = crossEdge("T1x", "T1_a", "T1_b");
-	edges["T1-T2"] = computedEdge("T1-T2", "T1_b", 1, "T2_a", 2);
-	edges["T2x"] = crossEdge("T2x", "T2_a", "T2_b");
-	edges["T2-T3"] = computedEdge("T2-T3", "T2_b", 2, "T3_a", 3);
-	edges["T3x"] = crossEdge("T3x", "T3_a", "T3_b");
-	edges["T3-E"] = computedEdge("T3-E", "T3_b", 3, "E", 4);
-	const path: App.EdgeId[] = ["S-T1", "T1x", "T1-T2", "T2x", "T2-T3", "T3x", "T3-E"];
-	for (const e of path) nodes.push((g.edges[e] as any).begin === nodes[nodes.length - 1] ? (g.edges[e] as any).end : (g.edges[e] as any).begin);
+	// S - T1 - T2 - T3 - E を 3 交差点で通過する
+	const g = graph(
+		{
+			S: splittedNode("S", 0),
+			T1_a: crossNode("T1_a", 1),
+			T1_b: crossNode("T1_b", 1),
+			T2_a: crossNode("T2_a", 2),
+			T2_b: crossNode("T2_b", 2),
+			T3_a: crossNode("T3_a", 3),
+			T3_b: crossNode("T3_b", 3),
+			E: splittedNode("E", 4),
+		},
+		{
+			"S-T1": computedEdge("S-T1", "S", 0, "T1_a", 1),
+			T1x: crossEdge("T1x", "T1_a", "T1_b"),
+			"T1-T2": computedEdge("T1-T2", "T1_b", 1, "T2_a", 2),
+			T2x: crossEdge("T2x", "T2_a", "T2_b"),
+			"T2-T3": computedEdge("T2-T3", "T2_b", 2, "T3_a", 3),
+			T3x: crossEdge("T3x", "T3_a", "T3_b"),
+			"T3-E": computedEdge("T3-E", "T3_b", 3, "E", 4),
+		},
+	);
+	const edgeIds: App.EdgeId[] = ["S-T1", "T1x", "T1-T2", "T2x", "T2-T3", "T3x", "T3-E"];
+	const nodes = pathToNodeIds(g, edgeIds, "S");
 
+	expect(nodes.filter((id) => g.nodes[id].type === "MapVCrossNode")).toHaveLength(6);
 	expect(countPassedIntersections(g, nodes)).toBe(3);
 });
 
