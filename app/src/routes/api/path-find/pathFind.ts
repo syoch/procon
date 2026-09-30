@@ -14,20 +14,33 @@ import { trimOSMDataByWayHighway } from '../osm/osm-data';
 
 function pathToCoordinates(mapData: App.SearchGraph, edgeIds: App.EdgeId[], begin: App.NodeId): App.Coordinate[] {
     let current: App.NodeId = begin;
+    if (!mapData.nodes[begin]) {
+        throw new Error(`Node ${begin} not found in mapData`);
+    }
+
     const res: App.Coordinate[] = [];
     res.push(mapData.nodes[begin].coordinate);
+
     for (const edgeId of edgeIds) {
         const edge = mapData.edges[edgeId];
         const reversed = current === edge.end;
+        const nextNodeId = reversed ? edge.begin : edge.end;
+
+        if (!mapData.nodes[nextNodeId]) {
+            throw new Error(`Node ${nextNodeId} not found in mapData`);
+        }
+        if (edge.begin !== current && edge.end !== current) {
+            throw new Error(`Edge ${edgeId} does not connect to current node ${current}`);
+        }
 
         if (edge.type === "MapVCrossEdge") {
-            res.push(mapData.nodes[reversed ? edge.begin : edge.end].coordinate);
+            res.push(mapData.nodes[nextNodeId].coordinate);
         } else {
             for (const segment of reversed ? [...edge.segments].reverse() : edge.segments) {
-                res.push(segment.end_coordinate);
+                res.push(reversed ? segment.begin_coordinate : segment.end_coordinate);
             }
         }
-        current = reversed ? edge.begin : edge.end;
+        current = nextNodeId;
     }
     return res;
 }
