@@ -155,6 +155,11 @@
 				totalDistance: number;
 			} = await res.json();
 
+			if (resObj.coords.length == 0) {
+				error = "経路が見つかりませんでした。";
+				return false;
+			}
+
 			pathResult = resObj.coords;
 			totalDistance = resObj.totalDistance;
 			ctx.state.appState = "menu-result";
@@ -208,7 +213,7 @@
 		const minLng = bounds.getWest();
 		const maxLat = bounds.getNorth();
 		const maxLng = bounds.getEast();
-		console.log(minLat, minLng, maxLat, maxLng);
+		
 		isLoading = true;
 		try {
 			const foldGraph = await doLoadMap(minLat, minLng, maxLat, maxLng);
