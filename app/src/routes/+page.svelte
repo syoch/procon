@@ -125,6 +125,7 @@
 		hasSearched = true;
 		pathResult = [];
 		totalDistance = 0;
+		totalIntersections = 0;
 
 		isLoading = true;
 		const res = await fetch("/api/path-find", {
@@ -350,7 +351,7 @@
 					>
 					<span style="position: absolute; white-space: nowrap; left: 34.8px; top: 367.6px;">
 						総走行距離: {((totalDistance ?? 0) / 1000).toFixed(2)} km <br>
-						総通過交差点数: {totalIntersections} 個
+						総通過交差点数: {totalIntersections ?? 0} 個
 					</span>
 					<div class="divider" style="top: 425.5px;"></div>
 					<div
