@@ -149,6 +149,18 @@ describe("doPathFind: 到達できない場合のエラー", () => {
       expect(maxLat(await doPathFind(begin, end, truck, [], "truck"))).toBeLessThan(0.0001);
     });
 
+    test("幅員の網羅率を応答に含める (国土地理院のデータが無ければ 0)", async () => {
+      mapData = twoRoads();
+      gsiSegments = [{ begin: { lat: 0, lng: 0 }, end: { lat: 0, lng: 0.01 }, width: 8 }];
+      const withGsi = await doPathFind(begin, end, truck, [], "truck");
+      expect(withGsi.found && withGsi.widthCoverage.known).toBe(1);
+      expect(withGsi.found && withGsi.widthCoverage.ratio).toBeGreaterThan(0);
+
+      gsiSegments = [];
+      const withoutGsi = await doPathFind(begin, end, truck, [], "truck");
+      expect(withoutGsi.found && withoutGsi.widthCoverage.ratio).toBe(0);
+    });
+
     test("幅が分かった service には割高の倍率を掛けない", async () => {
       // 前のテストと同じ地図で、service を幅 8m (5.5m-13m) とすると車も service を通る
       mapData = {

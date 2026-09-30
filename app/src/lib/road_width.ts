@@ -201,6 +201,34 @@ export function applyGsiWidths(graph: App.OSMGraph, index: GsiRoadIndex): number
   return applied;
 }
 
+/** 幅員の網羅率 (幅員を補う対象の道のうち、幅が分かっている区間の割合) */
+export type WidthCoverage = {
+  /** 幅が分かっている区間の数 */
+  known: number;
+  /** 幅員を補う対象 (MATCH_HIGHWAYS) の区間の数 */
+  total: number;
+  /** known / total (対象が無ければ null) */
+  ratio: number | null;
+};
+
+/**
+ * 幅員の網羅率を求める (applyGsiWidths の後に呼ぶ)
+ *
+ * 幅が分からない道は removeNarrowEdges で取り除かないため、国土地理院のタイルが取れなかった範囲
+ * (タイル数・時間の上限を超えた、取得に失敗した) では幅の制限が効かず、大型トラックの判定がゆるくなる。
+ * 同じ検索でもキャッシュの有無で結果が変わりうるので、この値を応答やログに出して観測できるようにする
+ */
+export function measureWidthCoverage(graph: App.OSMGraph): WidthCoverage {
+  let known = 0;
+  let total = 0;
+  for (const edge of Object.values(graph.edges)) {
+    if (!MATCH_HIGHWAYS.has(edge.highway)) continue;
+    total++;
+    if (isKnownWidth(edge.width)) known++;
+  }
+  return { known, total, ratio: total > 0 ? known / total : null };
+}
+
 /** 車両制限令による、車両が通れる道の幅の下限 [m] */
 export type RoadWidthLimit = {
   /** 対面通行の道 */
@@ -212,6 +240,7 @@ export type RoadWidthLimit = {
 /**
  * 幅が分かっていて、下限より狭い道をグラフから取り除く (graph を直接書き換える)
  * 幅が分からない道は取り除かない。道を取り除いてつながる道が無くなったノードも取り除く
+ * (そのため取り除く道の数は幅員の網羅率に左右される。measureWidthCoverage を参照)
  *
  * @returns 取り除いた区間の数
  */

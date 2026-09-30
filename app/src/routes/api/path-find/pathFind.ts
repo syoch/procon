@@ -12,7 +12,7 @@ import { cacheManager } from '../osm/fs-cache-manager';
 import { fetchOverpassData } from '../osm/osm-fetcher';
 import { trimOSMDataByMode, trimOSMDataByWayHighway } from '../osm/osm-data';
 import { distanceOf } from '$lib/utils/haversine';
-import { applyGsiWidths, GsiRoadIndex, removeNarrowEdges } from '$lib/road_width';
+import { applyGsiWidths, GsiRoadIndex, measureWidthCoverage, removeNarrowEdges, type WidthCoverage } from '$lib/road_width';
 import { requireGsiRoadSegments } from '../gsi';
 import { gsiCacheManager } from '../gsi/fs-cache-manager';
 import { fetchGsiRoadTile } from '../gsi/gsi-fetcher';
@@ -152,6 +152,11 @@ export type PathFindResult =
         sharpTurns: SharpTurn[];
         /** 指定された始点・終点から、吸着した道の上の点までの距離 [m] */
         snapDistance: { begin: number; end: number };
+                /**
+         * 幅員の網羅率 (車両が通る道のうち、幅が分かっている区間の割合)。
+         * 国土地理院のタイルが取れなかった範囲では幅の制限が効かないため、キャッシュの有無で結果が変わりうることを観測するためのもの
+         */
+        widthCoverage: WidthCoverage;
     };
 
 /**
@@ -181,6 +186,10 @@ export async function doPathFind(
     // 国土地理院の幅員区分で、幅が分からない車道の幅を補う (取得できなかったタイルは幅なしのまま続行する)
     const gsiSegments = await requireGsiRoadSegments(bbox, gsiCacheManager, fetchGsiRoadTile);
     applyGsiWidths(osmGraph, new GsiRoadIndex(gsiSegments));
+        const widthCoverage = measureWidthCoverage(osmGraph);
+    console.info(
+        `幅員データの網羅率: ${widthCoverage.ratio === null ? "-" : (widthCoverage.ratio * 100).toFixed(1) + "%"} (${widthCoverage.known}/${widthCoverage.total} 区間)`,
+    );
     // 大型トラックなど、幅の下限があるモードでは狭すぎる道を取り除く (幅が分からない道は残す)
     if (profile?.minRoadWidth) {
         removeNarrowEdges(osmGraph, profile.minRoadWidth);
@@ -256,5 +265,6 @@ export async function doPathFind(
         totalIntersections: countPassedIntersections(mapData, pathNodes),
         sharpTurns,
         snapDistance,
+        widthCoverage,
     };
 }

@@ -1,5 +1,5 @@
 import { describe, expect, test, vi } from "vitest";
-import { applyGsiWidths, GsiRoadIndex, isKnownWidth, MATCH_HIGHWAYS, parseGsiRoadTile, removeNarrowEdges, widthClassToMeters } from "../../src/lib/road_width";
+import { applyGsiWidths, GsiRoadIndex, isKnownWidth, MATCH_HIGHWAYS, measureWidthCoverage, parseGsiRoadTile, removeNarrowEdges, widthClassToMeters } from "../../src/lib/road_width";
 import { coordinateToTile, requireGsiRoadSegments, tilesForBoundary } from "../../src/routes/api/gsi";
 
 const feature = (coords: number[][], props: Record<string, unknown>) => ({
@@ -109,6 +109,15 @@ describe("applyGsiWidths / removeNarrowEdges", () => {
     applyGsiWidths(graph, index);
     expect(removeNarrowEdges(graph, { twoWay: 5.5, oneWay: 3.0 })).toBe(3);
     expect(graph.nodes).toEqual({});
+  });
+
+  test("幅員の網羅率は、車両が通る道のうち幅が分かっている区間の割合", () => {
+    const graph = makeGraph();
+    // e1 (幅不明) と e2 (12m) が対象。e3 は歩道なので数えない
+    expect(measureWidthCoverage(graph)).toEqual({ known: 1, total: 2, ratio: 0.5 });
+    applyGsiWidths(graph, index);
+    expect(measureWidthCoverage(graph)).toEqual({ known: 2, total: 2, ratio: 1 });
+    expect(measureWidthCoverage({ nodes: {}, edges: {} }).ratio).toBeNull();
   });
 
   test("幅員を補う対象は車両が通る道", () => {
