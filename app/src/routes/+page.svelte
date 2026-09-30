@@ -354,6 +354,46 @@
 							onclick={startSearch}
 						/>
 					</div>
+          <div class="view"><div class="text-wrapper-7">再検索</div></div>
+<div class="view-2"><div class="view-3"><div class="text-wrapper-8">車種を選択</div></div></div>
+<img class="image-2" src="https://c.animaapp.com/BIDz40mk/img/--.svg" /></div>
+<div class="view-4"><div class="div-2"><div class="base"><div class="frame-5"><div class="text-wrapper-9">State1</div></div>
+<div class="text-wrapper-10">State2</div></div>
+<div class="base-icon"><div class="rectangle"></div></div>
+<div class="rectangle-2"></div></div></div>
+<div class="div-wrapper-2"><div class="text-wrapper-11">S</div></div></div>
+<div class="div-2"><div class="base"><div class="frame-6"><div class="text-wrapper-12">State1</div></div>
+<div class="text-wrapper-10">State2</div></div>
+<div class="base-icon"><div class="rectangle"></div></div>
+<div class="rectangle-2"></div></div>
+<img class="img-2" src="https://c.animaapp.com/BIDz40mk/img/tyokusinn.svg" /></div>
+<div class="div-2"><div class="base"><div class="frame-6"><div class="text-wrapper-12">State1</div></div>
+<div class="text-wrapper-10">State2</div></div>
+<div class="base-icon"><div class="rectangle"></div></div>
+<div class="rectangle-2"></div></div>
+<img class="img-3" src="https://c.animaapp.com/BIDz40mk/img/usetu.svg" /></div>
+<div class="div-2"><div class="base"><div class="frame-6"><div class="text-wrapper-12">State1</div></div>
+<div class="text-wrapper-10">State2</div></div>
+<div class="base-icon"><div class="rectangle"></div></div>
+<div class="rectangle-2"></div></div>
+<img class="img-3" src="https://c.animaapp.com/BIDz40mk/img/sasetu.svg" /></div>
+<div class="div-2"><div class="base"><div class="frame-6"><div class="text-wrapper-12">State1</div></div>
+<div class="text-wrapper-10">State2</div></div>
+<div class="base-icon"><div class="rectangle"></div></div>
+<div class="rectangle-2"></div></div>
+<img class="img-2" src="https://c.animaapp.com/BIDz40mk/img/goryu.svg" /></div>
+<div class="div-2"><div class="base"><div class="frame-6"><div class="text-wrapper-12">State1</div></div>
+<div class="text-wrapper-10">State2</div></div>
+<div class="base-icon"><div class="rectangle"></div></div>
+<div class="rectangle-2"></div></div>
+<img class="img-2" src="https://c.animaapp.com/BIDz40mk/img/bunki.svg" /></div>
+<div class="div-2"><div class="base"><div class="frame-7"><div class="text-wrapper-9">State1</div></div>
+<div class="text-wrapper-10">State2</div></div>
+<div class="base-icon"><div class="rectangle"></div></div>
+<div class="div-wrapper-2"><div class="text-wrapper-13">F</div></div></div>
+<div class="base-icon-2"><div class="rectangle"></div></div>
+<div class="rectangle-2"></div>
+<div class="text-wrapper-14">経路案内</div>
 				{/if}
 			{/snippet}
 		</DetailPanel>
