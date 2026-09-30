@@ -12,7 +12,7 @@ import { trimOSMDataByWayHighway } from '../osm/osm-data';
 
 
 
-function pathToCoordinates(mapData: App.SearchGraph, edgeIds: App.EdgeId[], begin: App.NodeId): App.Coordinate[] {
+export function pathToCoordinates(mapData: App.SearchGraph, edgeIds: App.EdgeId[], begin: App.NodeId): App.Coordinate[] {
     let current: App.NodeId = begin;
     if (!mapData.nodes[begin]) {
         throw new Error(`Node ${begin} not found in mapData`);
