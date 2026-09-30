@@ -363,53 +363,72 @@
 						/>
 					</div>
 
-	    <div class="text-wrapper-14">経路案内</div>
+	    
     
     <div class="route-scroll-container">
-    <div class="view-4"><div class="div-2"><div class="base"><div class="frame-5"><div class="text-wrapper-9">開始地点</div></div>
-    <div class="text-wrapper-10">State2</div></div>
-    <div class="base-icon"><div class="rectangle"></div></div>
-    <div class="rectangle-2"></div></div></div>
-	<img class="image-2" src={startpointLogo} alt="" />
-    
-    <div class="div-2"><div class="base"><div class="frame-6"><div class="text-wrapper-12">直進</div></div>
-    <div class="text-wrapper-10">State2</div></div>
-    <div class="base-icon"><div class="rectangle"></div></div>
-    <div class="rectangle-2"></div></div>
-    <img class="img-2" src={straightLogo} alt="" />
-    
-    <div class="div-2"><div class="base"><div class="frame-6"><div class="text-wrapper-12">左折</div></div>
-    <div class="text-wrapper-10">State2</div></div>
-    <div class="base-icon"><div class="rectangle"></div></div>
-    <div class="rectangle-2"></div></div>
-    <img class="img-3" src={turnleftLogo} alt="" />
-    
-    <div class="div-2"><div class="base"><div class="frame-6"><div class="text-wrapper-12">右折</div></div>
-    <div class="text-wrapper-10">State2</div></div>
-    <div class="base-icon"><div class="rectangle"></div></div>
-    <div class="rectangle-2"></div></div>
-    <img class="img-3" src={turnrightLogo} alt="" />
-    
-    <div class="div-2"><div class="base"><div class="frame-6"><div class="text-wrapper-12">合流</div></div>
-    <div class="text-wrapper-10">State2</div></div>
-    <div class="base-icon"><div class="rectangle"></div></div>
-    <div class="rectangle-2"></div></div>
-    <img class="img-2" src={margeLogo} alt="" />
-    
-    <div class="div-2"><div class="base"><div class="frame-6"><div class="text-wrapper-12">分岐</div></div>
-    <div class="text-wrapper-10">State2</div></div>
-    <div class="base-icon"><div class="rectangle"></div></div>
-    <div class="rectangle-2"></div></div>
-    <img class="img-2" src={forkLogo} alt="" />
-    
-    <div class="div-2"><div class="base"><div class="frame-7"><div class="text-wrapper-9">終点</div></div>
-    <div class="text-wrapper-10">State2</div></div></div>
-    <div class="base-icon"><div class="rectangle"></div></div>
-    <img class="img-2" src={finishpointLogo} alt="" />
+	<div class="text-title">経路案内</div>
 
-    <div class="base-icon-2"><div class="rectangle"></div></div>
-    <div class="rectangle-2"></div>
+    <div class="route-row">
+    <img src={startpointLogo} alt="" class="route-icon" />
+    <div class="route-info">
+        <div class="text-title">開始地点</div>
+        <div class="text-sub">State2</div>
+    </div>
+</div>
 
+<!-- 2行目：直進 -->
+<div class="route-row">
+    <img src={straightLogo} alt="直進" class="route-icon" />
+    <div class="route-info">
+        <div class="text-title">直進</div>
+        <div class="text-sub">State2</div>
+    </div>
+</div>
+
+<!-- 3行目：左折 -->
+<div class="route-row">
+    <img src={turnleftLogo} alt="左折" class="route-icon" />
+    <div class="route-info">
+        <div class="text-title">左折</div>
+        <div class="text-sub">State2</div>
+    </div>
+</div>
+
+<!-- 4行目：右折 -->
+<div class="route-row">
+    <img src={turnrightLogo} alt="右折" class="route-icon" />
+    <div class="route-info">
+        <div class="text-title">右折</div>
+        <div class="text-sub">State2</div>
+    </div>
+</div>
+
+<!-- 5行目：合流 -->
+<div class="route-row">
+    <img src={margeLogo} alt="合流" class="route-icon" />
+    <div class="route-info">
+        <div class="text-title">合流</div>
+        <div class="text-sub">State2</div>
+    </div>
+</div>
+
+<!-- 6行目：分岐 -->
+<div class="route-row">
+    <img src={forkLogo} alt="分岐" class="route-icon" />
+    <div class="route-info">
+        <div class="text-title">分岐</div>
+        <div class="text-sub">State2</div>
+    </div>
+</div>
+
+<!-- 7行目：終点 -->
+<div class="route-row">
+    <img src={finishpointLogo} alt="終点" class="route-icon" />
+    <div class="route-info">
+        <div class="text-title">終点</div>
+        <div class="text-sub">State2</div>
+    </div>
+	</div>
 	</div>
 
 				{/if}
@@ -501,9 +520,13 @@
 		background: var(--wn-divider);
 	}
 	.route-scroll-container {
-    max-height: 400px; /* 表示する最大の高さ（パネルに合わせて調整してください） */
-    overflow-y: auto;  /* 高さを超えた場合に縦スクロールバーを表示する */
-    overflow-x: hidden;
+		position: absolute;
+        top: 500px; /* 上部の出発点・終着点情報が収まる位置より下に配置 */
+        left: 0;
+        width: 100%;
+        height: calc(100% - 450px); /* パネルの残り全体の高さに合わせる */
+        overflow-y: auto;
+        overflow-x: hidden;
 }
 
 /* スクロールバーをすっきりさせたい場合（オプション） */
@@ -515,20 +538,35 @@
     border-radius: 3px;
 }
 
-.view-4 {
-  display: flex;
-  width: 222px;
-  height: 42px;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
-  padding: 8px 89px 8px 91px;
-  position: absolute;
-  top: -1px;
-  left: -1px;
-  background-color: var(--background-white);
-  border: 1px solid;
-  border-color: var(--gray);
-}
+.route-row {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        padding: 12px 16px;
+        background-color: var(--background-white);
+        border-bottom: 1px solid var(--gray);
+    }
 
+    .route-icon {
+        width: 32px;
+        height: 32px;
+        object-fit: contain;
+    }
+
+    .route-info {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+    }
+
+    .text-title {
+        font-size: 20px;
+        font-weight: 500;
+        color: var(--black);
+    }
+
+    .text-sub {
+        font-size: 16px;
+        color: var(--gray);
+    }
 </style>
