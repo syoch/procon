@@ -117,30 +117,44 @@ export type informationGraph = {
 };
 
 /**
- * 2つの座標間の方位角（ラジアンまたは度）を計算するヘルパー関数
+ * 2つの座標からベクトルを作成する
  */
-function getBearing(coord1: App.Coordinate, coord2: App.Coordinate): number {
-    const lat1 = (coord1.lat * Math.PI) / 180;
-    const lat2 = (coord2.lat * Math.PI) / 180;
-    const dLon = ((coord2.lng - coord1.lng) * Math.PI) / 180;
-
-    const y = Math.sin(dLon) * Math.cos(lat2);
-    const x = Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLon);
-    
-    let rad = Math.atan2(y, x);
-    let deg = (rad * 180) / Math.PI;
-    return (deg + 360) % 360; // 0〜360度に正規化
+function getVector(coord1: App.Coordinate, coord2: App.Coordinate) {
+    return {
+        x: coord2.lng - coord1.lng,
+        y: coord2.lat - coord1.lat,
+    };
 }
 
 /**
- * 2つの角度の差分（-180度 〜 180度）を計算するヘルパー関数
- * プラスなら右回り、マイナスなら左回り
+ * ベクトルの長さを計算する
  */
-function getAngleDiff(angle1: number, angle2: number): number {
-    let diff = angle2 - angle1;
-    while (diff < -180) diff += 360;
-    while (diff > 180) diff -= 360;
-    return diff;
+function getVectorLength(v: { x: number; y: number }): number {
+    return Math.sqrt(v.x * v.x + v.y * v.y);
+}
+
+/**
+ * 2つのベクトルから、内積を使ってなす角（0〜180度）を求める関数
+ */
+function getVectorAngle(v1: { x: number; y: number }, v2: { x: number; y: number }): number {
+    const dot = v1.x * v2.x + v1.y * v2.y;
+    const len1 = getVectorLength(v1);
+    const len2 = getVectorLength(v2);
+
+    if (len1 === 0 || len2 === 0) return 0;
+
+    let cosTheta = dot / (len1 * len2);
+    cosTheta = Math.max(-1, Math.min(1, cosTheta)); // 誤差対策
+
+    const rad = Math.acos(cosTheta);
+    return (rad * 180) / Math.PI;
+}
+
+/**
+ * 2次元の外積のZ成分を計算する（プラスなら右回り、マイナスなら左回り）
+ */
+function getCrossProduct2D(v1: { x: number; y: number }, v2: { x: number; y: number }): number {
+    return v1.x * v2.y - v1.y * v2.x;
 }
 
 export function buildInformationGraph(
@@ -158,8 +172,21 @@ export function buildInformationGraph(
         distance: [],
     };
 
-    // ひとつ手前のエッジの「抜け方向のベクトル（方位角）」を保持しておく変数
-    let lastBearing: number | null = null;
+    graphData.type.push("start");
+    graphData.distance.push(0);
+
+    // 経路上にあるすべてのノードの座標を順番にキャッシュしておく（遡り用）
+    const pathCoords: App.Coordinate[] = [];
+    pathCoords.push(mapData.nodes[beginNodeId].coordinate);
+
+    // 一旦、全エッジの基本データ（ノード・距離・種別）を配列として集める
+    const rawSteps: { 
+        edgeType: string; 
+        dist: number; 
+        isCross: boolean; 
+        beginCoord: App.Coordinate; 
+        endCoord: App.Coordinate; 
+    }[] = [];
 
     for (let i = 0; i < edgeIds.length; i++) {
         const edgeId = edgeIds[i];
@@ -171,63 +198,94 @@ export function buildInformationGraph(
             throw new Error(`Node ${nextNodeId} not found in mapData`);
         }
 
-        // このエッジの「開始座標」と「終了座標」を確定
         const beginCoord = mapData.nodes[current].coordinate;
         const endCoord = mapData.nodes[nextNodeId].coordinate;
+        pathCoords.push(endCoord);
 
-        // このエッジ自体の方向（方位角）を計算
-        const currentBearing = getBearing(beginCoord, endCoord);
+        const isCrossNode = mapData.nodes[nextNodeId]?.type === "MapVCrossNode";
 
-        // 1. 折り畳まれた道路（FoldedEdge）の場合
         if (edge.type === "FoldedEdge") {
-            let prevCoord = mapData.nodes[reversed ? edge.end : edge.begin].coordinate;
-            const segments = reversed ? [...edge.segments].reverse() : edge.segments;
+            let prevCoord = beginCoord;
+            const segments = reversed ? [...edge.segments].reverse() : [...edge.segments];
             
             for (const seg of segments) {
                 const targetCoord = reversed ? seg.begin_coordinate : seg.end_coordinate;
                 const segDist = distanceOf(prevCoord, targetCoord);
-                
-                graphData.type.push("segmentsによる接続点");
-                graphData.distance.push(segDist);
-                
+                rawSteps.push({ edgeType: "segment", dist: segDist, isCross: false, beginCoord: prevCoord, endCoord: targetCoord });
                 prevCoord = targetCoord;
             }
-            
             const finalDist = distanceOf(prevCoord, endCoord);
             if (finalDist > 0) {
-                graphData.type.push("segmentsによる接続点");
-                graphData.distance.push(finalDist);
+                rawSteps.push({ edgeType: "segment", dist: finalDist, isCross: isCrossNode, beginCoord: prevCoord, endCoord });
+            } else if (rawSteps.length > 0) {
+                // 最後のステップに交差点フラグを引き継ぐ
+                rawSteps[rawSteps.length - 1].isCross = isCrossNode;
             }
-        } 
-        // 2. 通常のエッジや交差点関連のエッジの場合
-        else {
+        } else {
             const dist = distanceOf(beginCoord, endCoord);
-            const isCrossNode = mapData.nodes[nextNodeId]?.type === "MapVCrossNode";
-
-            if (isCrossNode && lastBearing !== null) {
-                // ★ ここで前後の角度差を計算して「右折」「左折」「直進」を判定する
-                const diff = getAngleDiff(lastBearing, currentBearing);
-
-                let turnType = "交差点を直進";
-                if (diff > 40) {
-                    turnType = "右折"; // 角度が右に40度以上曲がっている場合
-                } else if (diff < -40) {
-                    turnType = "左折"; // 角度が左に40度以上曲がっている場合
-                }
-
-                graphData.type.push(turnType);
-                graphData.distance.push(dist);
-            } else {
-                // 交差点を跨がない通常のエッジ、あるいは最初のノード
-                graphData.type.push("segmentsによる接続点");
-                graphData.distance.push(dist);
-            }
+            rawSteps.push({ edgeType: "segment", dist, isCross: isCrossNode, beginCoord, endCoord });
         }
 
-        // 次のループのために、このエッジの終了時の方向を保存
-        lastBearing = currentBearing;
         current = nextNodeId;
     }
+
+    // --- 補助関数：十分な長さ（例: 2メートル以上）が稼げるまで、前後の座標を遡ってベクトルを作る ---
+    function getReliableVector(currentIndex: number, isForward: boolean): { x: number; y: number } {
+        let targetCoord = rawSteps[currentIndex].endCoord;
+        let baseCoord = rawSteps[currentIndex].beginCoord;
+        
+        let vec = getVector(baseCoord, targetCoord);
+        let dist = getVectorLength(vec);
+
+        // 短すぎる場合、前後のステップを辿って長さを確保する（最大3ステップまで遡る）
+        let stepOffset = 1;
+        while (dist < 0.00001 && stepOffset <= 3) { // 緯度経度上のごく微小な距離
+            if (isForward && currentIndex + stepOffset < rawSteps.length) {
+                targetCoord = rawSteps[currentIndex + stepOffset].endCoord;
+                vec = getVector(baseCoord, targetCoord);
+                dist = getVectorLength(vec);
+            } else if (!isForward && currentIndex - stepOffset >= 0) {
+                baseCoord = rawSteps[currentIndex - stepOffset].beginCoord;
+                vec = getVector(baseCoord, targetCoord);
+                dist = getVectorLength(vec);
+            }
+            stepOffset++;
+        }
+        return vec;
+    }
+
+    // 2. 各ステップをループして、交差点なら信頼性の高いベクトルで角度計算を行う
+    for (let i = 0; i < rawSteps.length; i++) {
+        const step = rawSteps[i];
+
+        if (step.isCross && i > 0 && i < rawSteps.length - 1) {
+            // 手前のしっかりしたベクトルと、先のしっかりしたベクトルを取得
+            const vPrev = getReliableVector(i - 1, false);
+            const vNext = getReliableVector(i, true);
+
+            const angle = getVectorAngle(vPrev, vNext);
+            const cross = getCrossProduct2D(vPrev, vNext);
+
+            let turnType = "交差点を直進";
+            if (angle >= 60) {
+                if (cross > 0) {
+                    turnType = "右折";
+                } else {
+                    turnType = "左折";
+                }
+            }
+
+            graphData.type.push(turnType);
+            graphData.distance.push(step.dist);
+        } else {
+            graphData.type.push(step.edgeType);
+            graphData.distance.push(step.dist);
+        }
+    }
+
+    // 3. フィニッシュ地点の追加
+    graphData.type.push("finish");
+    graphData.distance.push(0);
 
     return graphData;
 }
