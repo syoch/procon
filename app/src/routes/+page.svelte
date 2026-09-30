@@ -14,7 +14,10 @@
 	import TitleScreen from "$lib/components/figma/TitleScreen.svelte";
 	import SearchingOverlay from "$lib/components/figma/SearchingOverlay.svelte";
 	import widenaviLogo from "$lib/assets/widenavi-logo.svg";
-	import { MainAppContext, type ParameterVariant } from "$lib/app_state.svelte";
+	import {
+		MainAppContext,
+		type ParameterVariant,
+	} from "$lib/app_state.svelte";
 	import { SelectMarker } from "$lib/utils/selectMarker.svelte";
 	import VehicleSelect from "$lib/components/figma/VehicleSelect.svelte";
 	import GreenButton from "$lib/components/figma/GreenButton.svelte";
@@ -27,6 +30,8 @@
 
 	let mapData = $state<App.SearchGraph>({ edges: {}, nodes: {} });
 	let pathResult: App.Coordinate[] = $state([]);
+	let totalDistance = $state<number | undefined>(undefined);
+	let totalIntersections = $state<number | undefined>(undefined);
 	let isLoading = $state(false);
 	/** 手動・自動を問わず検索を実行済みか（$state ではない） */
 	let hasSearched = false;
@@ -55,7 +60,9 @@
 		},
 	];
 	const locationProvider = async (q: string) => {
-		const res = await fetch(`/api/location?q=${encodeURIComponent(q)}&limit=5`);
+		const res = await fetch(
+			`/api/location?q=${encodeURIComponent(q)}&limit=5`,
+		);
 		if (!res.ok) return [];
 		const data = (await res.json()) as {
 			candidates?: import("$lib/app_state.svelte").LocationCandidate[];
@@ -78,7 +85,9 @@
 		}
 
 		let locationState =
-			ctx.state.locationSelection === "begin" ? ctx.state.begin : ctx.state.end;
+			ctx.state.locationSelection === "begin"
+				? ctx.state.begin
+				: ctx.state.end;
 		locationState.state = "confirmed";
 		locationState.query = `${res.projection.lat}, ${res.projection.lng}`;
 		ctx.state.setCoordinate(ctx.state.locationSelection, res.projection);
@@ -114,6 +123,9 @@
 		}
 		error = null;
 		hasSearched = true;
+		pathResult = [];
+		totalDistance = 0;
+		totalIntersections = 0;
 
 		isLoading = true;
 		const res = await fetch("/api/path-find", {
@@ -142,8 +154,21 @@
 		}
 
 		try {
-			const path: App.Coordinate[] = await res.json();
-			pathResult = path;
+			const resObj: {found: false} | {
+				found: true
+				coords: App.Coordinate[];
+				totalDistance: number;
+				totalIntersections: number;
+			} = await res.json();
+
+			if (!resObj.found) {
+				error = "経路が見つかりませんでした。";
+				return false;
+			}
+
+			pathResult = resObj.coords;
+			totalDistance = resObj.totalDistance;
+			totalIntersections = resObj.totalIntersections;
 			ctx.state.appState = "menu-result";
 		} catch (e) {
 			error = "サーバー応答の読み取りエラーが発生しました";
@@ -195,7 +220,7 @@
 		const minLng = bounds.getWest();
 		const maxLat = bounds.getNorth();
 		const maxLng = bounds.getEast();
-		console.log(minLat, minLng, maxLat, maxLng);
+
 		isLoading = true;
 		try {
 			const foldGraph = await doLoadMap(minLat, minLng, maxLat, maxLng);
@@ -267,7 +292,9 @@
 		<DetailPanel
 			onback={() => {
 				ctx.state.appState =
-					ctx.state.appState === "menu-result" ? "menu-detail" : "app";
+					ctx.state.appState === "menu-result"
+						? "menu-detail"
+						: "app";
 			}}
 		>
 			{#snippet content()}
@@ -294,7 +321,11 @@
 							<VehicleSelect />
 						</div>
 						<div style="flex: 0 0 25px;"></div>
-						<GreenButton label="検索" width={60} onclick={startSearch} />
+						<GreenButton
+							label="検索"
+							width={60}
+							onclick={startSearch}
+						/>
 					</div>
 				{:else}
 					<span
@@ -318,10 +349,10 @@
 						style="position: absolute; white-space: nowrap; left: 32.7px; top: 320.2px;"
 						>地点</span
 					>
-					<span
-						style="position: absolute; white-space: nowrap; left: 34.8px; top: 367.6px;"
-						>詳細等</span
-					>
+					<span style="position: absolute; white-space: nowrap; left: 34.8px; top: 367.6px;">
+						総走行距離: {((totalDistance ?? 0) / 1000).toFixed(2)} km <br>
+						総通過交差点数: {totalIntersections ?? 0} 個
+					</span>
 					<div class="divider" style="top: 425.5px;"></div>
 					<div
 						style="position: absolute; top: 454.5px; display: flex;"
@@ -332,7 +363,11 @@
 							<VehicleSelect />
 						</div>
 						<div style="flex: 0 0 25px;"></div>
-						<GreenButton label="検索" width={60} onclick={startSearch} />
+						<GreenButton
+							label="検索"
+							width={60}
+							onclick={startSearch}
+						/>
 					</div>
 				{/if}
 			{/snippet}
