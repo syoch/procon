@@ -11,6 +11,8 @@
  * - 自動車の大きさの上限 (幅2.5m・高さ3.8m): 道路運送車両の保安基準 第2条
  */
 
+import type { RoadWidthLimit } from "./road_width";
+
 export type ModeId = "walk" | "bicycle" | "car" | "motorcycle" | "truck";
 
 /** 車両の寸法 (寸法制限タグ maxwidth / maxheight / maxweight の判定に使う) */
@@ -36,7 +38,7 @@ export type ModeProfile = {
   pavedOnlyHighways?: ReadonlySet<string>;
   /**
    * highway 種別ごとのコストの倍率。通れるが、なるべく避けたい道に使う (path_finder.ts の PathFindOptions)
-   * 幅員の情報が入るまでのつなぎとして、幅が分からない track / service を割高にしている (仮の値)
+   * 幅が分からない track / service を割高にしている (幅が分かる区間には掛けない・仮の値)
    */
   highwayCostFactor?: Readonly<Record<string, number>>;
   /**
@@ -57,6 +59,11 @@ export type ModeProfile = {
   onewayKeys?: readonly string[];
   /** 車両の寸法 (徒歩・自転車は判定しないので undefined) */
   vehicle?: VehicleSize;
+  /**
+   * 通れる道の幅の下限 (幅が分かっている道だけに適用する。road_width.ts の removeNarrowEdges)
+   * undefined のモードは幅で制限しない
+   */
+  minRoadWidth?: RoadWidthLimit;
   /**
    * 急カーブ判定の曲線半径の下限 [m] (sharp_turn.ts)。道の基準値とこの値の大きい方より急なカーブを急カーブとする。
    * undefined のモードは急カーブを検出しない
@@ -167,6 +174,10 @@ export const MODE_PROFILES: Record<ModeId, ModeProfile> = {
     ignoreOneway: false,
     // 幅・高さは保安基準の上限。総重量は仮の値 (大型貨物自動車等 = 総重量8t以上 に該当する想定)
     vehicle: { width: 2.5, height: 3.8, weight: 20 },
+    // 車両制限令 第5条・第6条 (幅 2.5m の車両):
+    //   対面通行: (車道幅員 - 0.5m) / 2 ≥ 2.5m → 5.5m 以上 (市街地。市街地外は 5.0m 以上だが、厳しい方に合わせる)
+    //   一方通行: 車道幅員 - 0.5m ≥ 2.5m → 3.0m 以上
+    minRoadWidth: { twoWay: 5.5, oneWay: 3.0 },
     // 最小回転半径 12m (保安基準第6条) に余裕を見た値 (仮の値)
     sharpTurnMinRadius: 20,
     // 重みは仮の値 (幅員を最重視)
