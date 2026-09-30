@@ -9,6 +9,8 @@
 	import { assertGraph } from "$lib/utils/graph";
 	import { loadOSMMap } from "$lib/map_loader/osm";
 	import MapViewer from "$lib/components/MapViewer.svelte";
+	import type { SharpTurn } from "$lib/sharp_turn";
+	import type { PathFindResult } from "./api/path-find/pathFind";
 	import DetailButton from "$lib/components/figma/DetailButton.svelte";
 	import DetailPanel from "$lib/components/figma/DetailPanel.svelte";
 	import TitleScreen from "$lib/components/figma/TitleScreen.svelte";
@@ -30,6 +32,7 @@
 
 	let mapData = $state<App.SearchGraph>({ edges: {}, nodes: {} });
 	let pathResult: App.Coordinate[] = $state([]);
+	let sharpTurns: SharpTurn[] = $state([]);
 	let isLoading = $state(false);
 
 	const parameterVariants: ParameterVariant[] = [
@@ -171,8 +174,9 @@
 		}
 
 		try {
-			const path: App.Coordinate[] = await res.json();
-			pathResult = path;
+			const result: PathFindResult = await res.json();
+			pathResult = result.path;
+			sharpTurns = result.sharpTurns;
 			ctx.state.appState = "menu-result";
 		} catch (e) {
 			error = "サーバー応答の読み取りエラーが発生しました";
@@ -263,7 +267,7 @@
 	});
 </script>
 
-<MapViewer bind:map bind:pathResult {onClick}></MapViewer>
+<MapViewer bind:map bind:pathResult {sharpTurns} {onClick}></MapViewer>
 
 {#if ctx.state.appState === "app"}
 	<div class="menu-button" transition:fade={{ duration: 120 }}>

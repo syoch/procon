@@ -42,6 +42,11 @@ export type ModeProfile = {
   ignoreOneway: boolean;
   /** 車両の寸法 (徒歩・自転車は判定しないので undefined) */
   vehicle?: VehicleSize;
+  /**
+   * 急カーブ判定の曲線半径の下限 [m] (sharp_turn.ts)。道の基準値とこの値の大きい方より急なカーブを急カーブとする。
+   * undefined のモードは急カーブを検出しない
+   */
+  sharpTurnMinRadius?: number;
   /** 既定の探索パラメータ */
   defaultParameters: App.SearchParameters;
 };
@@ -97,6 +102,7 @@ export const MODE_PROFILES: Record<ModeId, ModeProfile> = {
     ignoreOneway: false,
     // 一般的な乗用車の寸法 (寸法制限の判定用の仮の値)
     vehicle: { width: 1.8, height: 1.6, weight: 2 },
+    sharpTurnMinRadius: 0,
     defaultParameters: { lambda: 1, mix_score_weight: 0.3, view_score_weight: 0.2, width_score_weight: 0.5 },
   },
   motorcycle: {
@@ -110,6 +116,7 @@ export const MODE_PROFILES: Record<ModeId, ModeProfile> = {
     ignoreOneway: false,
     // 大型バイクの寸法 (寸法制限の判定用の仮の値)
     vehicle: { width: 1.0, height: 1.5, weight: 0.5 },
+    sharpTurnMinRadius: 0,
     defaultParameters: { lambda: 1, mix_score_weight: 0.3, view_score_weight: 0.3, width_score_weight: 0.4 },
   },
   truck: {
@@ -122,6 +129,8 @@ export const MODE_PROFILES: Record<ModeId, ModeProfile> = {
     ignoreOneway: false,
     // 幅・高さは保安基準の上限。総重量は仮の値 (大型貨物自動車等 = 総重量8t以上 に該当する想定)
     vehicle: { width: 2.5, height: 3.8, weight: 20 },
+    // 最小回転半径 12m (保安基準第6条) に余裕を見た値 (仮の値)
+    sharpTurnMinRadius: 20,
     // 重みは仮の値 (幅員を最重視)
     defaultParameters: { lambda: 1, mix_score_weight: 0.1, view_score_weight: 0.3, width_score_weight: 0.6 },
   },

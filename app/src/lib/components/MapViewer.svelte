@@ -1,14 +1,18 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import L from "leaflet";
+  import type { SharpTurn } from "$lib/sharp_turn";
 
   let {
     map = $bindable(),
     pathResult = $bindable(),
+    sharpTurns = [],
     onClick,
   }: {
     map: L.Map | undefined;
     pathResult: App.Coordinate[];
+    /** 経路上の急カーブ (マーカーで表示する) */
+    sharpTurns?: SharpTurn[];
     onClick: (lat: number, lng: number) => void;
   } = $props();
 
@@ -28,6 +32,20 @@
       L.polyline(pathResult, { color: "purple", weight: 5 })
         .addTo(map)
         .bindPopup(`Found path with ${pathResult.length} nodes`);
+    }
+
+    // 急カーブをマーカーで表示する (見た目は仮)
+    for (const turn of sharpTurns) {
+      L.circleMarker([turn.coordinate.lat, turn.coordinate.lng], {
+        color: "orangered",
+        fillColor: "orange",
+        fillOpacity: 0.9,
+        radius: 7,
+      })
+        .addTo(map)
+        .bindPopup(
+          `急カーブ(${turn.direction === "left" ? "左" : "右"}) 約${Math.round(turn.angle)}° / 半径 約${Math.round(turn.radius)}m (${turn.highway})`,
+        );
     }
   });
 
