@@ -11,31 +11,25 @@ import { trimOSMDataByWayHighway } from '../osm/osm-data';
 
 
 
-function pathToCoordinates(mapData: App.SearchGraph, edgeIds: App.EdgeId[]): App.Coordinate[] {
-    return edgeIds
-        .map((x) => {
-            const edge = mapData.edges[x];
-            const beginNode = mapData.nodes[edge.begin];
-            const endNode = mapData.nodes[edge.end];
-            if (!beginNode || !endNode) {
-                console.warn(
-                    `Edge ${edge.id} has missing nodes: begin=${edge.begin}, end=${edge.end}`,
-                );
-                return [];
+
+function pathToCoordinates(mapData: App.SearchGraph, edgeIds: App.EdgeId[], begin: App.NodeId): App.Coordinate[] {
+    let current: App.NodeId = begin;
+    const res: App.Coordinate[] = [];
+    res.push(mapData.nodes[begin].coordinate);
+    for (const edgeId of edgeIds) {
+        const edge = mapData.edges[edgeId];
+        const reversed = current === edge.end;
+
+        if (edge.type === "MapVCrossEdge") {
+            res.push(mapData.nodes[reversed ? edge.begin : edge.end].coordinate);
+        } else {
+            for (const segment of reversed ? [...edge.segments].reverse() : edge.segments) {
+                res.push(segment.end_coordinate);
             }
-            if (edge.type === "FoldedEdge" || edge.type === "ComputedEdge") {
-                return [
-                    beginNode.coordinate,
-                    ...edge.segments
-                        .map((s) => [s.begin_coordinate, s.end_coordinate])
-                        .flat(),
-                    endNode.coordinate,
-                ].filter(Boolean);
-            }
-            return [beginNode.coordinate, endNode.coordinate];
-        })
-        .flat()
-        .filter(Boolean);
+        }
+        current = reversed ? edge.begin : edge.end;
+    }
+    return res;
 }
 
 async function startSearch(mapData: App.SearchGraph, params: App.SearchParameters, begin: App.Coordinate, end: App.Coordinate) {
@@ -59,8 +53,7 @@ async function startSearch(mapData: App.SearchGraph, params: App.SearchParameter
     );
     console.timeEnd("pathFind");
 
-    return pathToCoordinates(mapData, result);
-
+    return pathToCoordinates(mapData, result, beginNodeId);
 }
 
 const deltaLatitude = 0.015625; // 1/64
