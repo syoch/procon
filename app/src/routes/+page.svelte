@@ -122,6 +122,8 @@
 		}
 		error = null;
 		hasSearched = true;
+		pathResult = []
+		totalDistance = 0;
 
 		isLoading = true;
 		const res = await fetch("/api/path-find", {
