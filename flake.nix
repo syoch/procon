@@ -31,7 +31,7 @@
           src = ./app;
           pnpmDeps = pkgs.fetchPnpmDeps {
             inherit (finalAttrs) pname version src;
-            hash = "sha256-yCeg+TV2UDRXmU8ey0tqHCP95hyEl+ITOdLSiAtZeCQ=";
+            hash = "sha256-nMji8Hh7clQP5RsnW58yXGxrGGB1zBlHl8c+6QCd3EI=";
             fetcherVersion = 3;
           };
           nativeBuildInputs = [
