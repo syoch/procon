@@ -1,5 +1,5 @@
 import { boundaryContains, type Boundary } from "./boundary";
-import { isAccessible, type ModeProfile } from "$lib/mode_profiles";
+import { isAccessible, resolveModeOneway, type ModeProfile } from "$lib/mode_profiles";
 
 
 
@@ -71,16 +71,12 @@ export function trimOSMData(data: App.OSMData, boundary: Boundary): App.OSMData 
 }
 
 /**
- * 移動モードで通行できる way (と、それが参照するノード) だけを残す
- *
- * trimOSMDataByWayHighway が highway 種別だけで判定するのに対し、
- * こちらは access 系タグ・自動車専用道路・寸法制限なども含めて mode_profiles.ts のルールで判定する。
+ * way を 1 本ずつ判定し、残した way と、それが参照するノードだけを含む OSM データを作る
  *
  * @param data OSM データ
- * @param profile 移動モード
- * @returns 通行できる way とそのノードだけを含む OSM データ
+ * @param selectWay 残す way を返す (タグを書き換えた way を返してもよい)。残さない場合は null を返す
  */
-export function trimOSMDataByMode(data: App.OSMData, profile: ModeProfile): App.OSMData {
+function trimOSMDataByWay(data: App.OSMData, selectWay: (way: App.OSMRawWay) => App.OSMRawWay | null): App.OSMData {
     const trimmedData: App.OSMData = {
         elements: []
     };
@@ -88,11 +84,13 @@ export function trimOSMDataByMode(data: App.OSMData, profile: ModeProfile): App.
     const savedNodes = new Set<number>();
     for (const element of data.elements) {
         if (element.type !== "way") continue;
-        if (!isAccessible(profile, element.tags ?? {})) continue;
 
-        trimmedData.elements.push(element);
+        const way = selectWay(element);
+        if (!way) continue;
 
-        for (const nodeId of element.nodes) {
+        trimmedData.elements.push(way);
+
+        for (const nodeId of way.nodes) {
             savedNodes.add(nodeId);
         }
     }
@@ -110,39 +108,39 @@ export function trimOSMDataByMode(data: App.OSMData, profile: ModeProfile): App.
     return trimmedData;
 }
 
+/**
+ * 移動モードで通行できる way (と、それが参照するノード) だけを残す
+ *
+ * trimOSMDataByWayHighway が highway 種別だけで判定するのに対し、
+ * こちらは access 系タグ・自動車専用道路・寸法制限なども含めて mode_profiles.ts のルールで判定する。
+ * また、モード専用の一方通行タグ (自転車の oneway:bicycle など) がある way は、そのタグで oneway を置き換える
+ * (グラフ構築 (map_loader/osm.js) は oneway タグだけを見て通行方向を決めるため)。
+ *
+ * @param data OSM データ
+ * @param profile 移動モード
+ * @returns 通行できる way とそのノードだけを含む OSM データ
+ */
+export function trimOSMDataByMode(data: App.OSMData, profile: ModeProfile): App.OSMData {
+    return trimOSMDataByWay(data, (way) => {
+        const tags = way.tags ?? {};
+        if (!isAccessible(profile, tags)) return null;
+
+        const oneway = resolveModeOneway(profile, tags);
+        if (oneway === undefined || oneway === tags.oneway) return way;
+        // 元のデータ (キャッシュと共有) を書き換えないよう、タグを複製してから置き換える
+        return { ...way, tags: { ...tags, oneway } };
+    });
+}
+
 export function trimOSMDataByWayHighway(data: App.OSMData, wayHighway: string[]): App.OSMData {
-    const trimmedData: App.OSMData = {
-        elements: []
-    };
-
-    const savedNodes = new Set<number>();
-    for (const element of data.elements) {
-        if (element.type !== "way") continue;
-
-        const highwayTag = element?.tags?.highway;
+    return trimOSMDataByWay(data, (way) => {
+        const highwayTag = way?.tags?.highway;
         if (!highwayTag) {
-            continue;
+            return null;
         }
         if (!wayHighway.includes(highwayTag)) {
-            continue;
+            return null;
         }
-
-        trimmedData.elements.push(element);
-
-        for (const nodeId of element.nodes) {
-            savedNodes.add(nodeId);
-        }
-    }
-
-    for (const element of data.elements) {
-        if (element.type !== "node") continue;
-
-        if (!savedNodes.has(element.id)) {
-            continue;
-        }
-
-        trimmedData.elements.push(element);
-    }
-
-    return trimmedData;
+        return way;
+    });
 }

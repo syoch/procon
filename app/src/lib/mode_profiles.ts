@@ -40,6 +40,11 @@ export type ModeProfile = {
   allowMotorroad: boolean;
   /** 一方通行を無視するか (徒歩は一方通行に従う必要がない) */
   ignoreOneway: boolean;
+  /**
+   * このモード専用の一方通行タグ。付いていれば oneway タグより優先する
+   * 例: oneway=yes かつ oneway:bicycle=no の道 (自転車は双方向に通れる)
+   */
+  onewayKeys?: readonly string[];
   /** 車両の寸法 (徒歩・自転車は判定しないので undefined) */
   vehicle?: VehicleSize;
   /**
@@ -90,6 +95,7 @@ export const MODE_PROFILES: Record<ModeId, ModeProfile> = {
     accessKeys: ["access", "vehicle", "bicycle"],
     allowMotorroad: false,
     ignoreOneway: false,
+    onewayKeys: ["oneway:bicycle"],
     defaultParameters: { lambda: 1, mix_score_weight: 0.3, view_score_weight: 0.4, width_score_weight: 0.3 },
   },
   car: {
@@ -148,6 +154,16 @@ export function parseDimension(value: string | undefined): number | undefined {
   if (!match) return undefined;
   const num = parseFloat(match[1]);
   return Number.isFinite(num) ? num : undefined;
+}
+
+/**
+ * モード専用の一方通行タグ (onewayKeys) の値を返す (無ければ undefined = oneway タグに従う)
+ */
+export function resolveModeOneway(profile: ModeProfile, tags: Record<string, string>): string | undefined {
+  for (const key of profile.onewayKeys ?? []) {
+    if (tags[key] !== undefined) return tags[key];
+  }
+  return undefined;
 }
 
 /**

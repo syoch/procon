@@ -53,4 +53,28 @@ describe("多重辺 (同じ 2 ノード間の複数のエッジ) の扱い", () 
     expect(edges).toHaveLength(1);
     expect(edges[0].direction).toBe("forward");
   });
+
+  test("重なった道のタグは、way の並び順によらず両方から合成される", () => {
+    // 同じ 2 点の間に primary (幅 12m・両側歩道) と footway が重なっている
+    const primary: App.OSMRawWay = { type: "way", id: 100, nodes: [1, 2], tags: { highway: "primary", width: "12", sidewalk: "both" } };
+    const footway: App.OSMRawWay = { type: "way", id: 200, nodes: [1, 2], tags: { highway: "footway" } };
+    const nodes = [node(1, 0, 0), node(2, 0, 0.001)];
+    for (const ways of [[primary, footway], [footway, primary]]) {
+      const edges = Object.values(transformOSMMapToOSMGraph({ elements: [...ways, ...nodes] }).edges);
+      expect(edges).toHaveLength(1);
+      expect(edges[0]).toMatchObject({ highway: "primary", width: 12, sidewalk: "both" });
+    }
+  });
+
+  test("左右の歩道が別々の way に付いていれば両側とみなす", () => {
+    const edges = Object.values(transformOSMMapToOSMGraph({
+      elements: [
+        { type: "way", id: 1, nodes: [1, 2], tags: { highway: "residential", sidewalk: "left" } },
+        { type: "way", id: 2, nodes: [1, 2], tags: { highway: "residential", sidewalk: "right" } },
+        node(1, 0, 0), node(2, 0, 0.001),
+      ],
+    }).edges);
+    expect(edges[0].sidewalk).toBe("both");
+  });
 });
+

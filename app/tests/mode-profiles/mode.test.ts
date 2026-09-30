@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { isAccessible, MODE_PROFILES, parseDimension } from "../../src/lib/mode_profiles";
+import { isAccessible, MODE_PROFILES, parseDimension, resolveModeOneway } from "../../src/lib/mode_profiles";
 import { trimOSMDataByMode } from "../../src/routes/api/osm/osm-data";
 import { pathFind } from "../../src/lib/path_finder";
 
@@ -135,3 +135,26 @@ describe("pathFind: ignoreOneway", () => {
     expect(pathFind(onewayGraph(), params, ["B"], ["A"], { ignoreOneway: true })).toEqual(["AB"]);
   });
 });
+
+describe("resolveModeOneway", () => {
+  test("自転車は oneway:bicycle があればそれを使い、無ければ oneway に従う", () => {
+    expect(resolveModeOneway(bicycle, { oneway: "yes", "oneway:bicycle": "no" })).toBe("no");
+    expect(resolveModeOneway(bicycle, { oneway: "yes" })).toBeUndefined();
+  });
+  test("車は oneway:bicycle を見ない", () => {
+    expect(resolveModeOneway(car, { oneway: "yes", "oneway:bicycle": "no" })).toBeUndefined();
+  });
+});
+
+describe("trimOSMDataByMode: モード専用の一方通行タグ", () => {
+  test("自転車では oneway が oneway:bicycle の値に置き換わり、元のデータは書き換えない", () => {
+    const way: App.OSMRawWay = { type: "way", id: 1, nodes: [10, 11], tags: { highway: "residential", oneway: "yes", "oneway:bicycle": "no" } };
+    const data: App.OSMData = { elements: [way, { type: "node", id: 10, lat: 0, lon: 0 }, { type: "node", id: 11, lat: 0, lon: 0.001 }] };
+    const trimmed = trimOSMDataByMode(data, bicycle).elements.find((e) => e.type === "way") as App.OSMRawWay;
+    expect(trimmed.tags.oneway).toBe("no");
+    expect(way.tags.oneway).toBe("yes");
+    const forCar = trimOSMDataByMode(data, car).elements.find((e) => e.type === "way") as App.OSMRawWay;
+    expect(forCar.tags.oneway).toBe("yes");
+  });
+});
+

@@ -6,7 +6,7 @@ vi.mock("../../src/routes/api/osm", () => ({ requireOSMData: vi.fn(async () => s
 vi.mock("../../src/routes/api/osm/fs-cache-manager", () => ({ cacheManager: {} }));
 vi.mock("../../src/routes/api/osm/osm-fetcher", () => ({ fetchOverpassData: vi.fn() }));
 
-import { doPathFind, getBoundaryBox, MAX_SNAP_DISTANCE_M, PathFindError } from "../../src/routes/api/path-find/pathFind";
+import { doPathFind, getBoundaryBox, MAX_SNAP_DISTANCE_M } from "../../src/routes/api/path-find/pathFind";
 import { MODE_PROFILES } from "../../src/lib/mode_profiles";
 
 const CELL = 0.015625;
@@ -40,25 +40,26 @@ describe("doPathFind: 到達できない場合のエラー", () => {
   test("道のすぐ近くなら経路が出て、吸着のずれも返す", async () => {
     mapData = baseMap();
     const res = await doPathFind({ lat: 0.0001, lng: 0.001 }, { lat: 0.0001, lng: 0.009 }, car, [], "car");
-    expect(res.path.length).toBeGreaterThan(0);
+    if (!res.found) throw new Error(res.message);
+    expect(res.coords.length).toBeGreaterThan(0);
     expect(res.snapDistance.begin).toBeLessThan(20);
     expect(res.snapDistance.end).toBeLessThan(20);
   });
 
-  test("目的地が道路網から切り離された道の上なら、遠くの道に黙って吸着せずエラーにする", async () => {
+  test("目的地が道路網から切り離された道の上なら、遠くの道に黙って吸着せず「到達できない」を返す", async () => {
     mapData = baseMap();
     // 終点は孤立した道 (lat 0.009) の上。最大の道路網 (lat 0) までは約 1km
-    await expect(doPathFind({ lat: 0, lng: 0.001 }, { lat: 0.009, lng: 0.005 }, car, [], "car"))
-      .rejects.toMatchObject({ name: "PathFindError", code: "END_UNREACHABLE" });
+    const res = await doPathFind({ lat: 0, lng: 0.001 }, { lat: 0.009, lng: 0.005 }, car, [], "car");
+    expect(res).toMatchObject({ found: false, reason: "END_UNREACHABLE" });
   });
 
-  test(`出発地の ${MAX_SNAP_DISTANCE_M}m 以内に通れる道が無ければエラーにする`, async () => {
+  test(`出発地の ${MAX_SNAP_DISTANCE_M}m 以内に通れる道が無ければ「到達できない」を返す`, async () => {
     mapData = baseMap();
-    await expect(doPathFind({ lat: -0.005, lng: 0.005 }, { lat: 0, lng: 0.009 }, car, [], "car"))
-      .rejects.toMatchObject({ code: "BEGIN_UNREACHABLE" });
+    const res = await doPathFind({ lat: -0.005, lng: 0.005 }, { lat: 0, lng: 0.009 }, car, [], "car");
+    expect(res).toMatchObject({ found: false, reason: "BEGIN_UNREACHABLE" });
   });
 
-  test("一方通行などでたどり着けないときは「経路が見つからない」エラーにする", async () => {
+  test("一方通行などでたどり着けないときは「経路が見つからない」を返す", async () => {
     mapData = {
       elements: [
         { type: "way", id: 1, nodes: [1, 2, 3], tags: { highway: "residential", oneway: "yes" } },
@@ -66,9 +67,19 @@ describe("doPathFind: 到達できない場合のエラー", () => {
       ],
     };
     // 一方通行 (西 → 東) を東から西へ向かう
-    const run = doPathFind({ lat: 0, lng: 0.009 }, { lat: 0, lng: 0.001 }, car, [], "car");
-    await expect(run).rejects.toBeInstanceOf(PathFindError);
-    await expect(doPathFind({ lat: 0, lng: 0.009 }, { lat: 0, lng: 0.001 }, car, [], "car"))
-      .rejects.toMatchObject({ code: "NO_ROUTE" });
+    const res = await doPathFind({ lat: 0, lng: 0.009 }, { lat: 0, lng: 0.001 }, car, [], "car");
+    expect(res).toMatchObject({ found: false, reason: "NO_ROUTE" });
+  });
+
+  test("自転車は oneway:bicycle=no の一方通行を逆向きに通れる (車は通れない)", async () => {
+    mapData = {
+      elements: [
+        { type: "way", id: 1, nodes: [1, 2, 3], tags: { highway: "residential", oneway: "yes", "oneway:bicycle": "no" } },
+        node(1, 0, 0), node(2, 0, 0.005), node(3, 0, 0.01),
+      ],
+    };
+    const bicycle = MODE_PROFILES.bicycle.defaultParameters;
+    expect(await doPathFind({ lat: 0, lng: 0.009 }, { lat: 0, lng: 0.001 }, bicycle, [], "bicycle")).toMatchObject({ found: true });
+    expect(await doPathFind({ lat: 0, lng: 0.009 }, { lat: 0, lng: 0.001 }, car, [], "car")).toMatchObject({ found: false });
   });
 });

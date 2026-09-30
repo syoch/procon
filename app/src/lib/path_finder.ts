@@ -20,6 +20,10 @@ function calculateEdgeCost(edge: App.ComputedEdge | App.MapVCrossEdge, params: A
   const a2 = params.width_score_weight;
   const a3 = params.mix_score_weight;
 
+  // 3 つのスコアはいずれも「高いほど安全」(0〜1)。
+  // mix_score は名前に反して混在度ではなく分離度で、歩行者・自転車と分離されているほど高い
+  // (cost_calculator.js の calculateMixScore: 高速道路 1.0、両側歩道 0.8、歩道なし 0.3)。
+  // そのため重み付きで足し合わせ、score が高いほどコストが下がる。
   let score = a1 * view_score + a2 * width_score + a3 * mix_score;
   let cost = distance * (1 + lambda * (1 - score));
   return cost;

@@ -2,7 +2,7 @@ import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 
 import { z } from 'zod';
-import { doPathFind, PathFindError } from './pathFind';
+import { doPathFind } from './pathFind';
 import { MODE_IDS, MODE_PROFILES, type ModeId } from '$lib/mode_profiles';
 
 const coordinateSchema = z.object({
@@ -15,19 +15,23 @@ const paramsSchema = z.object({
     width_score_weight: z.number(),
     lambda: z.number(),
 });
-// mode を指定した場合、parameters と wayHighway は省略できる
-// (parameters 省略時はモードの既定値、wayHighway はモードのルールで置き換わる)。
-// mode を指定しない場合は従来どおり parameters と wayHighway が必須。
-const requestSchema = z.object({
+// 通れる道の指定は mode と wayHighway のどちらか一方 (両方指定するとどちらが優先か曖昧なので 400 にする)。
+// - mode を指定する形式: 通れる道はモードのルールで決まる。parameters は省略でき、省略時はモードの既定値
+// - mode を指定しない形式 (従来どおり): parameters と wayHighway が必須
+// どちらも未知のキーを許さない (strictObject) ので、mode と wayHighway を両方送るとどちらにも当てはまらず 400 になる
+const modeRequestSchema = z.strictObject({
     begin: coordinateSchema,
     end: coordinateSchema,
+    mode: z.enum(MODE_IDS as [ModeId, ...ModeId[]]),
     parameters: paramsSchema.optional(),
-    wayHighway: z.array(z.string()).optional(),
-    mode: z.enum(MODE_IDS as [ModeId, ...ModeId[]]).optional(),
-}).refine(
-    (req) => req.mode !== undefined || (req.parameters !== undefined && req.wayHighway !== undefined),
-    { message: "mode を指定しない場合は parameters と wayHighway が必要です" },
-);
+});
+const legacyRequestSchema = z.strictObject({
+    begin: coordinateSchema,
+    end: coordinateSchema,
+    parameters: paramsSchema,
+    wayHighway: z.array(z.string()),
+});
+const requestSchema = z.union([modeRequestSchema, legacyRequestSchema]);
 
 export const POST: RequestHandler = async ({ request }) => {
     const body = await request.json();
@@ -35,18 +39,10 @@ export const POST: RequestHandler = async ({ request }) => {
     if (!query.success) {
         return json({ error: 'Invalid request body', details: query.error.issues }, { status: 400 });
     }
-    const { begin, end, mode } = query.data;
-    const parameters = query.data.parameters ?? MODE_PROFILES[mode!].defaultParameters;
-    let res;
-    try {
-        res = await doPathFind(begin, end, parameters, query.data.wayHighway ?? [], mode);
-    } catch (e) {
-        // 到達できない場合などは、理由をユーザーに伝えられるよう 422 とメッセージを返す
-        if (e instanceof PathFindError) {
-            return json({ error: e.message, code: e.code }, { status: 422 });
-        }
-        throw e;
-    }
+    const req = query.data;
+    const res = "mode" in req
+        ? await doPathFind(req.begin, req.end, req.parameters ?? MODE_PROFILES[req.mode].defaultParameters, [], req.mode)
+        : await doPathFind(req.begin, req.end, req.parameters, req.wayHighway);
 
     return json(res)
 };
