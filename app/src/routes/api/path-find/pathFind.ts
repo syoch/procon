@@ -11,31 +11,38 @@ import { trimOSMDataByWayHighway } from '../osm/osm-data';
 
 
 
-function pathToCoordinates(mapData: App.SearchGraph, edgeIds: App.EdgeId[]): App.Coordinate[] {
-    return edgeIds
-        .map((x) => {
-            const edge = mapData.edges[x];
-            const beginNode = mapData.nodes[edge.begin];
-            const endNode = mapData.nodes[edge.end];
-            if (!beginNode || !endNode) {
-                console.warn(
-                    `Edge ${edge.id} has missing nodes: begin=${edge.begin}, end=${edge.end}`,
-                );
-                return [];
+
+export function pathToCoordinates(mapData: App.SearchGraph, edgeIds: App.EdgeId[], begin: App.NodeId): App.Coordinate[] {
+    let current: App.NodeId = begin;
+    if (!mapData.nodes[begin]) {
+        throw new Error(`Node ${begin} not found in mapData`);
+    }
+
+    const res: App.Coordinate[] = [];
+    res.push(mapData.nodes[begin].coordinate);
+
+    for (const edgeId of edgeIds) {
+        const edge = mapData.edges[edgeId];
+        const reversed = current === edge.end;
+        const nextNodeId = reversed ? edge.begin : edge.end;
+
+        if (!mapData.nodes[nextNodeId]) {
+            throw new Error(`Node ${nextNodeId} not found in mapData`);
+        }
+        if (edge.begin !== current && edge.end !== current) {
+            throw new Error(`Edge ${edgeId} does not connect to current node ${current}`);
+        }
+
+        if (edge.type === "MapVCrossEdge") {
+            res.push(mapData.nodes[nextNodeId].coordinate);
+        } else {
+            for (const segment of reversed ? [...edge.segments].reverse() : edge.segments) {
+                res.push(reversed ? segment.begin_coordinate : segment.end_coordinate);
             }
-            if (edge.type === "FoldedEdge" || edge.type === "ComputedEdge") {
-                return [
-                    beginNode.coordinate,
-                    ...edge.segments
-                        .map((s) => [s.begin_coordinate, s.end_coordinate])
-                        .flat(),
-                    endNode.coordinate,
-                ].filter(Boolean);
-            }
-            return [beginNode.coordinate, endNode.coordinate];
-        })
-        .flat()
-        .filter(Boolean);
+        }
+        current = nextNodeId;
+    }
+    return res;
 }
 
 async function startSearch(mapData: App.SearchGraph, params: App.SearchParameters, begin: App.Coordinate, end: App.Coordinate) {
@@ -59,8 +66,7 @@ async function startSearch(mapData: App.SearchGraph, params: App.SearchParameter
     );
     console.timeEnd("pathFind");
 
-    return pathToCoordinates(mapData, result);
-
+    return pathToCoordinates(mapData, result, beginNodeId);
 }
 
 const deltaLatitude = 0.015625; // 1/64
