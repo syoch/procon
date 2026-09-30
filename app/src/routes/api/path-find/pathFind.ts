@@ -2,6 +2,7 @@ import { transientSplit } from '$lib/transient-split';
 import { largestComponentEdges } from '$lib/utils/graph';
 import { pathFind, type PathFindOptions } from '$lib/path_finder';
 import { MODE_PROFILES, type ModeId } from '$lib/mode_profiles';
+import { collectRoadJunctions, detectSharpTurnsOnPath, type SharpTurn, type SharpTurnOptions } from '$lib/sharp_turn';
 import { requireOSMData } from '../osm';
 import { cacheManager } from '../osm/fs-cache-manager';
 import { fetchOverpassData } from '../osm/osm-fetcher';
@@ -54,7 +55,18 @@ function pathToCoordinates(mapData: App.SearchGraph, edgeIds: App.EdgeId[], star
         .filter(Boolean);
 }
 
-async function startSearch(mapData: App.SearchGraph, params: App.SearchParameters, begin: App.Coordinate, end: App.Coordinate, options: PathFindOptions = {}) {
+/** /api/path-find の応答 */
+export type PathFindResult = {
+    /** 経路の座標列 (進行順) */
+    path: App.Coordinate[];
+    /** 経路上の急カーブ (道の途中のカーブのみ。検出しないモードでは空) */
+    sharpTurns: SharpTurn[];
+};
+
+/**
+ * @param sharpTurnOptions 急カーブ判定の条件。undefined なら急カーブを検出しない
+ */
+async function startSearch(mapData: App.SearchGraph, params: App.SearchParameters, begin: App.Coordinate, end: App.Coordinate, options: PathFindOptions = {}, sharpTurnOptions?: SharpTurnOptions): Promise<PathFindResult> {
     if (!begin || !end) {
         throw new Error("始点と終点を指定してください");
     }
@@ -79,7 +91,14 @@ async function startSearch(mapData: App.SearchGraph, params: App.SearchParameter
     );
     console.timeEnd("pathFind");
 
-    return pathToCoordinates(mapData, result, beginNodeId);
+    const sharpTurns = sharpTurnOptions === undefined
+        ? []
+        : detectSharpTurnsOnPath(mapData, result, beginNodeId, sharpTurnOptions);
+
+    return {
+        path: pathToCoordinates(mapData, result, beginNodeId),
+        sharpTurns,
+    };
 
 }
 
@@ -127,5 +146,11 @@ export async function doPathFind(
         throw f2dGraph;
     }
 
-    return await startSearch(f2dGraph, parameters, begin, end, { ignoreOneway: profile?.ignoreOneway });
+    // mode 未指定時は車と同じ基準 (道の基準値のみ) で急カーブを検出する
+    const sharpTurnMinRadius = profile ? profile.sharpTurnMinRadius : 0;
+    // 交差点は絞り込む前のデータで判定する (モードで外れた道との交差点も区切るため)
+    const sharpTurnOptions = sharpTurnMinRadius === undefined
+        ? undefined
+        : { minRadius: sharpTurnMinRadius, junctions: collectRoadJunctions(rawOsmData), bounds: bbox };
+    return await startSearch(f2dGraph, parameters, begin, end, { ignoreOneway: profile?.ignoreOneway }, sharpTurnOptions);
 }

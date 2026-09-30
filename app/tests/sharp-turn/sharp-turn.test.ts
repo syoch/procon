@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { detectSharpTurns, detectSharpTurnsOnPath } from "../../src/lib/sharp_turn";
+import { collectRoadJunctions, coordinateKey, detectSharpTurns, detectSharpTurnsOnPath } from "../../src/lib/sharp_turn";
 
 // 長岡付近を原点とし、x (東向き) / y (北向き) [m] で道を描いてから緯度経度に変換する
 const ORIGIN = { lat: 37.45, lng: 138.85 };
@@ -73,9 +73,12 @@ describe("detectSharpTurns", () => {
     expect(detectSharpTurns(road(curvedRoad(100, 90)), CAR)).toEqual([]);
   });
 
-  test("基準の半径は道の種類で変わる (tertiary は 80m、residential は 30m)", () => {
-    expect(detectSharpTurns(road(curvedRoad(60, 90), "tertiary"), CAR)).toHaveLength(1);
-    expect(detectSharpTurns(road(curvedRoad(60, 90), "residential"), CAR)).toEqual([]);
+  test("基準の半径は道の種類で変わるが、30m を上限とする (tertiary の 80m は 30m に打ち切り)", () => {
+    // tertiary: 半径 60m は道路構造令の基準 (80m) より急だが、上限 30m より緩いので拾わない
+    expect(detectSharpTurns(road(curvedRoad(60, 90), "tertiary"), CAR)).toEqual([]);
+    expect(detectSharpTurns(road(curvedRoad(25, 90), "tertiary"), CAR)).toHaveLength(1);
+    // track は基準が 15m なので、半径 25m のカーブは拾わない
+    expect(detectSharpTurns(road(curvedRoad(25, 90), "track"), CAR)).toEqual([]);
   });
 
   test("大型トラックはモードの下限 (20m) より急なカーブも拾う", () => {
@@ -84,19 +87,20 @@ describe("detectSharpTurns", () => {
     expect(detectSharpTurns(road(curvedRoad(17, 90), "track"), TRUCK)).toHaveLength(1);
   });
 
-  test("合計の角度が小さい (30°未満) 曲がりは拾わない", () => {
+  test("合計の角度が小さい (50°未満) 曲がりは拾わない", () => {
     expect(detectSharpTurns(road(curvedRoad(10, 20)), CAR)).toEqual([]);
+    expect(detectSharpTurns(road(curvedRoad(10, 45)), CAR)).toEqual([]);
   });
 
   test("S 字カーブは左右 2 つの急カーブとして拾う", () => {
-    const left = curvedRoad(15, 60);
+    const left = curvedRoad(15, 75);
     // 左カーブの出口から、逆向き (右) の円弧を続ける
     const [ox, oy] = left[left.length - 2];
-    const heading = Math.PI / 3;
+    const heading = (75 * Math.PI) / 180;
     const right: number[][] = [];
     const n = 6;
     for (let k = 1; k <= n; k++) {
-      const a = (Math.PI / 3) * (k / n);
+      const a = ((75 * Math.PI) / 180) * (k / n);
       // 右カーブの中心は進行方向の右側
       const cx = ox + 15 * Math.sin(heading), cy = oy - 15 * Math.cos(heading);
       right.push([cx - 15 * Math.sin(heading - a), cy + 15 * Math.cos(heading - a)]);
@@ -154,5 +158,58 @@ describe("detectSharpTurnsOnPath", () => {
       },
     };
     expect(detectSharpTurnsOnPath(graph, ["AS", "SB"], "A", CAR)).toHaveLength(1);
+  });
+});
+
+describe("collectRoadJunctions", () => {
+  const node = (id: number, p: number[]): App.OSMRawNode => {
+    const c = toCoord(p);
+    return { type: "node", id, lat: c.lat, lon: c.lng };
+  };
+  // 1(-50,0) - 2(0,0) - 3(0,50) と曲がる tertiary の角 (2) に、別の道 4(50,0) - 2 がつながる
+  const base = (tags: Record<string, string>): App.OSMData => ({
+    elements: [
+      { type: "way", id: 1, nodes: [1, 2, 3], tags: { highway: "tertiary" } },
+      { type: "way", id: 2, nodes: [2, 4], tags },
+      node(1, [-50, 0]), node(2, [0, 0]), node(3, [0, 50]), node(4, [50, 0]),
+    ],
+  });
+  const key2 = coordinateKey(toCoord([0, 0]));
+
+  test("track や residential がつながる点は交差点", () => {
+    expect(collectRoadJunctions(base({ highway: "track" })).has(key2)).toBe(true);
+    expect(collectRoadJunctions(base({ highway: "residential" })).has(key2)).toBe(true);
+  });
+  test("歩道・駐車場の出入口がつながる点は交差点にしない", () => {
+    expect(collectRoadJunctions(base({ highway: "footway" })).has(key2)).toBe(false);
+    expect(collectRoadJunctions(base({ highway: "service", service: "driveway" })).has(key2)).toBe(false);
+  });
+  test("道が端と端でつながっているだけの点は交差点にしない", () => {
+    const data: App.OSMData = {
+      elements: [
+        { type: "way", id: 1, nodes: [1, 2], tags: { highway: "tertiary" } },
+        { type: "way", id: 2, nodes: [2, 3], tags: { highway: "tertiary" } },
+        node(1, [-50, 0]), node(2, [0, 0]), node(3, [0, 50]),
+      ],
+    };
+    expect(collectRoadJunctions(data).size).toBe(0);
+  });
+
+  test("交差点での曲がりは急カーブにしないが、交差点でないところのカーブは拾う", () => {
+    const corner = road([[-50, 0], [0, 0], [0, 50]], "tertiary");
+    const junctions = collectRoadJunctions(base({ highway: "track" }));
+    expect(detectSharpTurns(corner, { minRadius: 0 })).toHaveLength(1);
+    expect(detectSharpTurns(corner, { minRadius: 0, junctions })).toEqual([]);
+    // 交差点から離れた場所のカーブは、交差点があっても拾う
+    expect(detectSharpTurns(road(curvedRoad(20, 90, 5).map(([x, y]) => [x + 200, y]), "tertiary"), { minRadius: 0, junctions })).toHaveLength(1);
+  });
+
+  test("地図データの取得範囲の外にある曲がりは拾わない (範囲外で交わる道が見えないため)", () => {
+    const corner = road([[-50, 0], [0, 0], [0, 50]], "tertiary");
+    const inside = { minLat: ORIGIN.lat - 0.01, minLng: ORIGIN.lng - 0.01, maxLat: ORIGIN.lat + 0.01, maxLng: ORIGIN.lng + 0.01 };
+    // 角 (0,0) が範囲の北端より外になるように、範囲を南にずらす
+    const south = { ...inside, maxLat: ORIGIN.lat - 0.0001 };
+    expect(detectSharpTurns(corner, { minRadius: 0, bounds: inside })).toHaveLength(1);
+    expect(detectSharpTurns(corner, { minRadius: 0, bounds: south })).toEqual([]);
   });
 });
