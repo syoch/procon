@@ -169,6 +169,14 @@
 		});
 		isLoading = false;
 
+		if (res.status === 422) {
+			// 到達できない場合など (前の経路は消して、理由を表示する)
+			const body = (await res.json()) as { error?: string };
+			pathResult = [];
+			sharpTurns = [];
+			error = body.error ?? "経路が見つかりませんでした";
+			return;
+		}
 		if (!res.ok) {
 			throw new Error(`/api/path-find API エラー: ${res.status}`);
 		}

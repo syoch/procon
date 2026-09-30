@@ -10,6 +10,24 @@ import { CrossConvert } from '$lib/cross_transform';
 import { transformOSMMapToOSMGraph } from '$lib/map_loader/osm';
 import { fold2DegreeEdges } from '$lib/fold2degree';
 import { trimOSMDataByMode, trimOSMDataByWayHighway } from '../osm/osm-data';
+import { distanceOf } from '$lib/utils/haversine';
+
+/**
+ * 始点・終点を道に吸着したときに許すずれの上限 [m]
+ * これより遠い道にしか吸着できない場合は、間違った場所への経路を黙って返さないようにエラーにする (仮の値)
+ */
+export const MAX_SNAP_DISTANCE_M = 200;
+
+/**
+ * 経路探索の結果をユーザーに伝えるべきエラー (到達できない場合など)
+ * API では 422 とメッセージを返す
+ */
+export class PathFindError extends Error {
+    constructor(message: string, public readonly code: "BEGIN_UNREACHABLE" | "END_UNREACHABLE" | "NO_ROUTE") {
+        super(message);
+        this.name = "PathFindError";
+    }
+}
 
 
 
@@ -61,6 +79,8 @@ export type PathFindResult = {
     path: App.Coordinate[];
     /** 経路上の急カーブ (道の途中のカーブのみ。検出しないモードでは空) */
     sharpTurns: SharpTurn[];
+    /** 指定された始点・終点から、吸着した道の上の点までの距離 [m] */
+    snapDistance: { begin: number; end: number };
 };
 
 /**
@@ -81,6 +101,18 @@ async function startSearch(mapData: App.SearchGraph, params: App.SearchParameter
     const beginNodeId = transientSplit(mapData, begin, mainEdges);
     const endNodeId = transientSplit(mapData, end, mainEdges);
 
+    // 吸着先が遠すぎる場合 (近くの道が道路網から切り離されている場合など) は、間違った経路を返さずエラーにする
+    const snapDistance = {
+        begin: distanceOf(begin, mapData.nodes[beginNodeId].coordinate),
+        end: distanceOf(end, mapData.nodes[endNodeId].coordinate),
+    };
+    if (snapDistance.begin > MAX_SNAP_DISTANCE_M) {
+        throw new PathFindError(`出発地の近く (${MAX_SNAP_DISTANCE_M}m 以内) に、このモードで通れる道が見つかりません`, "BEGIN_UNREACHABLE");
+    }
+    if (snapDistance.end > MAX_SNAP_DISTANCE_M) {
+        throw new PathFindError(`目的地の近く (${MAX_SNAP_DISTANCE_M}m 以内) に、このモードで通れる道が見つかりません`, "END_UNREACHABLE");
+    }
+
     console.time("pathFind");
     const result = pathFind(
         mapData,
@@ -91,6 +123,10 @@ async function startSearch(mapData: App.SearchGraph, params: App.SearchParameter
     );
     console.timeEnd("pathFind");
 
+    if (result.length === 0 && beginNodeId !== endNodeId) {
+        throw new PathFindError("経路が見つかりませんでした", "NO_ROUTE");
+    }
+
     const sharpTurns = sharpTurnOptions === undefined
         ? []
         : detectSharpTurnsOnPath(mapData, result, beginNodeId, sharpTurnOptions);
@@ -98,23 +134,33 @@ async function startSearch(mapData: App.SearchGraph, params: App.SearchParameter
     return {
         path: pathToCoordinates(mapData, result, beginNodeId),
         sharpTurns,
+        snapDistance,
     };
 
 }
 
 const deltaLatitude = 0.015625; // 1/64
 const deltaLongitude = 0.015625; // 1/64
-function getBoundaryBox(begin: App.Coordinate, end: App.Coordinate): {
+/**
+ * 始点・終点を囲む範囲に足す余白 (格子のマス数)
+ * 余白が無いと、範囲の外を回る道 (山道など) が切れて道路網から切り離されたり、
+ * 範囲の外で交わる道が見えず交差点をカーブと誤判定したりするため
+ */
+const BOUNDARY_MARGIN_CELLS = 1;
+/**
+ * 経路探索に使う地図データの範囲を求める (1/64° の格子に合わせ、周りに余白を足す)
+ */
+export function getBoundaryBox(begin: App.Coordinate, end: App.Coordinate): {
     minLat: number;
     minLng: number;
     maxLat: number;
     maxLng: number;
 } {
     return {
-        minLat: Math.floor(Math.min(begin.lat, end.lat) / deltaLatitude) * deltaLatitude,
-        minLng: Math.floor(Math.min(begin.lng, end.lng) / deltaLongitude) * deltaLongitude,
-        maxLat: Math.ceil(Math.max(begin.lat, end.lat) / deltaLatitude) * deltaLatitude,
-        maxLng: Math.ceil(Math.max(begin.lng, end.lng) / deltaLongitude) * deltaLongitude,
+        minLat: (Math.floor(Math.min(begin.lat, end.lat) / deltaLatitude) - BOUNDARY_MARGIN_CELLS) * deltaLatitude,
+        minLng: (Math.floor(Math.min(begin.lng, end.lng) / deltaLongitude) - BOUNDARY_MARGIN_CELLS) * deltaLongitude,
+        maxLat: (Math.ceil(Math.max(begin.lat, end.lat) / deltaLatitude) + BOUNDARY_MARGIN_CELLS) * deltaLatitude,
+        maxLng: (Math.ceil(Math.max(begin.lng, end.lng) / deltaLongitude) + BOUNDARY_MARGIN_CELLS) * deltaLongitude,
     }
 }
 

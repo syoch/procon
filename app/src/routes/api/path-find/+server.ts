@@ -2,7 +2,7 @@ import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 
 import { z } from 'zod';
-import { doPathFind } from './pathFind';
+import { doPathFind, PathFindError } from './pathFind';
 import { MODE_IDS, MODE_PROFILES, type ModeId } from '$lib/mode_profiles';
 
 const coordinateSchema = z.object({
@@ -37,7 +37,16 @@ export const POST: RequestHandler = async ({ request }) => {
     }
     const { begin, end, mode } = query.data;
     const parameters = query.data.parameters ?? MODE_PROFILES[mode!].defaultParameters;
-    const res = await doPathFind(begin, end, parameters, query.data.wayHighway ?? [], mode);
+    let res;
+    try {
+        res = await doPathFind(begin, end, parameters, query.data.wayHighway ?? [], mode);
+    } catch (e) {
+        // 到達できない場合などは、理由をユーザーに伝えられるよう 422 とメッセージを返す
+        if (e instanceof PathFindError) {
+            return json({ error: e.message, code: e.code }, { status: 422 });
+        }
+        throw e;
+    }
 
     return json(res)
 };
