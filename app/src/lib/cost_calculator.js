@@ -1,11 +1,13 @@
 import { distanceOf } from "./utils/haversine";
+import { scoreMix, scoreWidth } from "./mode_scoring";
 
 /**
  * @brief コスト計算を行う
  * @param {App.FoldedEdge} folded_edge
+ * @param {import("./mode_scoring").ScoringProfile} [scoring] 移動モードごとのスコアの定義 (省略時は全モード共通の計算)
  * @returns {App.ComputedEdge | Error} //コスト計算後のエッジ
  */
-export function CalculateCost(folded_edge) {
+export function CalculateCost(folded_edge, scoring) {
   let widthScore = 0; // 幅員スコア
   let mixScore = 0; // 混在スコア(歩行者と自転車の混在度)
   let viewScore = 0; // 視界スコア
@@ -33,10 +35,12 @@ export function CalculateCost(folded_edge) {
 
     // --- 2. 代表値・平均値を使った各種スコアの計算 ---
     /* 振幅スコアの計算 */
-    widthScore = calculateWidthScore(averageWidth, primaryHighway);
+    // モードごとの定義があり、幅が分かる場合はそちらを使う (mode_scoring.ts)
+    widthScore = scoreWidth(scoring, averageWidth) ?? calculateWidthScore(averageWidth, primaryHighway);
 
     /* 混在スコアの計算 */
-    mixScore = calculateMixScore(primarySidewalk, primaryHighway);
+    // モードごとの定義があり、歩道タグが無い場合はそちらを使う (mode_scoring.ts)
+    mixScore = scoreMix(scoring, primarySidewalk, primaryHighway) ?? calculateMixScore(primarySidewalk, primaryHighway);
 
     /* 視界スコアの計算 */
     viewScore = calculateViewScore(folded_edge,primaryHighway);
