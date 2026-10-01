@@ -13,7 +13,8 @@ const paramsSchema = z.object({
     mix_score_weight: z.number(),
     view_score_weight: z.number(),
     width_score_weight: z.number(),
-    lambda: z.number(),
+    // 安全をどれだけ重視するか (0 で最短。負の値は「危ない道ほど得」になるので許さない)
+    lambda: z.number().min(0),
 });
 // 通れる道の指定は mode と wayHighway のどちらか一方 (両方指定するとどちらが優先か曖昧なので 400 にする)。
 // - mode を指定する形式: 通れる道はモードのルールで決まる。parameters は省略でき、省略時はモードの既定値

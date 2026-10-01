@@ -12,6 +12,7 @@ import { cacheManager } from '../osm/fs-cache-manager';
 import { fetchOverpassData } from '../osm/osm-fetcher';
 import { trimOSMDataByMode, trimOSMDataByWayHighway } from '../osm/osm-data';
 import { distanceOf } from '$lib/utils/haversine';
+import { travelTimeSeconds } from '$lib/travel_speed';
 import { applyGsiWidths, GsiRoadIndex, measureSegmentsWidthCoverage, removeNarrowEdges, type GsiRoadSegment, type WidthCoverage } from '$lib/road_width';
 import { GSI_FETCH_BUDGET_MS, MAX_GSI_TILES, requireGsiRoadSegmentsForTiles, tileKey, tilesAlongPath, type GsiTile } from '../gsi';
 import { gsiCacheManager } from '../gsi/fs-cache-manager';
@@ -157,6 +158,11 @@ export type PathFindResult =
          * 国土地理院のタイルが取れなかった範囲では幅の制限が効かないため、キャッシュの有無で結果が変わりうることを観測するためのもの
          */
         widthCoverage: WidthCoverage;
+        /**
+         * 想定の所要時間 [秒] (mode 指定時のみ。mode なしは null)。
+         * 想定速度は maxspeed タグか法定速度 (travel_speed.ts)。信号・交差点の待ち時間や渋滞は含まない
+         */
+        totalTime: number | null;
     };
 
 /**
@@ -314,6 +320,7 @@ function searchWithWidths(
         ignoreOneway: profile?.ignoreOneway,
         highwayCostFactor: profile?.highwayCostFactor,
         scoring: profile?.scoring,
+        speed: profile?.speed,
     });
     if (pathEdges.length <= 0) {
         return {
@@ -350,5 +357,8 @@ function searchWithWidths(
         sharpTurns,
         snapDistance,
         widthCoverage: measureSegmentsWidthCoverage(pathSegments),
+        totalTime: profile
+            ? travelTimeSeconds(profile.speed, pathSegments.map((s) => ({ ...s, distance: distanceOf(s.begin_coordinate, s.end_coordinate) })))
+            : null,
     };
 }

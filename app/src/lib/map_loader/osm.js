@@ -4,6 +4,7 @@
  */
 
 import { canTraverseBackward, canTraverseForward, flipDirection } from "../utils/direction";
+import { parseLanes, parseMaxspeed } from "../travel_speed";
 
 /**
  * @brief OSM データを読み込み、OSM Graph を作成する
@@ -142,6 +143,18 @@ function mergeWidth(a, b) {
 }
 
 /**
+ * @brief 多重辺の数値のタグ (maxspeed / lanes) を合成する (分かっている方の大きい値を採る)
+ * @param {number | null | undefined} a
+ * @param {number | null | undefined} b
+ * @returns {number | null}
+ */
+function mergeMax(a, b) {
+  if (a === null || a === undefined) return b ?? null;
+  if (b === null || b === undefined) return a;
+  return Math.max(a, b);
+}
+
+/**
  * @brief 多重辺の歩道情報を合成する (歩道がある方を優先し、左右が揃えば両側とする)
  * @param {string | null} a
  * @param {string | null} b
@@ -205,6 +218,9 @@ function buildGraphFromWays(rawNodes, rawWays) {
     // parseFloat は不正な値(例: "約5m")で NaN を返すことがあるので、有限数のときだけ採用する
     const parsedWidth = parseFloat(tags.width);
     const width = Number.isFinite(parsedWidth) ? parsedWidth : null;
+    // 所要時間の計算に使う (travel_speed.ts)。読めない値は null
+    const maxspeed = parseMaxspeed(tags.maxspeed) ?? null;
+    const lanes = parseLanes(tags.lanes) ?? null;
     const direction = resolveDirection(tags);
 
     for (let i = 0; i < nodeIds.length - 1; i++) {
@@ -230,6 +246,8 @@ function buildGraphFromWays(rawNodes, rawWays) {
         existing.highway = mergeHighway(existing.highway, tags.highway ?? "");
         existing.width = mergeWidth(existing.width, width);
         existing.sidewalk = mergeSidewalk(existing.sidewalk, tags.sidewalk ?? null);
+        existing.maxspeed = mergeMax(existing.maxspeed, maxspeed);
+        existing.lanes = mergeMax(existing.lanes, lanes);
         continue;
       }
 
@@ -246,6 +264,8 @@ function buildGraphFromWays(rawNodes, rawWays) {
         highway: tags.highway ?? "",
         width,
         sidewalk: tags.sidewalk ?? null,
+        maxspeed,
+        lanes,
         direction,
       };
 
