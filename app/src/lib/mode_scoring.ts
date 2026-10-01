@@ -2,7 +2,10 @@
  * 移動モードごとのスコア (幅員スコア・混在スコア) の定義
  *
  * cost_calculator.js のスコアは全モード共通で、タグが無い道では幅員スコアも混在スコアも highway 種別から推定していた。
- * そのため両者は「幹線ほど高い」同じ順序になり、実質同じ評価になっていた (幅員だけ・混在だけの経路が一致)。
+ * 特に混在スコア (calculateMixScore) は、歩行者・自転車にとって最も安全な歩行者専用の道 (footway / cycleway / path / steps) を
+ * 0.1 (最も危険) と評価していた (switch に無い種別の default 分岐に落ちるため)。徒歩・自転車ではこれが逆になる。
+ * また幅員スコアと混在スコアは相関が強く (どちらも幹線ほど高い)、徒歩で重みを幅員だけ・混在だけにしても
+ * 長岡駅→見附駅で同じ経路になった (一致率 1.00。完全に同じ値ではなく、15 種のうち 12 種で値は異なる)。
  * ここではモードごとに次のように分ける。
  *
  * - 幅員スコア: 幅が分かる道 (国土地理院の幅員区分で約 9 割) は実際の幅で決める。
@@ -31,7 +34,8 @@ export type WidthScoreStep = {
 
 export type ScoringProfile = {
   /**
-   * 幅が分かる道の幅員スコア。minWidth の大きい順に並べ、最初に幅が minWidth 以上になった段のスコアを使う。
+   * 幅が分かる道の幅員スコア。幅が minWidth 以上の段のうち、minWidth が最も大きい段のスコアを使う
+   * (並び順には依存しない。幅がどの段の minWidth にも届かない場合は、minWidth が最も小さい段のスコア)。
    * undefined のモードは従来どおり (cost_calculator.js の calculateWidthScore)
    */
   widthScoreSteps?: readonly WidthScoreStep[];
@@ -51,10 +55,14 @@ export type ScoringProfile = {
  */
 export function scoreWidth(profile: ScoringProfile | undefined, width: number | undefined): number | undefined {
   if (!profile?.widthScoreSteps || !isKnownWidth(width)) return undefined;
+  // 並び順を間違えても結果が変わらないよう、順番に頼らず「当てはまる段のうち最も大きい minWidth」を探す
+  let matched: WidthScoreStep | undefined;
+  let lowest: WidthScoreStep | undefined;
   for (const step of profile.widthScoreSteps) {
-    if (width >= step.minWidth) return step.score;
+    if (width >= step.minWidth && (!matched || step.minWidth > matched.minWidth)) matched = step;
+    if (!lowest || step.minWidth < lowest.minWidth) lowest = step;
   }
-  return profile.widthScoreSteps[profile.widthScoreSteps.length - 1]?.score;
+  return (matched ?? lowest)?.score;
 }
 
 /**
