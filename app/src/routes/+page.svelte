@@ -136,6 +136,13 @@
 		totalDistance = 0;
 		totalIntersections = 0;
 
+		const params: App.SearchParameters = {
+			...ctx.searchParameters,
+			mix_score_weight: slider1 / 100,
+			view_score_weight: slider2 / 100,
+			width_score_weight: slider3 / 100,
+		}
+
 		isLoading = true;
 		const res = await fetch("/api/path-find", {
 			method: "POST",
@@ -143,7 +150,7 @@
 			body: JSON.stringify({
 				begin,
 				end,
-				parameters: ctx.searchParameters,
+				parameters: params,
 				wayHighway: [
 					"motorway",
 					"trunk",
@@ -289,9 +296,18 @@
 	});
 
 	//スライダー初期値
-	let slider1 = $state(30);
+	let slider1 = $state(50);
     let slider2 = $state(50);
-    let slider3 = $state(80);
+    let slider3 = $state(50);
+
+	$effect(()=> { 
+		const params = ctx.state.parameterVariants[
+      		ctx.state.selectedVariantIndex
+    	];
+		slider1 = params.mix_score_weight * 100;
+		slider2 = params.view_score_weight * 100;
+		slider3 = params.width_score_weight * 100;
+	});
 </script>
 
 <MapViewer bind:map bind:pathResult {onClick}></MapViewer>
@@ -344,10 +360,11 @@
 						/>
 					</div>
 					<div class="slider-container">
+
     <!-- スライダー（動かすと自動で sliderValue の値がリアルタイムに変わる） -->
     <div class="slider-group">
     <div class="slider-item">
-        <label>視界スコア: {slider1}<br>
+        <label>幅員スコア: {slider1}<br>
         <input type="range" min="0" max="100" bind:value={slider1} class="custom-slider"/>
 		</label>
     </div>
@@ -363,9 +380,8 @@
 		</label>
     </div>
 	</div>
-
-
 </div>
+
 				{:else}
 					<span
 						style="position: absolute; white-space: nowrap; left: 18.3px; top: 104px;"
@@ -420,7 +436,7 @@
             <img src={startpointLogo} alt="" class="route-icon" />
             <div class="route-info">
                 <div class="text-title">開始地点</div>
-                <div class="text-sub">State2</div>
+                <div class="text-sub">住所</div>
             </div>
         </div>
 
@@ -488,9 +504,9 @@
                             {#if step.type === "直進"}
                                 直進
                             {:else if step.type === "到着"}
-                                目的地付近
+                                直進
                             {:else}
-                                {step.cross}個目の交差点を{step.type}
+                                {step.type}
                             {/if}
                         </div>
 
@@ -498,9 +514,9 @@
                             {#if step.type === "直進"}
                                 {step.distance}m直進
                             {:else if step.type === "到着"}
-                                State2
+                                {step.distance}m直進
                             {:else}
-                                State2
+                                {step.cross}個目の交差点を{step.type}
                             {/if}
                         </div>
                     </div>
@@ -513,7 +529,7 @@
             <img src={finishpointLogo} alt="終点" class="route-icon" />
             <div class="route-info">
                 <div class="text-title">終点</div>
-                <div class="text-sub">State2</div>
+                <div class="text-sub">目的地名</div>
             </div>
         </div>
     </div>
@@ -608,7 +624,7 @@
 	.route-scroll-container {
 		position: absolute;
         top: 500px; /* 上部の出発点・終着点情報が収まる位置より下に配置 */
-        left: 0;
+        left: 10px; /* 左側の余白を調整 */
         width: 100%;
         height: calc(100% - 450px); /* パネルの残り全体の高さに合わせる */
         overflow-y: auto;
@@ -630,13 +646,7 @@
         gap: 16px;
         padding: 12px 16px;
         background-color: var(--background-white);
-        border-bottom: 1px solid var(--gray);
-    }
-
-    .route-icon {
-        width: 32px;
-        height: 32px;
-        object-fit: contain;
+        border-bottom: 1px solid var(rgba(143, 143, 143, 1));
     }
 
     .route-info {
@@ -653,7 +663,7 @@
 
     .text-sub {
         font-size: 16px;
-        color: var(--gray);
+        color: var(rgba(143, 143, 143, 1));
     }
 
 
