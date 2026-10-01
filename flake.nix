@@ -64,10 +64,48 @@
           User=procon
           Group=procon
           Environment=OSM_CACHE_DIR=/var/cache/procon/osm
+          # 既定は 0.0.0.0 で、nginx の拒否を迂回して :3000 を直叩きできてしまう。
+          # nginx と同じホストにあるので localhost 束縛で運用する
+          Environment=HOST=127.0.0.1
           EnvironmentFile=/etc/procon.env
 
           [Install]
           WantedBy=network.target
+        '';
+        procon-cache-refresh-service = pkgs.writeText "procon-cache-refresh.service" ''
+          [Unit]
+          Description=ProCon OSM Cache Refresh
+          # After= だけでは依存先の起動は起こらない
+          After=network.target procon-app.service
+          Wants=procon-app.service
+
+          [Service]
+          # RemainAfterExit=yes は付けない。反復タイマでは 1 回だけ起動して
+          # active (exited) のまま残り、TTL 更新が永久に動かなくなる (実測で確認)
+          Type=oneshot
+          EnvironmentFile=/etc/procon.env
+          User=procon
+          Group=procon
+          # 波括弧は必須。ドル記号だけだと独立した単語として扱われず
+          # ヘッダの一部ではリテラルのまま送られ、毎晩 401 になる
+          # --fail-with-body は exit code を保ったまま本文を journal に出す
+          ExecStart=${pkgs.curl}/bin/curl --fail-with-body -sS -X POST --max-time 600 \
+            -H "x-procon-cache-refresh: ''${PROCON_CACHE_REFRESH_TOKEN}" \
+            http://127.0.0.1:3000/api/cache-refresh
+        '';
+        procon-cache-refresh-timer = pkgs.writeText "procon-cache-refresh.timer" ''
+          [Unit]
+          Description=ProCon OSM Cache Refresh Timer
+
+          [Timer]
+          OnCalendar=*-*-* 04:00:00
+          # 停止していた期間ぶんは次回起動時にまとめて実行する
+          Persistent=true
+          # Overpass 側の混雑を避ける
+          RandomizedDelaySec=1800
+
+          [Install]
+          WantedBy=timers.target
         '';
         setup-script = pkgs.writeShellScript "setup.sh" ''
           #!/usr/bin/env bash
@@ -83,6 +121,8 @@
           ln -sf ${./infra/procon-site.conf} /etc/nginx/sites-enabled/procon-site.conf
           rm -f /etc/nginx/sites-enabled/default
           ln -sf ${self.packages.${system}.procon-service-unit} /etc/systemd/system/procon-app.service
+          ln -sf ${self.packages.${system}.procon-cache-refresh-service} /etc/systemd/system/procon-cache-refresh.service
+          ln -sf ${self.packages.${system}.procon-cache-refresh-timer} /etc/systemd/system/procon-cache-refresh.timer
 
           install -d -m 0755 -o procon -g procon /var/cache/procon/osm
 
@@ -94,7 +134,27 @@
           systemctl restart procon-app.service
           systemctl restart nginx
 
+          # enable だけでは timer が発火しない (起動は別操作)。
+          # enable と start を分けるのは、Persistent=true で 04:00 を
+          # 飛ばしていると enable 直後に発火するため。アプリが再起動で
+          # 応答するまで待ってから発火させる
+          systemctl enable procon-cache-refresh.timer
+          systemctl start procon-cache-refresh.timer
+
           echo "Setup complete!"
+          echo "キャッシュ更新のスケジュールは procon-cache-refresh.timer で有効化されています。"
+
+          # トークンが無いと毎晩更新が 503 で失敗する。setup は成功したように
+          # 見えるので、ここで触っておかないと原因が追究できない
+          if ! grep -q '^PROCON_CACHE_REFRESH_TOKEN=..' /etc/procon.env 2>/dev/null; then
+            echo ""
+            echo "警告: /etc/procon.env に PROCON_CACHE_REFRESH_TOKEN がありません。"
+            echo "キャッシュ更新 (/api/cache-refresh) は全リクエストを拒否するため、"
+            echo "procon-cache-refresh.timer は毎晩失敗します。"
+            echo "追加方法 (infra/README.md 参照):"
+            echo "  sudo sh -c 'echo PROCON_CACHE_REFRESH_TOKEN=\$(openssl rand -hex 32) >> /etc/procon.env'"
+            echo "  sudo systemctl restart procon-app.service"
+          fi
         '';
       };
 
