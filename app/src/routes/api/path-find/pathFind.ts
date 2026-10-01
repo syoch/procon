@@ -1,7 +1,7 @@
 import { transientSplit } from '$lib/transient-split';
 import { pathFind } from '$lib/path_finder';
 import { largestComponentEdges } from '$lib/utils/graph';
-import { MODE_PROFILES, type ModeId } from '$lib/mode_profiles';
+import { MODE_PROFILES, type ModeId, type ModeProfile } from '$lib/mode_profiles';
 import { collectRoadJunctions, detectSharpTurnsOnPath, type SharpTurn } from '$lib/sharp_turn';
 import { CrossConvert } from '$lib/cross_transform';
 import { transformOSMMapToOSMGraph } from '$lib/map_loader/osm';
@@ -12,8 +12,8 @@ import { cacheManager } from '../osm/fs-cache-manager';
 import { fetchOverpassData } from '../osm/osm-fetcher';
 import { trimOSMDataByMode, trimOSMDataByWayHighway } from '../osm/osm-data';
 import { distanceOf } from '$lib/utils/haversine';
-import { applyGsiWidths, GsiRoadIndex, measureWidthCoverage, removeNarrowEdges, type WidthCoverage } from '$lib/road_width';
-import { requireGsiRoadSegments } from '../gsi';
+import { applyGsiWidths, GsiRoadIndex, measureSegmentsWidthCoverage, removeNarrowEdges, type GsiRoadSegment, type WidthCoverage } from '$lib/road_width';
+import { GSI_FETCH_BUDGET_MS, MAX_GSI_TILES, requireGsiRoadSegmentsForTiles, tileKey, tilesAlongPath, type GsiTile } from '../gsi';
 import { gsiCacheManager } from '../gsi/fs-cache-manager';
 import { fetchGsiRoadTile } from '../gsi/gsi-fetcher';
 
@@ -153,7 +153,7 @@ export type PathFindResult =
         /** 指定された始点・終点から、吸着した道の上の点までの距離 [m] */
         snapDistance: { begin: number; end: number };
         /**
-         * 幅員の網羅率 (車両が通る道のうち、幅が分かっている区間の割合)。
+         * 経路の幅員の網羅率 (経路の区間のうち車両が通る道で、幅が分かっている区間の割合)。
          * 国土地理院のタイルが取れなかった範囲では幅の制限が効かないため、キャッシュの有無で結果が変わりうることを観測するためのもの
          */
         widthCoverage: WidthCoverage;
@@ -181,15 +181,73 @@ export async function doPathFind(
     const osmData = profile
         ? trimOSMDataByMode(rawOsmData, profile)
         : trimOSMDataByWayHighway(rawOsmData, wayHighway);
+    // 国土地理院の幅員は、探索範囲全体ではなく経路の周りのタイルだけ使う (長い経路でタイル数の上限を超えないようにするため)。
+    // 1. 始点・終点の周りのタイルで探索する
+    // 2. 見つかった経路の周りのタイルを足して、もう一度探索する (経路が変わったら、その周りのタイルも足して繰り返す)
+    // 使うタイルは経路だけで決まり、キャッシュの有無には左右されない (取得に失敗したタイルを除く)
+    const tiles = new Map<string, GsiTile>();
+    const addTiles = (list: GsiTile[]) => list.forEach((tile) => tiles.set(tileKey(tile), tile));
+    addTiles(tilesAlongPath([begin]));
+    addTiles(tilesAlongPath([end]));
+    const deadline = Date.now() + GSI_FETCH_BUDGET_MS;
+
+    let result: PathFindResult;
+    let pass = 1;
+    for (; ; pass++) {
+        const gsiSegments = await requireGsiRoadSegmentsForTiles([...tiles.values()], gsiCacheManager, fetchGsiRoadTile, {
+            budgetMs: Math.max(0, deadline - Date.now()),
+        });
+        result = searchWithWidths({ begin, end, parameters, profile, osmData, rawOsmData, bbox }, gsiSegments);
+        if (!result.found || pass >= MAX_GSI_PASSES) break;
+
+        const newTiles = tilesAlongPath(result.coords).filter((tile) => !tiles.has(tileKey(tile)));
+        if (newTiles.length === 0) break;
+        if (tiles.size + newTiles.length > MAX_GSI_TILES) {
+            console.warn(`国土地理院タイルが上限 ${MAX_GSI_TILES} 枚を超えるため、経路の一部は幅員なしで探索します`);
+            break;
+        }
+        addTiles(newTiles);
+    }
+
+    if (result.found) {
+        const { ratio, known, total } = result.widthCoverage;
+        console.info(
+            `幅員データの網羅率 (経路): ${ratio === null ? "-" : (ratio * 100).toFixed(1) + "%"} (${known}/${total} 区間、タイル ${tiles.size} 枚、探索 ${pass} 回)`,
+        );
+    }
+    return result;
+}
+
+/**
+ * 経路の周りのタイルを取り直して探索し直す回数の上限 (1 回目を含む・仮の値)
+ * 1 回目は始点・終点の周りだけ、2 回目で経路の周り、3 回目で経路が変わった分を補う
+ */
+export const MAX_GSI_PASSES = 3;
+
+type SearchContext = {
+    begin: App.Coordinate;
+    end: App.Coordinate;
+    parameters: App.SearchParameters;
+    profile: ModeProfile | undefined;
+    /** モードで絞り込んだ地図データ */
+    osmData: App.OSMData;
+    /** 絞り込む前の地図データ (急カーブの交差点の判定に使う) */
+    rawOsmData: App.OSMData;
+    bbox: ReturnType<typeof getBoundaryBox>;
+};
+
+/**
+ * 国土地理院の幅員を補った地図で 1 回探索する
+ * (幅員の補完・狭い道の除去でグラフを書き換えるため、毎回 osmData からグラフを作り直す)
+ */
+function searchWithWidths(
+    { begin, end, parameters, profile, osmData, rawOsmData, bbox }: SearchContext,
+    gsiSegments: GsiRoadSegment[],
+): PathFindResult {
     const osmGraph = transformOSMMapToOSMGraph(osmData);
 
     // 国土地理院の幅員区分で、幅が分からない車道の幅を補う (取得できなかったタイルは幅なしのまま続行する)
-    const gsiSegments = await requireGsiRoadSegments(bbox, gsiCacheManager, fetchGsiRoadTile);
     applyGsiWidths(osmGraph, new GsiRoadIndex(gsiSegments));
-    const widthCoverage = measureWidthCoverage(osmGraph);
-    console.info(
-        `幅員データの網羅率: ${widthCoverage.ratio === null ? "-" : (widthCoverage.ratio * 100).toFixed(1) + "%"} (${widthCoverage.known}/${widthCoverage.total} 区間)`,
-    );
     // 大型トラックなど、幅の下限があるモードでは狭すぎる道を取り除く (幅が分からない道は残す)
     if (profile?.minRoadWidth) {
         removeNarrowEdges(osmGraph, profile.minRoadWidth);
@@ -259,6 +317,12 @@ export async function doPathFind(
             bounds: bbox,
         });
 
+    // 幅員の網羅率は経路の区間について求める (タイルは経路の周りだけ取得するため、地図全体では意味のある値にならない)
+    const pathSegments = pathEdges.flatMap((id) => {
+        const edge = mapData.edges[id];
+        return edge && "segments" in edge ? edge.segments : [];
+    });
+
     return {
         found: true,
         coords: pathCoords,
@@ -266,6 +330,6 @@ export async function doPathFind(
         totalIntersections: countPassedIntersections(mapData, pathNodes),
         sharpTurns,
         snapDistance,
-        widthCoverage,
+        widthCoverage: measureSegmentsWidthCoverage(pathSegments),
     };
 }

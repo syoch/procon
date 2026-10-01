@@ -7,11 +7,20 @@ vi.mock("../../src/routes/api/osm/fs-cache-manager", () => ({ cacheManager: {} }
 vi.mock("../../src/routes/api/osm/osm-fetcher", () => ({ fetchOverpassData: vi.fn() }));
 // 国土地理院の幅員も同様にモックし、テストごとに用意した区間を返す
 let gsiSegments: GsiRoadSegment[] = [];
-vi.mock("../../src/routes/api/gsi", () => ({ requireGsiRoadSegments: vi.fn(async () => gsiSegments) }));
+// (タイルの選び方 (tilesAlongPath など) は本物を使い、取得だけを差し替える。requestedTiles に要求されたタイルを記録する)
+let requestedTiles: { x: number; y: number }[][] = [];
+vi.mock("../../src/routes/api/gsi", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../src/routes/api/gsi")>()),
+  requireGsiRoadSegmentsForTiles: vi.fn(async (tiles: { x: number; y: number }[]) => {
+    requestedTiles.push(tiles);
+    return gsiSegments;
+  }),
+}));
 vi.mock("../../src/routes/api/gsi/fs-cache-manager", () => ({ gsiCacheManager: {} }));
 vi.mock("../../src/routes/api/gsi/gsi-fetcher", () => ({ fetchGsiRoadTile: vi.fn() }));
 
 import { doPathFind, getBoundaryBox, MAX_SNAP_DISTANCE_M } from "../../src/routes/api/path-find/pathFind";
+import { tilesAlongPath, tilesForBoundary } from "../../src/routes/api/gsi";
 import { MODE_PROFILES } from "../../src/lib/mode_profiles";
 import type { GsiRoadSegment } from "../../src/lib/road_width";
 
@@ -179,3 +188,39 @@ describe("doPathFind: 到達できない場合のエラー", () => {
   });
 });
 
+describe("doPathFind: 国土地理院のタイルは経路の周りだけ使う", () => {
+  // 東西にまっすぐ約 5.5km の道 (タイル 1 枚は約 0.0055°)
+  const longRoad = (): App.OSMData => ({
+    elements: [
+      { type: "way", id: 1, nodes: [1, 2, 3, 4, 5, 6], tags: { highway: "residential" } },
+      ...[0, 0.01, 0.02, 0.03, 0.04, 0.05].map((lng, i) => node(i + 1, 0, lng)),
+    ],
+  });
+  const begin = { lat: 0, lng: 0 }, end = { lat: 0, lng: 0.05 };
+
+  test("1 回目は始点・終点の周り、2 回目は経路の周りのタイルで探索し、経路が変わらなければそこで終わる", async () => {
+    mapData = longRoad();
+    gsiSegments = [];
+    requestedTiles = [];
+    const res = await doPathFind(begin, end, car, [], "car");
+    expect(res.found).toBe(true);
+    expect(requestedTiles).toHaveLength(2);
+
+    const middle = tilesAlongPath([{ lat: 0, lng: 0.025 }], 0)[0];
+    const has = (tiles: { x: number; y: number }[], t: { x: number; y: number }) => tiles.some((u) => u.x === t.x && u.y === t.y);
+    // 1 回目は始点・終点の周り (3×3 枚ずつ) だけで、途中のタイルは含まない
+    expect(requestedTiles[0]).toHaveLength(18);
+    expect(has(requestedTiles[0], middle)).toBe(false);
+    // 2 回目は経路の途中のタイルも含む
+    expect(has(requestedTiles[1], middle)).toBe(true);
+  });
+
+  test("経路の周りのタイル数は、探索範囲全体より少ない", async () => {
+    mapData = longRoad();
+    gsiSegments = [];
+    requestedTiles = [];
+    await doPathFind(begin, end, car, [], "car");
+    const all = tilesForBoundary(getBoundaryBox(begin, end));
+    expect(requestedTiles[requestedTiles.length - 1].length).toBeLessThan(all.length);
+  });
+});
