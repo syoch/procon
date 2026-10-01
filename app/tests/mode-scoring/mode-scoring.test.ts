@@ -17,6 +17,12 @@ describe("scoreWidth", () => {
     expect(scoreWidth(truck, 4)!).toBeLessThan(scoreWidth(car, 4)!);
     expect(scoreWidth(truck, 8)!).toBeLessThan(scoreWidth(car, 8)!);
   });
+  test("段の並び順に依存しない (昇順で定義しても同じ結果)", () => {
+    const ascending = { widthScoreSteps: [...car.widthScoreSteps!].reverse() };
+    for (const width of [2, 4, 8, 15]) {
+      expect(scoreWidth(ascending, width)).toBe(scoreWidth(car, width));
+    }
+  });
   test("幅が分からない場合と、定義が無いモードは従来の計算に任せる (undefined)", () => {
     expect(scoreWidth(car, undefined)).toBeUndefined();
     expect(scoreWidth(car, -1)).toBeUndefined();
