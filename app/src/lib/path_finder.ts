@@ -2,6 +2,7 @@ import { CalculateCost } from "./cost_calculator";
 import { canTraverseBackward, canTraverseForward } from "./utils/direction";
 import { distanceOf } from "./utils/haversine";
 import { isKnownWidth } from "./road_width";
+import type { ScoringProfile } from "./mode_scoring";
 import { PriorityQueue } from "./utils/priorityQueue";
 
 /**
@@ -47,6 +48,8 @@ export type PathFindOptions = {
    * 通れるが、なるべく避けたい道 (抜け道には使わず、そこしか道が無いときだけ通る) に使う
    */
   highwayCostFactor?: Readonly<Record<string, number>>;
+  /** 移動モードごとのスコアの定義 (mode_scoring.ts)。省略時は全モード共通の計算 */
+  scoring?: ScoringProfile;
 };
 
 function traversable(edge: App.SearchGraph["edges"][string], node: App.NodeId, options: PathFindOptions = {}) {
@@ -59,12 +62,12 @@ function traversable(edge: App.SearchGraph["edges"][string], node: App.NodeId, o
   );
 }
 
-function getComputedNode(graph: App.SearchGraph, edge: App.SearchGraph["edges"][string]) {
+function getComputedNode(graph: App.SearchGraph, edge: App.SearchGraph["edges"][string], scoring?: ScoringProfile) {
   // 隣接エッジについて、 FoldedEdge の場合コスト計算を行う。
   // それ以外のエッジはそのまま使用する。
 
   if (edge.type === "FoldedEdge") {
-    let new_edge = CalculateCost(edge);
+    let new_edge = CalculateCost(edge, scoring);
     if (new_edge instanceof Error) {
       throw new Error(`Error calculating cost for edge ${edge.id}: ${new_edge.message}`);
     }
@@ -138,7 +141,7 @@ export function pathFind(graph: App.SearchGraph, params: App.SearchParameters, b
       }
 
       const nextNodeId = edge.begin === currentNodeId ? edge.end : edge.begin;
-      const computedEdge = getComputedNode(graph, edge);
+      const computedEdge = getComputedNode(graph, edge, options.scoring);
 
       const edgeCost = edgeCostCache.get(edge.id) ?? calculateEdgeCost(computedEdge, params, options);
       edgeCostCache.set(edge.id, edgeCost);

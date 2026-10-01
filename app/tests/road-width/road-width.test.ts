@@ -1,6 +1,6 @@
 import { describe, expect, test, vi } from "vitest";
 import { applyGsiWidths, GsiRoadIndex, isKnownWidth, MATCH_HIGHWAYS, measureWidthCoverage, parseGsiRoadTile, removeNarrowEdges, widthClassToMeters } from "../../src/lib/road_width";
-import { coordinateToTile, requireGsiRoadSegments, tilesForBoundary } from "../../src/routes/api/gsi";
+import { coordinateToTile, requireGsiRoadSegments, requireGsiRoadSegmentsForTiles, tileKey, tilesAlongPath, tilesForBoundary } from "../../src/routes/api/gsi";
 
 const feature = (coords: number[][], props: Record<string, unknown>) => ({
   type: "Feature", geometry: { type: "LineString", coordinates: coords }, properties: props,
@@ -172,6 +172,41 @@ describe("タイル", () => {
     const fetchTile = vi.fn(async () => ({ features: [] }));
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     await requireGsiRoadSegments(bigBoundary, noCache, fetchTile, { budgetMs: 0 });
+    expect(fetchTile).not.toHaveBeenCalled();
+    expect(warn).toHaveBeenCalled();
+    warn.mockRestore();
+  });
+});
+
+describe("tilesAlongPath", () => {
+  test("1 点ならその点の周り 3×3 枚", () => {
+    const tiles = tilesAlongPath([{ lat: 37.448016, lng: 138.853301 }]);
+    expect(tiles).toHaveLength(9);
+    expect(tiles).toContainEqual({ x: 58045, y: 25406 });
+  });
+  test("長い区間の途中のタイルも取りこぼさない", () => {
+    // 東西に約 5km の 1 区間 (頂点は両端だけ)
+    const a = { lat: 37.45, lng: 138.85 }, b = { lat: 37.45, lng: 138.91 };
+    const keys = new Set(tilesAlongPath([a, b], 0).map(tileKey));
+    const from = coordinateToTile(a.lat, a.lng), to = coordinateToTile(b.lat, b.lng);
+    for (let x = from.x; x <= to.x; x++) {
+      expect(keys.has(tileKey({ x, y: from.y }))).toBe(true);
+    }
+  });
+});
+
+describe("requireGsiRoadSegmentsForTiles", () => {
+  test("時間の上限を過ぎても、キャッシュ済みのタイルは使う (新しくは取得しない)", async () => {
+    const fetchTile = vi.fn(async () => ({ features: [] }));
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const cachedSegment = { begin: { lat: 0, lng: 0 }, end: { lat: 0, lng: 0.001 }, width: 4 };
+    const segments = await requireGsiRoadSegmentsForTiles(
+      [{ x: 1, y: 1 }, { x: 2, y: 1 }],
+      { readCache: async (tile) => (tile.x === 1 ? [cachedSegment] : null), saveCache: async () => {} },
+      fetchTile,
+      { budgetMs: 0 },
+    );
+    expect(segments).toEqual([cachedSegment]);
     expect(fetchTile).not.toHaveBeenCalled();
     expect(warn).toHaveBeenCalled();
     warn.mockRestore();
