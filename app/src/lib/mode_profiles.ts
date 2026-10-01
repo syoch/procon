@@ -12,6 +12,7 @@
  */
 
 import type { RoadWidthLimit } from "./road_width";
+import { SCORING_PROFILES, type ScoringProfile } from "./mode_scoring";
 
 export type ModeId = "walk" | "bicycle" | "car" | "motorcycle" | "truck";
 
@@ -69,6 +70,8 @@ export type ModeProfile = {
    * undefined のモードは急カーブを検出しない
    */
   sharpTurnMinRadius?: number;
+  /** 幅員スコア・混在スコアのモードごとの定義 (mode_scoring.ts) */
+  scoring: ScoringProfile;
   /** 既定の探索パラメータ */
   defaultParameters: App.SearchParameters;
 };
@@ -116,7 +119,10 @@ export const MODE_PROFILES: Record<ModeId, ModeProfile> = {
     accessKeys: ["access", "foot"],
     allowMotorroad: false,
     ignoreOneway: true,
-    defaultParameters: { lambda: 1, mix_score_weight: 0.3, view_score_weight: 0.5, width_score_weight: 0.2 },
+    scoring: SCORING_PROFILES.walk,
+    // 徒歩と自転車は同じ重みとし、違いは混在スコアの中身 (何から分かれているか) で出す。
+    // 車道幅員より車との分離が大事なので、混在を重く・幅員を軽くする (仮の値)
+    defaultParameters: { lambda: 1, mix_score_weight: 0.5, view_score_weight: 0.3, width_score_weight: 0.2 },
   },
   bicycle: {
     id: "bicycle",
@@ -127,7 +133,9 @@ export const MODE_PROFILES: Record<ModeId, ModeProfile> = {
     allowMotorroad: false,
     ignoreOneway: false,
     onewayKeys: ["oneway:bicycle"],
-    defaultParameters: { lambda: 1, mix_score_weight: 0.3, view_score_weight: 0.4, width_score_weight: 0.3 },
+    scoring: SCORING_PROFILES.bicycle,
+    // 徒歩と同じ重み (理由は徒歩を参照)
+    defaultParameters: { lambda: 1, mix_score_weight: 0.5, view_score_weight: 0.3, width_score_weight: 0.2 },
   },
   car: {
     id: "car",
@@ -143,6 +151,7 @@ export const MODE_PROFILES: Record<ModeId, ModeProfile> = {
     // 一般的な乗用車の寸法 (寸法制限の判定用の仮の値)
     vehicle: { width: 1.8, height: 1.6, weight: 2 },
     sharpTurnMinRadius: 0,
+    scoring: SCORING_PROFILES.car,
     defaultParameters: { lambda: 1, mix_score_weight: 0.3, view_score_weight: 0.2, width_score_weight: 0.5 },
   },
   motorcycle: {
@@ -160,6 +169,7 @@ export const MODE_PROFILES: Record<ModeId, ModeProfile> = {
     // 大型バイクの寸法 (寸法制限の判定用の仮の値)
     vehicle: { width: 1.0, height: 1.5, weight: 0.5 },
     sharpTurnMinRadius: 0,
+    scoring: SCORING_PROFILES.motorcycle,
     defaultParameters: { lambda: 1, mix_score_weight: 0.3, view_score_weight: 0.3, width_score_weight: 0.4 },
   },
   truck: {
@@ -181,6 +191,7 @@ export const MODE_PROFILES: Record<ModeId, ModeProfile> = {
     // 最小回転半径 12m (保安基準第6条) に余裕を見た値 (仮の値)
     sharpTurnMinRadius: 20,
     // 重みは仮の値 (幅員を最重視)
+    scoring: SCORING_PROFILES.truck,
     defaultParameters: { lambda: 1, mix_score_weight: 0.1, view_score_weight: 0.3, width_score_weight: 0.6 },
   },
 };

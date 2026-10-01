@@ -152,7 +152,7 @@ export type PathFindResult =
         sharpTurns: SharpTurn[];
         /** 指定された始点・終点から、吸着した道の上の点までの距離 [m] */
         snapDistance: { begin: number; end: number };
-                /**
+        /**
          * 幅員の網羅率 (車両が通る道のうち、幅が分かっている区間の割合)。
          * 国土地理院のタイルが取れなかった範囲では幅の制限が効かないため、キャッシュの有無で結果が変わりうることを観測するためのもの
          */
@@ -186,7 +186,7 @@ export async function doPathFind(
     // 国土地理院の幅員区分で、幅が分からない車道の幅を補う (取得できなかったタイルは幅なしのまま続行する)
     const gsiSegments = await requireGsiRoadSegments(bbox, gsiCacheManager, fetchGsiRoadTile);
     applyGsiWidths(osmGraph, new GsiRoadIndex(gsiSegments));
-        const widthCoverage = measureWidthCoverage(osmGraph);
+    const widthCoverage = measureWidthCoverage(osmGraph);
     console.info(
         `幅員データの網羅率: ${widthCoverage.ratio === null ? "-" : (widthCoverage.ratio * 100).toFixed(1) + "%"} (${widthCoverage.known}/${widthCoverage.total} 区間)`,
     );
@@ -236,6 +236,7 @@ export async function doPathFind(
     const pathEdges = pathFind(mapData, parameters, [beginNodeId], [endNodeId], {
         ignoreOneway: profile?.ignoreOneway,
         highwayCostFactor: profile?.highwayCostFactor,
+        scoring: profile?.scoring,
     });
     if (pathEdges.length <= 0) {
         return {
