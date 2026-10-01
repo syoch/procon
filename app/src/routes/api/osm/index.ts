@@ -31,9 +31,7 @@ export async function requireOSMData(boundary: Boundary, { readCache, saveCache 
   }
 
   const mergedData: App.OSMData = { elements: [] };
-  for (const chunk of cachedChunks) {
-    mergeOSMData(mergedData, chunk);
-  }
+  mergeOSMData(mergedData, ...cachedChunks);
 
   return trimOSMData(mergedData, boundary);
 }

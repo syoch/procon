@@ -3,7 +3,7 @@ import { isAccessible, resolveModeOneway, type ModeProfile } from "$lib/mode_pro
 
 
 
-export function mergeOSMData(data: App.OSMData, other: App.OSMData) {
+export function mergeOSMData(data: App.OSMData, ...otherDatas: App.OSMData[]) {
     const dataWays = new Set(
         data.elements
             .filter(e => e.type === "way")
@@ -15,13 +15,15 @@ export function mergeOSMData(data: App.OSMData, other: App.OSMData) {
             .map(e => e.id)
     );
 
-    for (const element of other.elements) {
-        if (element.type === "way" && !dataWays.has(element.id)) {
-            data.elements.push(element);
-            dataWays.add(element.id);
-        } else if (element.type === "node" && !dataNodes.has(element.id)) {
-            data.elements.push(element);
-            dataNodes.add(element.id);
+    for (const other of otherDatas) {
+        for (const element of other.elements) {
+            if (element.type === "way" && !dataWays.has(element.id)) {
+                data.elements.push(element);
+                dataWays.add(element.id);
+            } else if (element.type === "node" && !dataNodes.has(element.id)) {
+                data.elements.push(element);
+                dataNodes.add(element.id);
+            }
         }
     }
 }
