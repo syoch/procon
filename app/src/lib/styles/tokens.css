@@ -10,6 +10,7 @@
 	--wn-placeholder: #8f8f8f; /* プレースホルダ・入力枠 */
 	--wn-caret: #b9b9b9; /* セレクトの矢印 */
 	--wn-divider: #8f8f8f; /* 区切り線 */
+	--gray: rgba(143, 143, 143, 1);
 
 	/* 検索中オーバーレイ */
 	--wn-scrim: rgba(255, 255, 255, 0.3);
@@ -29,4 +30,32 @@
 	--wn-panel-height: 100dvh;
 	--wn-panel-left: 0px;
 	--wn-panel-top: 0px;
+}
+
+:root {
+  --main: rgba(255, 255, 255, 1);
+  --black: rgba(75, 75, 75, 1);
+  --icon-white: rgba(255, 255, 255, 1);
+  --background-white: rgba(255, 255, 255, 1);
+  --point: rgba(51, 51, 51, 1);
+  --click: rgba(0, 0, 0, 1);
+  --jr-n4hb: rgba(229, 164, 34, 1);
+  ---font-family: "Konkhmer Sleokchher", Helvetica;
+  ---font-weight: 400;
+  ---font-size: 40px;
+  ---letter-spacing: 0px;
+  ---line-height: normal;
+  ---font-style: normal;
+  --: 0px 4px 4px 0px rgba(0, 0, 0, 0.5);
+  --gray: rgba(143, 143, 143, 1);
+  --senntaku: rgba(185, 185, 185, 1);
+  --wide: rgba(78, 75, 99, 1);
+  --navi: rgba(64, 99, 87, 1);
+  --loading-1: rgba(48, 75, 66, 1);
+  --loading-3: rgba(48, 75, 66, 0.4);
+  --loading-4: rgba(48, 75, 66, 0.1);
+  --load-1: rgba(128, 128, 128, 1);
+  --load-2: rgba(128, 128, 128, 0.7);
+  --load-3: rgba(128, 128, 128, 0.4);
+  --load-4: rgba(128, 128, 128, 0.1);
 }

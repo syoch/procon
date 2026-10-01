@@ -130,6 +130,7 @@
 			console.error("[startSearch]", error);
 			return false;
 		}
+		showSliders = false;
 		error = null;
 		hasSearched = true;
 		pathResult = [];
@@ -142,6 +143,8 @@
 			view_score_weight: slider2 / 100,
 			width_score_weight: slider3 / 100,
 		}
+
+
 
 		isLoading = true;
 		const res = await fetch("/api/path-find", {
@@ -294,7 +297,8 @@
 			}
 		})();
 	});
-
+			// スライダーの開閉状態を管理するフラグ（初期値は false で非表示）
+    	let showSliders = $state(false);
 	//スライダー初期値
 	let slider1 = $state(50);
     let slider2 = $state(50);
@@ -425,6 +429,59 @@
 							onclick={startSearch}
 						/>
 					</div>
+
+	
+    <!-- 既存の車種選択と検索ボタンがあるエリア -->
+<div
+    style="position: absolute; top: 454.5px; display: flex; flex-direction: column; align-items: flex-start; gap: 10px;"
+    transition:fade={{ duration: 140 }}
+>
+    <div style="display: flex; align-items: center;">
+        <div style="flex: 0 0 44px;"></div>
+        <div transition:fade={{ duration: 140 }}>
+            <VehicleSelect />
+        </div>
+        <div style="flex: 0 0 25px;"></div>
+        <GreenButton
+            label="検索"
+            width={60}
+            onclick={startSearch}
+        />
+    </div>
+	
+
+    <!-- ★ 車種選択のすぐ下に置いた「スライダー表示/非表示」を切り替えるボタン -->
+    <div style="margin-left: 44px;">
+        <button 
+            type="button" 
+            onclick={() => showSliders = !showSliders}
+            style="background: #f0f0f0; border: 1px solid #ccc; padding: 4px 10px; border-radius: 4px; cursor: pointer; font-size: 12px;"
+        >
+            {showSliders ? "▲ 詳細設定を閉じる" : "▼ スコア詳細設定を開く"}
+        </button>
+    </div>
+</div>
+
+<!-- ★ ボタンが押されて showSliders が true のときだけ表示されるスライダーグループ -->
+{#if showSliders}
+<div class="slider-group" style="position: absolute; top: 520px; background: white; padding: 10px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+    <div class="slider-item">
+        <label>幅員スコア: {slider1}<br>
+        <input type="range" min="0" max="100" bind:value={slider1} class="custom-slider"/>
+        </label>
+    </div>
+    <div class="slider-item">
+        <label>混在スコア: {slider2}<br>
+        <input type="range" min="0" max="100" bind:value={slider2} class="custom-slider"/>
+        </label>
+    </div>
+    <div class="slider-item">
+        <label>曲率スコア: {slider3}<br>
+        <input type="range" min="0" max="100" bind:value={slider3} class="custom-slider"/>
+        </label>
+    </div>
+</div>
+{/if}
 
 	    
     
@@ -623,9 +680,9 @@
 	}
 	.route-scroll-container {
 		position: absolute;
-        top: 500px; /* 上部の出発点・終着点情報が収まる位置より下に配置 */
+        top: 550px; /* 上部の出発点・終着点情報が収まる位置より下に配置 */
         left: 10px; /* 左側の余白を調整 */
-        width: 100%;
+        width: 95%;
         height: calc(100% - 450px); /* パネルの残り全体の高さに合わせる */
         overflow-y: auto;
         overflow-x: hidden;
@@ -646,7 +703,7 @@
         gap: 16px;
         padding: 12px 16px;
         background-color: var(--background-white);
-        border-bottom: 1px solid var(rgba(143, 143, 143, 1));
+        border-bottom: 1px solid var(  --gray);
     }
 
     .route-info {
