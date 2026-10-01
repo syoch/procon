@@ -219,12 +219,20 @@ export type WidthCoverage = {
  * 同じ検索でもキャッシュの有無で結果が変わりうるので、この値を応答やログに出して観測できるようにする
  */
 export function measureWidthCoverage(graph: App.OSMGraph): WidthCoverage {
+  return measureSegmentsWidthCoverage(Object.values(graph.edges));
+}
+
+/**
+ * 区間の一覧 (経路の区間など) の幅員の網羅率を求める
+ * 国土地理院のタイルは経路の周りだけ取得するので、経路探索では経路の区間について求める (pathFind.ts)
+ */
+export function measureSegmentsWidthCoverage(segments: Iterable<{ highway: string; width: number | null }>): WidthCoverage {
   let known = 0;
   let total = 0;
-  for (const edge of Object.values(graph.edges)) {
-    if (!MATCH_HIGHWAYS.has(edge.highway)) continue;
+  for (const segment of segments) {
+    if (!MATCH_HIGHWAYS.has(segment.highway)) continue;
     total++;
-    if (isKnownWidth(edge.width)) known++;
+    if (isKnownWidth(segment.width)) known++;
   }
   return { known, total, ratio: total > 0 ? known / total : null };
 }
