@@ -43,7 +43,7 @@
 	let isLoading = $state(false);
 	/** 手動・自動を問わず検索を実行済みか（$state ではない） */
 	let hasSearched = false;
-	let informationGraph=$state<App.informationGraph>({ type: [], distance: [] })
+	let informationGraph=$state<App.InformationGraph>({ type: [], distance: [] })
 
 	const parameterVariants: ParameterVariant[] = [
 		{
@@ -139,12 +139,10 @@
 
 		const params: App.SearchParameters = {
 			...ctx.searchParameters,
-			mix_score_weight: slider1 / 100,
-			view_score_weight: slider2 / 100,
-			width_score_weight: slider3 / 100,
+			mix_score_weight: slider1 / (slider1+slider2+slider3),
+			view_score_weight: slider2 / (slider1+slider2+slider3),
+			width_score_weight: slider3 / (slider1+slider2+slider3),
 		}
-
-
 
 		isLoading = true;
 		const res = await fetch("/api/path-find", {
@@ -178,7 +176,7 @@
 				coords: App.Coordinate[];
 				totalDistance: number;
 				totalIntersections: number;
-				infoGraph: App.informationGraph;
+				infoGraph: App.InformationGraph;
 			} = await res.json();
 
 			if (!resObj.found) {
@@ -368,18 +366,18 @@
     <!-- スライダー（動かすと自動で sliderValue の値がリアルタイムに変わる） -->
     <div class="slider-group">
     <div class="slider-item">
-        <label>幅員スコア: {slider1}<br>
+        <label>混在スコア: {slider1}<br>
         <input type="range" min="0" max="100" bind:value={slider1} class="custom-slider"/>
 		</label>
     </div>
     <div class="slider-item">
-        <label>混在スコア: {slider2}<br>
+        <label>視界(曲率)スコア: {slider2}<br>
         <input type="range" min="0" max="100" bind:value={slider2} class="custom-slider"/>
 		</label>
     </div>
 
     <div class="slider-item">
-        <label>曲率スコア: {slider3}<br>
+        <label>振幅スコア: {slider3}<br>
         <input type="range" min="0" max="100" bind:value={slider3} class="custom-slider"/>
 		</label>
     </div>
@@ -466,17 +464,17 @@
 {#if showSliders}
 <div class="slider-group" style="position: absolute; top: 520px; background: white; padding: 10px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
     <div class="slider-item">
-        <label>幅員スコア: {slider1}<br>
+        <label>混在スコア: {slider1}<br>
         <input type="range" min="0" max="100" bind:value={slider1} class="custom-slider"/>
         </label>
     </div>
     <div class="slider-item">
-        <label>混在スコア: {slider2}<br>
+        <label>視界(曲率)スコア: {slider2}<br>
         <input type="range" min="0" max="100" bind:value={slider2} class="custom-slider"/>
         </label>
     </div>
     <div class="slider-item">
-        <label>曲率スコア: {slider3}<br>
+        <label>振幅スコア: {slider3}<br>
         <input type="range" min="0" max="100" bind:value={slider3} class="custom-slider"/>
         </label>
     </div>
@@ -510,10 +508,10 @@
 
                     accumDist += d;
 
-                    if (t === "交差点を直進") {
+                    if (t === "straight") {
                         accumCross++;
                     }
-                    else if (t === "右折" || t === "左折") {
+                    else if (t === "right" || t === "left") {
                         if (accumCross > 0 || accumDist > 0) {
                             aggregated.push({
                                 type: "直進",
