@@ -89,7 +89,25 @@ jobs:
 
       - name: base 側にも依存関係を入れる
         working-directory: base/app
-        run: pnpm install --frozen-lockfile --ignore-scripts
+        run: |
+          pnpm install --frozen-lockfile --ignore-scripts
+          # bench は jsconfig.json が extends している .svelte-kit/tsconfig.json を参照する。
+          # install を --ignore-scripts にしたので svelte-kit sync が走らないので、明示的に実行する。
+          pnpm exec svelte-kit sync
+
+      # bench が main にあるかどうかで 3 通りに分かれる。
+      #   A. base に bench が無い  -> この PR で bench を入れたので比較しない（正常）
+      #   B. base に bench が有る  -> 必ず比較する。base の計測が落ちたらこれは失敗
+      # 「base の計測が落ちても比較をスキップして緑にする」のは禁物。
+      # 緑に見えるのに回帰を検出していない状態は、検証されていないより悪い。
+      - name: base に bench があるか確認する
+        id: base_has_bench
+        run: |
+          if [ -f base/app/bench/compare.mjs ]; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
 
       # bench コードは head 版を base 側にも配置する。測るのは app のソースだけなので、
       # 計測ハーネスは両方で同一にする（PR が bench を変えても比較が成立する）。
@@ -99,7 +117,7 @@ jobs:
           cp -r head/app/bench base/app/bench
           rm -rf base/app/bench/.build
 
-      - name: 基準となる base の sha を控える
+      - name: 基準となる sha を控える
         id: refs
         run: |
           {
@@ -107,7 +125,6 @@ jobs:
             echo "head_sha=${{ github.event.pull_request.head.sha || github.sha }}"
           } >> "$GITHUB_OUTPUT"
 
-      # base のビルドが失敗するケース（PR がソースを移動/改名した等）は比較を諦める
       - name: base を計測
         id: base_bench
         working-directory: base/app
@@ -134,9 +151,7 @@ jobs:
             --json "${{ runner.temp }}/bench-head.json" \
             | tee "${{ runner.temp }}/bench-head.txt"
 
-      # base の計測が落ちていたら（ソースの移動・改名で base がビルドできない場合など）、head の値だけ提示して成功にする
       - name: 結果を比較
-        id: compare
         if: steps.base_bench.outcome == 'success'
         working-directory: head/app
         run: |
@@ -148,19 +163,53 @@ jobs:
             --format markdown \
             | tee "${{ runner.temp }}/bench-compare.md"
 
-      - name: 比較できなかった旨を表示
-        if: steps.base_bench.outcome != 'success'
+      # base に bench が有るのに base の計測が落ちた = bench の import が base で解決できない。
+      # これを黙ってスキップすると回帰検出が止まるので失敗させる。
+      - name: base の計測失敗を报告する
+        if: steps.base_has_bench.outputs.exists == 'true' && steps.base_bench.outcome != 'success'
         run: |
           {
             echo "## bench"
             echo
-            echo "> base 側の計測に失敗したため比較しませんでした（head の値のみ下記）"
+            echo "> **base 側の計測に失敗したため、比較ができませんでした。**"
+            echo
+            echo "bench は main にあるので、比較は必ず実行されるはずです。"
+            echo "下のいずれかが原因的と考えられます。"
+            echo
+            echo "- PR が bench が import しているモジュールを追加/削除/改名した"
+            echo "  （bench は ../../src/... を直 import しているので、base にそのファイルが無いとビルドが失敗する）"
+            echo "- base 側の依存関係が解決できていない"
+            echo
+            echo "bench が base でもビルドできるように、この PR で bench の import を変更"
+            echo "するか、比較対象から外す必要があります。"
+            echo
+            echo "<details><summary>base のビルド出力</summary>"
+            echo
+            echo '```'
+            cat "${{ runner.temp }}/bench-base.txt" 2>/dev/null || echo "(出力なし)"
+            echo '```'
+            echo
+            echo "</details>"
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "::error::base 側の bench がビルドできないため、性能の比較が成立しませんでした"
+          exit 1
+
+      - name: 比較する意味がない旨を表示する（この PR で bench を入れた場合）
+        if: steps.base_has_bench.outputs.exists != 'true'
+        run: |
+          {
+            echo '## bench'
+            echo
+            echo "> base（main）に bench がまだ無いため、比較しませんでした。"
+            echo "> この PR が bench を追加している場合の最初の 1 回だけです。"
+            echo
+            echo "head の計測値:"
             echo
             echo '```'
             cat "${{ runner.temp }}/bench-head.txt" 2>/dev/null || echo "(出力なし)"
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
-          echo "::warning::base の bench が失敗したため、性能の比較はスキップしました"
+          echo "::notice::base に bench がまだ無い（この PR で追加）ため、性能の比較はスキップしました"
 
       - name: 比較結果をサマリーに貼る
         if: always() && steps.base_bench.outcome == 'success'
