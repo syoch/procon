@@ -6,5 +6,5 @@ export const GET: RequestHandler = async ({ request }) => {
     const url = new URL(request.url);
     const bootId = url.searchParams.get("b");
 
-    return json(getRequests(bootId === null ? undefined : bootId));
+    return json(getRequests(bootId === null ? undefined : bootId).map(x=>({...x, requestedAt: x.requestedAt.getTime()})));
 };

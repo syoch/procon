@@ -37,6 +37,7 @@ const legacyRequestSchema = z.strictObject({
 const requestSchema = z.union([modeRequestSchema, legacyRequestSchema]);
 
 export const POST: RequestHandler = async ({ request }) => {
+    const requestedAt = new Date();
     const body = await request.json();
     const query = requestSchema.safeParse(body);
     if (!query.success) {
@@ -48,7 +49,7 @@ export const POST: RequestHandler = async ({ request }) => {
     const res = "mode" in req
         ? await doPathFind(perfCtx, req.begin, req.end, req.parameters ?? MODE_PROFILES[req.mode].defaultParameters, [], req.mode)
         : await doPathFind(perfCtx, req.begin, req.end, req.parameters, req.wayHighway);
-    perfCtx.endMeasurement();
+    perfCtx.endMeasurement(requestedAt, "POST", request.url);
 
     return json(res)
 };

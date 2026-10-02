@@ -37,6 +37,7 @@ const TABLES = [
         name: "log_lines",
         query: `CREATE TABLE log_lines(
     id TEXT PRIMARY KEY, -- uuid
+    logged_at INTEGER,
     request_id TEXT,
     log TEXT,
 
@@ -115,14 +116,37 @@ export function getBoots() {
 export function getRequests(bootId?: string) {
     ensureDatabaseInitialized();
 
-    const res = bootId ? database.prepare("SELECT id, requested_at, boot_id, method, url, performance from requests WHERE boot_id == ?").all(bootId)
-        : database.prepare("SELECT id from requests").all();
-    let result: string[] = [];
+    const res = bootId ? database.prepare("SELECT id, requested_at, boot_id, method, url, json_quote(performance) AS perf from requests WHERE boot_id == ?").all(bootId)
+        : database.prepare("SELECT id, requested_at, boot_id, method, url, json_quote(performance) AS perf from requests").all();
+    let result: {
+        id: string
+        requestedAt: Date
+        bootId: string
+        method: string
+        url: string
+        perf: { name: string; startTime: number; endTime: number; }
+    }[] = [];
 
     for (const row of res) {
         if (typeof row.id !== "string") throw new Error("typeof boots.id must be string");
+        if (typeof row.requested_at !== "number") throw new Error("typeof boots.requested_at must be number");
+        if (typeof row.boot_id !== "string") throw new Error("typeof boots.boot_id must be string");
+        if (typeof row.method !== "string") throw new Error("typeof boots.method must be string");
+        if (typeof row.url !== "string") throw new Error("typeof boots.url must be string");
+        if (typeof row.perf !== "string") throw new Error("typeof boots.perf must be string");
 
-        result.push(row.id);
+        // ここでエラーになるなら、 saveRequest の処理/クエリが問題
+        // この関数ではそのままエラーにする
+        let perf = JSON.parse(row.perf);
+
+        result.push({
+            id: row.id,
+            requestedAt: new Date(row.requested_at),
+            bootId: row.boot_id,
+            method: row.method,
+            url: row.url,
+            perf: perf
+        })
     }
 
     return result
