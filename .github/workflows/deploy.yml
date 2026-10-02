@@ -134,8 +134,9 @@ jobs:
         run: |
           set -o pipefail
           node bench/build.mjs
+          # --quiet を付けると tee する本文が空になり、job summary に数値が出なくなる。
+          # 計測中の console 出力は run.ts が要約済みなので、そのまま出しても読みやすい。
           node bench/.build/bench.mjs \
-            --quiet \
             --json "${{ runner.temp }}/bench-base.json" \
             | tee "${{ runner.temp }}/bench-base.txt"
 
@@ -147,7 +148,6 @@ jobs:
           set -o pipefail
           node bench/build.mjs
           node bench/.build/bench.mjs \
-            --quiet \
             --json "${{ runner.temp }}/bench-head.json" \
             | tee "${{ runner.temp }}/bench-head.txt"
 
