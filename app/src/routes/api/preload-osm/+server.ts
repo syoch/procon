@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { cacheManager } from '../osm/fs-cache-manager';
 import { fetchOverpassData } from '../osm/osm-fetcher';
 import { requireOSMData } from '../osm';
+import { endPerfMeasure, startPerfMeasure } from '$lib/performance';
 
 
 const requestSchema = z.object({
@@ -21,8 +22,10 @@ export const POST: RequestHandler = async ({ request }) => {
       return json({ error: 'Invalid request body', details: query.error.issues }, { status: 400 });
     }
 
+    startPerfMeasure();
     // preload を目的としたリクエストなので、結果を無視する
     await requireOSMData(query.data, cacheManager, fetchOverpassData, true);
+    endPerfMeasure();
 
     return json({ success: true });
   } catch (error) {

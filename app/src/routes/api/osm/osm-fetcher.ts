@@ -18,15 +18,16 @@ export const fetchOverpassData: OSMFetcher = async function (boundaries: Boundar
     queryRequireSet += `way["highway"](${boundary.minLat},${boundary.minLng},${boundary.maxLat},${boundary.maxLng});`;
   }
   const query = `
-    [out:json][timeout:30];
-    (
-      ${queryRequireSet}
+  [out:json][timeout:30];
+  (
+    ${queryRequireSet}
     );
     out body;
     >;
     out skel qt;
-  `;
+    `;
 
+  console.log(`fetchOverpassData: boundaries=${JSON.stringify(boundaries)}`);
   const res = await fetch(getOverpassEndpoint(), {
     method: "POST",
     headers: {

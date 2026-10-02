@@ -2,6 +2,7 @@
 import { type OSMCacheManager, type OSMFetcher } from './types';
 import { mergeOSMData, trimOSMData } from './osm-data';
 import { divideBoundary, simplifyBoundaries, type Boundary } from './boundary';
+import { beginMeasure, measurePerf, measurePerfAsync } from '$lib/performance';
 
 /**
  * キャッシュを参照しつつ、OSM データを取得する。
@@ -18,8 +19,9 @@ export async function requireOSMData(
   fetchOSM: OSMFetcher,
   ignoreResult: boolean = false
 ): Promise<App.OSMData> {
-  const dividedBoundaries = divideBoundary(boundary);
+  const dividedBoundaries = measurePerf("divide", () => divideBoundary(boundary));
 
+  const cacheReadMeasurement = beginMeasure("cache");
   const boundariesToGet: Boundary[] = [];
   const cachedChunks: App.OSMData[] = [];
   for (const b of dividedBoundaries) {
@@ -31,16 +33,20 @@ export async function requireOSMData(
 
     cachedChunks.push(cache);
   }
+  cacheReadMeasurement();
 
   if (boundariesToGet.length > 0) {
-    const boundariesToQuery = simplifyBoundaries(boundariesToGet);
-    const fetchedData = await fetchOSM(boundariesToQuery);
+    const boundariesToQuery = measurePerf("simplify", () => simplifyBoundaries(boundariesToGet));
+    const fetchedData = await measurePerfAsync("fetch", () => fetchOSM(boundariesToQuery));
 
+    const saveCacheMeasurement = beginMeasure("saveCache");
     for (const b of boundariesToGet) {
       const subData = trimOSMData(fetchedData, b);
       await saveCache(b, subData);
       cachedChunks.push(subData);
     }
+    saveCacheMeasurement();
+
   }
 
   if (ignoreResult) {
@@ -48,7 +54,7 @@ export async function requireOSMData(
   }
 
   const mergedData: App.OSMData = { elements: [] };
-  mergeOSMData(mergedData, ...cachedChunks);
+  measurePerf("merge", () => mergeOSMData(mergedData, ...cachedChunks));
 
-  return trimOSMData(mergedData, boundary);
+  return measurePerf("trim", () => trimOSMData(mergedData, boundary));
 }
