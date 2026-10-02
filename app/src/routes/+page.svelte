@@ -394,7 +394,7 @@
 					>
 					<span
 						style="position: absolute; white-space: nowrap; left: 30.7px; top: 146px;"
-						>地名</span
+						>{ctx.state.begin.query}</span
 					>
 					<span
 						style="position: absolute; white-space: nowrap; left: 32.8px; top: 196px;"
@@ -407,11 +407,11 @@
 					>
 					<span
 						style="position: absolute; white-space: nowrap; left: 32.7px; top: 320.2px;"
-						>地点</span
+						>{ctx.state.end.query}</span
 					>
 					<span style="position: absolute; white-space: nowrap; left: 34.8px; top: 367.6px;">
 						総走行距離: {((totalDistance ?? 0) / 1000).toFixed(2)} km <br>
-						総通過交差点数: {totalIntersections ?? 0} 個
+						<!-- 総通過交差点数: {totalIntersections ?? 0} 個 -->
 					</span>
 
 					<div class="divider" style="top: 425.5px;"></div>
@@ -493,8 +493,8 @@
         <div class="route-row">
             <img src={startpointLogo} alt="" class="route-icon" />
             <div class="route-info">
-                <div class="text-title">開始地点</div>
-                <div class="text-sub">住所</div>
+                <div class="text-title">始点</div>
+                <div class="text-sub">{ctx.state.begin.query}</div>
             </div>
         </div>
 
@@ -515,13 +515,11 @@
                         accumCross++;
                     }
                     else if (t === "right" || t === "left") {
-                        if (accumDist > 0) {
-                            aggregated.push({
-                                type: "straight",
-                                distance: Math.round(accumDist),
-                                cross: accumCross
-                            });
-                        }
+                         aggregated.push({
+                            type: "straight",
+                            distance: Math.round(accumDist),
+                            cross: accumCross
+                        });
 
                         aggregated.push({
                             type: t,
@@ -532,8 +530,8 @@
                         accumDist = 0;
                         accumCross = 0;
                     } 
-                    else if (i === informationGraph.type.length - 1|| t === "finish") {
-                        if (accumDist > 0) {
+                    else if (i === informationGraph.type.length - 1) {
+                        if (accumDist > 0 || accumCross > 0) {
                             aggregated.push({
                                 type: "finish",
                                 distance: Math.round(accumDist),
@@ -550,11 +548,8 @@
                 <div class="route-row">
                     <img 
                         src={
-							step.type === "straight" ? straightLogo :
                             step.type === "right" ? turnrightLogo :
-                            step.type === "left" ? turnleftLogo :
-							step.type === "finish" ? finishpointLogo :
-							""
+                            step.type === "left" ? turnleftLogo : straightLogo
                         } 
                         alt={step.type} 
                         class="route-icon" 
@@ -563,25 +558,25 @@
                     <div class="route-info">
                         <div class="text-title">
                             {#if step.type === "straight"}
-                                直進
+                                道なり
                             {:else if step.type === "finish"}
-                                到着
+                                道なり
                             {:else if step.type === "right"}
-								右折
-							{:else if step.type === "left"}
-								左折
+                                右折
+                            {:else if step.type === "left"}
+                                左折
                             {/if}
                         </div>
 
                         <div class="text-sub">
                             {#if step.type === "straight"}
-                                {step.distance}m直進
+                                {step.distance}m道なり
                             {:else if step.type === "finish"}
-                                {step.distance}m直進で到着
-							{:else if step.type === "right"}
-								{step.cross}個目の交差点を右折
-							{:else if step.type === "left"}
-								{step.cross}個目の交差点を左折
+                                {step.distance}m道なり
+                            {:else if step.type === "right"}
+                                {step.cross}個目の交差点を右折
+                            {:else if step.type === "left"}
+                                {step.cross}個目の交差点を左折
                             {/if}
                         </div>
                     </div>
@@ -593,8 +588,8 @@
         <div class="route-row">
             <img src={finishpointLogo} alt="終点" class="route-icon" />
             <div class="route-info">
-                <div class="text-title">終点</div>
-                <div class="text-sub">目的地名</div>
+                <div class="text-title">目的地</div>
+                <div class="text-sub">{ctx.state.end.query}</div>
             </div>
         </div>
     </div>
@@ -691,7 +686,7 @@
         top: 550px; /* 上部の出発点・終着点情報が収まる位置より下に配置 */
         left: 10px; /* 左側の余白を調整 */
         width: 95%;
-        height: calc(100% - 550px); /* パネルの残り全体の高さに合わせる */
+        height: calc(100% -550px); /* パネルの残り全体の高さに合わせる */
         overflow-y: auto;
         overflow-x: hidden;
 }
