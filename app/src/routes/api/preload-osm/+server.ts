@@ -15,6 +15,7 @@ const requestSchema = z.object({
   maxLng: z.number(),
 });
 export const POST: RequestHandler = async ({ request }) => {
+  startPerfMeasure();
   try {
     const body = await request.json();
     const query = requestSchema.safeParse(body);
@@ -22,14 +23,14 @@ export const POST: RequestHandler = async ({ request }) => {
       return json({ error: 'Invalid request body', details: query.error.issues }, { status: 400 });
     }
 
-    startPerfMeasure();
     // preload を目的としたリクエストなので、結果を無視する
     await requireOSMData(query.data, cacheManager, fetchOverpassData, true);
-    endPerfMeasure();
 
     return json({ success: true });
   } catch (error) {
     console.error(error);
     return json({ error: 'Failed to fetch OSM data' }, { status: 500 });
+  } finally {
+    endPerfMeasure();
   }
 };
