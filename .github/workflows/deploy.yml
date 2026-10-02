@@ -168,10 +168,14 @@ jobs:
         working-directory: head/app
         run: |
           set -o pipefail
+          # --report-on-invalid は校正が通らなかったとき（exit 2）でも回帰リストを
+          # 参考値として出すためだけのフラグ。exit code は 2 のまま変わらないので、
+          # 比較不成立という結論はそのまま残る。
           node bench/compare.mjs \
             --base "${{ runner.temp }}/bench-base.json" \
             --head "${{ runner.temp }}/bench-head.json" \
             --tolerance "${{ vars.BENCH_TOLERANCE || '1.5' }}" \
+            --report-on-invalid \
             --format markdown \
             | tee "${{ runner.temp }}/bench-compare.md"
 
