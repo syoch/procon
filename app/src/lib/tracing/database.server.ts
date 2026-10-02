@@ -1,14 +1,17 @@
 import { randomUUID } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
 import { type RawBootRecord, type PerfMeasurement, type RawRequestRecord, isRawBootRecord, isRawRequestRecord } from ".";
+import { env } from "$env/dynamic/private";
+
+function getDatabaseLocator(): string | undefined {
+    return env.DATABASE_LOCATOR;
+}
 
 type Init = {
-    bootId: string
+    bootId: string,
+    database: DatabaseSync
 };
 
-
-// TODO: いったん memory にしている。後で環境変数でパスを注入できるようにする
-const database = new DatabaseSync(":memory:")
 const HEAD_HASH = "Dummy-HEAD";
 let initialization: Init | undefined = undefined
 
@@ -45,13 +48,25 @@ const TABLES = [
     FOREIGN KEY(request_id) REFERENCES requests(id)
 );`
     }
-]
+];
 
-function getAvailableTables() {
-    const query = database.prepare("SELECT tbl_name from sqlite_master WHERE type == 'table'");
+function ensureDatabaseInitialized(): Init | undefined {
+    if (initialization !== undefined) {
+        return initialization;
+    }
 
+    const db_locator = getDatabaseLocator();
+    if (!db_locator) {
+        return undefined;
+    }
+    
+    console.log("init() called");
+
+    const database = new DatabaseSync(db_locator);
+    
+    const tables = database.prepare("SELECT tbl_name from sqlite_master WHERE type == 'table'");
     let tables_created: string[] = []
-    for (const result of query.all()) {
+    for (const result of tables.all()) {
         for (const key of Object.keys(result)) {
             const value = result[key];
 
@@ -62,35 +77,26 @@ function getAvailableTables() {
         }
     }
 
-    return tables_created;
-}
-
-function ensureDatabaseInitialized(): Init {
-    if (initialization !== undefined) {
-        return initialization;
-    }
-
-    console.log("init() called");
-
-    let tables_created = getAvailableTables();
     for (const table of TABLES) {
         if (!tables_created.includes(table.name)) {
             database.exec(table.query);
         }
     }
 
-    const query = database.prepare("INSERT INTO boots (id, head_hash, booted_at) VALUES (?, ?, ?)");
+    const boot = database.prepare("INSERT INTO boots (id, head_hash, booted_at) VALUES (?, ?, ?)");
     const bootId = randomUUID();
     const bootedAt = Math.floor(Date.now());
-    query.run(bootId, HEAD_HASH, bootedAt);
+    boot.run(bootId, HEAD_HASH, bootedAt);
 
-    initialization = { bootId: bootId };
+    initialization = { bootId: bootId, database };
 
     return initialization;
 }
 
 export function getBoots() {
-    ensureDatabaseInitialized();
+    const init = ensureDatabaseInitialized();
+    if (!init) return []
+    const database = init.database;
 
     const query = database.prepare("SELECT id, head_hash, booted_at from boots");
     let result: RawBootRecord[] = [];
@@ -109,7 +115,9 @@ export function getBoots() {
 }
 
 export function getRequests(bootId?: string) {
-    ensureDatabaseInitialized();
+    const init = ensureDatabaseInitialized();
+    if (!init) return []
+    const database = init.database;
 
     const res = bootId ? database.prepare("SELECT id, requested_at, boot_id, method, url, json_quote(performance) AS perf from requests WHERE boot_id == ?").all(bootId)
         : database.prepare("SELECT id, requested_at, boot_id, method, url, json_quote(performance) AS perf from requests").all();
@@ -146,7 +154,10 @@ export function saveRequest(
     url: string,
     performance: PerfMeasurement
 ) {
-    const { bootId } = ensureDatabaseInitialized();
+    const init = ensureDatabaseInitialized();
+    if (!init) return []
+    const {database, bootId} = init;
+
     const id = randomUUID();
 
     const query = database.prepare("INSERT INTO requests (id, requested_at, boot_id, method, url, performance) VALUES (?, ?, ?, ?, ?, jsonb(?))");
