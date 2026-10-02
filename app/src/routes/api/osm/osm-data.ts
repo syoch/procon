@@ -101,72 +101,64 @@ export function trimOSMData(data: App.OSMData, boundary: Boundary): App.OSMData 
 /**
  * スナップされた OSMData をグリッド事に分割する
  * @param data deltaLat/Lng 境界にスナップされた OSMData
- * @returns lat/lng でグリッド分けされた OSMData
+ * @returns lat/lng でグリッド分けされた OSMData, キーは `lat,lon` の形式をとる
  */
-export function SplitOSMData(data: App.OSMData): { lat: number, lng: number, map: App.OSMData }[] {
-    let result: {
-        [key: string]: {
-            lat: number,
-            lng: number,
-            map: App.OSMData,
-            outputNodes: Set<number>;
-            savedNodes: Set<number>;
+export function SplitOSMData(data: App.OSMData) {
+    let result: App.OSMData[] = []
+    let resultNameMap = new Map<number, string>();
+    let resultNameMapRev = new Map<string, number>();
+    const nodeChunkAssociation = new Map<number, number>();
+
+    for (const node of data.elements) {
+        if (node.type !== "node") continue;
+        const lat = Math.floor(node.lat / deltaLatitude) * deltaLatitude;
+        const lng = Math.floor(node.lon / deltaLongitude) * deltaLongitude;
+        const key = `${lat},${lng}`;
+
+        let idx = resultNameMapRev.get(key);
+        if (!idx) {
+            idx = result.length;
+            result.push({elements: []})
+            resultNameMap.set(idx, key);
+            resultNameMapRev.set(key, idx);
         }
-    } = {}
-    const deriveResKey = (lat: number, lon: number) => `${lat}-${lon}`;
 
-    for (const element of data.elements) {
-        if (element.type !== "node") continue;
-
-        const lat = Math.floor(element.lat / deltaLatitude);
-        const lng = Math.floor(element.lon / deltaLongitude);
-        const key = deriveResKey(lat, lng);
-
-        if (result[key] === undefined) {
-            result[key] = {
-                lat: lat * deltaLatitude,
-                lng: lng * deltaLongitude,
-                map: {
-                    elements: []
-                },
-                outputNodes: new Set(),
-                savedNodes: new Set()
-            }
-        }
-        result[key]?.savedNodes.add(element.id);
-        result[key]?.outputNodes.add(element.id);
+        nodeChunkAssociation.set(node.id, idx)
     }
 
-    for (const element of data.elements) {
-        if (element.type !== "way") continue;
+    const nodeRegistrationMap = new Map<number, Set<number>>();
 
-        for (const chunkKey of Object.keys(result)) {
+    for (const way of data.elements) {
+        if (way.type !== "way") continue;
+        let deduplication = new Int32Array();
+        for (const nodeId of way.nodes) {
+            const chunkKey = nodeChunkAssociation.get(nodeId);
+            if (!chunkKey) continue;
+            if (deduplication.at(chunkKey)) continue;
+            deduplication[chunkKey] = 1;
+
             const chunk = result[chunkKey];
-            if (element.nodes.every(nodeId => !chunk.savedNodes.has(nodeId))) {
-                continue;
-            }
-            chunk.map.elements.push(element);
-
-            for (const nodeId of element.nodes) {
-                chunk.outputNodes.add(nodeId);
+            chunk.elements.push(way);
+            for (const nodeId of way.nodes) {
+                let chunks = nodeRegistrationMap.get(nodeId);
+                if (!chunks) {
+                    chunks = new Set();
+                    nodeRegistrationMap.set(nodeId, chunks)
+                }
+                chunks.add(chunkKey)
             }
         }
     }
 
-    for (const element of data.elements) {
-        if (element.type !== "node") continue;
-
-        for (const chunkKey of Object.keys(result)) {
+    for (const node of data.elements) {
+        if (node.type !== "node") continue;
+        for (const chunkKey of nodeRegistrationMap.get(node.id) ?? []) {
             const chunk = result[chunkKey];
-            if (!chunk.outputNodes.has(element.id)) {
-                continue;
-            }
-
-            chunk.map.elements.push(element);
+            chunk.elements.push(node);
         }
     }
 
-    return Object.values(result);
+    return Object.fromEntries(result.map((map, i) => [resultNameMap.get(i), map]))
 }
 
 /**

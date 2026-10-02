@@ -6,6 +6,14 @@ import { deltaLatitude, deltaLongitude } from "../../src/routes/api/osm/grid";
 const D_LAT = deltaLatitude;
 const D_LNG = deltaLongitude;
 
+/**
+ * SplitOSMData の返り値キー。グリッド番号 (floor(lat / delta)) の組で、
+ * セルの角の座標ではない。index.ts 側で参照するときは
+ * `${Math.floor(bound.minLat / deltaLatitude)},${Math.floor(bound.minLng / deltaLongitude)}`
+ * に変換する必要がある。
+ */
+const keyOf = (latIndex: number, lngIndex: number) => `${latIndex},${lngIndex}`;
+
 /** セル (latIndex, lngIndex) の境界。divideBoundary が返すセルと同じ形 */
 function cellOf(latIndex: number, lngIndex: number): Boundary {
   return {
@@ -21,11 +29,6 @@ function centerOf(latIndex: number, lngIndex: number) {
   return { lat: (latIndex + 0.5) * D_LAT, lon: (lngIndex + 0.5) * D_LNG };
 }
 
-/** チャンクを (minLat,minLng) で引けるようにする。trimOSMData との突き合わせに使う */
-function chunkMap(chunks: ReturnType<typeof SplitOSMData>) {
-  return new Map(chunks.map((c) => [`${c.lat},${c.lng}`, c.map]));
-}
-
 function idsOf(data: App.OSMData) {
   return {
     ways: data.elements.filter((e) => e.type === "way").map((e) => e.id).sort((a, b) => a - b),
@@ -33,53 +36,88 @@ function idsOf(data: App.OSMData) {
   };
 }
 
-test("SplitOSMData は空データに空配列を返す", () => {
-  expect(SplitOSMData({ elements: [] })).toEqual([]);
-  expect(SplitOSMData({ elements: [{ type: "way", id: 1, nodes: [], tags: {} }] })).toEqual([]);
+const get = (result: Record<string, App.OSMData>, latIndex: number, lngIndex: number) =>
+  result[keyOf(latIndex, lngIndex)];
+
+test("SplitOSMData はノードが無ければ空オブジェクトを返す", () => {
+  expect(SplitOSMData({ elements: [] })).toEqual({});
+  expect(SplitOSMData({ elements: [{ type: "way", id: 1, nodes: [], tags: {} }] })).toEqual({});
+  // way のノードが全て応答の外にある場合もチャンクは作られない
+  expect(SplitOSMData({ elements: [{ type: "way", id: 1, nodes: [999], tags: {} }] })).toEqual({});
+});
+
+test("SplitOSMData のキーはグリッド番号の組", () => {
+  const result = SplitOSMData({ elements: [{ type: "node", id: 1, ...centerOf(2, 3) }] });
+  expect(Object.keys(result)).toEqual([keyOf(2, 3)]);
+  // 角の座標ではなく番号であること (index.ts の参照とズレないため)
+  expect(Object.keys(result)).not.toContain(`${2 * D_LAT},${3 * D_LNG}`);
 });
 
 test("SplitOSMData はノードをセルごとに分ける", () => {
-  const chunks = SplitOSMData({
+  const result = SplitOSMData({
     elements: [
       { type: "node", id: 1, ...centerOf(0, 0) },
       { type: "node", id: 2, ...centerOf(3, 4) },
       { type: "node", id: 3, ...centerOf(0, 0) },
+      { type: "way", id: 10, nodes: [1, 3], tags: {} },
+      { type: "way", id: 20, nodes: [2], tags: {} },
     ],
   });
 
-  expect(chunks.length).toBe(2);
-  const m = chunkMap(chunks);
-  expect(idsOf(m.get("0,0")!).nodes).toEqual([1, 3]);
-  expect(idsOf(m.get(`${3 * D_LAT},${4 * D_LNG}`)!).nodes).toEqual([2]);
+  expect(Object.keys(result).sort()).toEqual([keyOf(0, 0), keyOf(3, 4)].sort());
+  expect(idsOf(get(result, 0, 0)).nodes).toEqual([1, 3]);
+  expect(idsOf(get(result, 3, 4)).nodes).toEqual([2]);
 });
 
-test("SplitOSMData の返す lat/lng はセルの左下隅で divideBoundary と一致する", () => {
-  const chunks = SplitOSMData({
+/**
+ * 現在の挙動: way から参照されないノード (孤立ノード) はチャンクの要素に入らない。
+ * チャンク自体は作られる (キーは存在する) が要素は空。
+ * trimOSMData は境界内の孤立ノードをすべて残すので、実データでは trim と一致しない。
+ */
+test("SplitOSMData: 孤立ノード (way から参照されない node) は要素に入らない", () => {
+  const result = SplitOSMData({
+    elements: [
+      { type: "node", id: 1, ...centerOf(0, 0) },
+      { type: "node", id: 2, ...centerOf(0, 0) },
+      { type: "way", id: 10, nodes: [1], tags: {} },
+    ],
+  });
+
+  expect(idsOf(get(result, 0, 0)).ways).toEqual([10]);
+  expect(idsOf(get(result, 0, 0)).nodes).toEqual([1]);
+
+  // 対照: trimOSMData は孤立ノードも残す
+  const data: App.OSMData = {
+    elements: [
+      { type: "node", id: 1, ...centerOf(0, 0) },
+      { type: "node", id: 2, ...centerOf(0, 0) },
+      { type: "way", id: 10, nodes: [1], tags: {} },
+    ],
+  };
+  expect(idsOf(trimOSMData(data, cellOf(0, 0))).nodes).toEqual([1, 2]);
+});
+
+test("SplitOSMData のキーは divideBoundary のセルと対応する", () => {
+  const region: Boundary = {
+    minLat: 2 * D_LAT, maxLat: 6 * D_LAT,
+    minLng: 1 * D_LNG, maxLng: 4 * D_LNG,
+  };
+  const result = SplitOSMData({
     elements: [
       { type: "node", id: 1, ...centerOf(2, 3) },
       { type: "node", id: 2, ...centerOf(5, 1) },
     ],
   });
 
-  const expectedKeys = new Set(["2,3", "5,1"].map((k) => {
-    const [a, b] = k.split(",").map(Number);
-    return `${a * D_LAT},${b * D_LNG}`;
-  }));
-  const actualKeys = new Set(chunks.map((c) => `${c.lat},${c.lng}`));
-
-  expect(actualKeys).toEqual(expectedKeys);
-
-  // divideBoundary が同じ格子から作るセルと座標が一致する
-  const region: Boundary = {
-    minLat: 2 * D_LAT, maxLat: 6 * D_LAT,
-    minLng: 1 * D_LNG, maxLng: 4 * D_LNG,
-  };
-  const dividedKeys = new Set(divideBoundary(region).map((b) => `${b.minLat},${b.minLng}`));
-  for (const key of actualKeys) expect(dividedKeys.has(key)).toBe(true);
+  // divideBoundary が作るセルの minLat/minLng をグリッド番号に戻すと必ず一致する
+  const dividedKeys = new Set(
+    divideBoundary(region).map((b) => keyOf(Math.round(b.minLat / D_LAT), Math.round(b.minLng / D_LNG))),
+  );
+  for (const k of Object.keys(result)) expect(dividedKeys.has(k)).toBe(true);
 });
 
 test("SplitOSMData: way はノードが1つでもセル内にあれば含まれ、参照ノードも入る", () => {
-  const chunks = SplitOSMData({
+  const result = SplitOSMData({
     elements: [
       { type: "node", id: 1, ...centerOf(0, 0) },
       { type: "node", id: 2, ...centerOf(0, 5) },
@@ -87,10 +125,9 @@ test("SplitOSMData: way はノードが1つでもセル内にあれば含まれ�
     ],
   });
 
-  const m = chunkMap(chunks);
-  // way はセル (0,0) のノードに接するので (0,0) と (0,5) の両方に残る
-  for (const key of [`0,0`, `${0 * D_LAT},${5 * D_LNG}`]) {
-    const c = m.get(key)!;
+  // way は (0,0) のノードに接するので両方のセルに入る
+  for (const [a, b] of [[0, 0], [0, 5]] as [number, number][]) {
+    const c = get(result, a, b);
     expect(idsOf(c).ways).toEqual([100]);
     // way が参照するノードは自分のセル外でも入る
     expect(idsOf(c).nodes).toEqual([1, 2]);
@@ -98,8 +135,8 @@ test("SplitOSMData: way はノードが1つでもセル内にあれば含まれ�
 });
 
 test("SplitOSMData: 全ノードがセル外の way は含まれない", () => {
-  // (0,0) のチャンクは存在させる（way 200 のノードは別の 2 セルにある）
-  const chunks = SplitOSMData({
+  // (0,0) のチャンクは存在させる (way 200 のノードは別の 2 セルにある)
+  const result = SplitOSMData({
     elements: [
       { type: "node", id: 1, ...centerOf(0, 0) },
       { type: "node", id: 2, ...centerOf(9, 9) },
@@ -108,15 +145,13 @@ test("SplitOSMData: 全ノードがセル外の way は含まれない", () => {
     ],
   });
 
-  const m = chunkMap(chunks);
-  expect(idsOf(m.get("0,0")!).ways).toEqual([]);
-  // way 200 は自分のノードがある 2 セルにだけ入る
-  expect(idsOf(m.get(`${9 * D_LAT},${9 * D_LNG}`)!).ways).toEqual([200]);
-  expect(idsOf(m.get(`${8 * D_LAT},${8 * D_LNG}`)!).ways).toEqual([200]);
+  expect(idsOf(get(result, 0, 0)).ways).toEqual([]);
+  expect(idsOf(get(result, 9, 9)).ways).toEqual([200]);
+  expect(idsOf(get(result, 8, 8)).ways).toEqual([200]);
 });
 
 test("SplitOSMData: セルをまたぐ way は各チャンクに含まれる", () => {
-  const chunks = SplitOSMData({
+  const result = SplitOSMData({
     elements: [
       { type: "node", id: 1, ...centerOf(0, 0) },
       { type: "node", id: 2, ...centerOf(3, 3) },
@@ -124,9 +159,8 @@ test("SplitOSMData: セルをまたぐ way は各チャンクに含まれる", (
     ],
   });
 
-  const m = chunkMap(chunks);
-  expect(idsOf(m.get("0,0")!).ways).toEqual([300]);
-  expect(idsOf(m.get(`${3 * D_LAT},${3 * D_LNG}`)!).ways).toEqual([300]);
+  expect(idsOf(get(result, 0, 0)).ways).toEqual([300]);
+  expect(idsOf(get(result, 3, 3)).ways).toEqual([300]);
 });
 
 test("SplitOSMData: 未知の type は無視される", () => {
@@ -135,100 +169,85 @@ test("SplitOSMData: 未知の type は無視される", () => {
     { type: "way", id: 2, nodes: [1], tags: {} },
     { type: "relation", id: 3, members: [] },
   ] as unknown as App.OSMData["elements"];
-  const chunks = SplitOSMData({ elements });
 
-  for (const c of chunks) {
-    expect(c.map.elements.map((e) => (e as { type: string }).type)).not.toContain("relation");
+  for (const c of Object.values(SplitOSMData({ elements }))) {
+    expect(c.elements.map((e) => (e as { type: string }).type)).not.toContain("relation");
   }
 });
 
 test("SplitOSMData: 負座標でも正しいセルに入る", () => {
-  const chunks = SplitOSMData({
+  const result = SplitOSMData({
     elements: [
       { type: "node", id: 1, lat: -0.5 * D_LAT, lon: -0.5 * D_LNG },
       { type: "node", id: 2, lat: -3.5 * D_LAT, lon: -1.5 * D_LNG },
+      { type: "way", id: 10, nodes: [1], tags: {} },
+      { type: "way", id: 20, nodes: [2], tags: {} },
     ],
   });
 
-  const m = chunkMap(chunks);
-  expect(idsOf(m.get(`${-1 * D_LAT},${-1 * D_LNG}`)!).nodes).toEqual([1]);
-  expect(idsOf(m.get(`${-4 * D_LAT},${-2 * D_LNG}`)!).nodes).toEqual([2]);
+  // Math.floor は負で -1 側に倒すので、-0.5 セルはインデックス -1
+  expect(idsOf(get(result, -1, -1)).nodes).toEqual([1]);
+  expect(idsOf(get(result, -4, -2)).nodes).toEqual([2]);
 });
 
 test("SplitOSMData: trimOSMData をセルごとに適用した結果と一致する", () => {
   // セル境界上にノードが乗らないよう、すべて中心座標を使う
   const cells: [number, number][] = [[0, 0], [0, 1], [1, 0], [1, 1], [2, 0], [2, 1], [3, 3]];
   const nodes: App.OSMRawNode[] = cells.map(([a, b], i) => ({ type: "node", id: i + 1, ...centerOf(a, b) }));
-  // セルをまたぐ way と、1 セルに閉じた way
-  const way = (id: number, nodes: number[], tags: Record<string, string> = {}): App.OSMRawWay =>
-    ({ type: "way", id, nodes, tags });
-  const ways: App.OSMRawWay[] = [
-    way(100, [1, 7], { highway: "primary" }),
-    way(101, [1, 2], { highway: "residential" }),
-    way(102, [3, 4]),
-    way(103, [5, 6]),
-  ];
+  const way = (id: number, ns: number[], tags: Record<string, string> = {}): App.OSMRawWay => ({ type: "way", id, nodes: ns, tags });
+  const ways: App.OSMRawWay[] = [way(100, [1, 7], { highway: "primary" }), way(101, [1, 2], { highway: "residential" }), way(102, [3, 4]), way(103, [5, 6])];
   const data: App.OSMData = { elements: [...nodes, ...ways] };
 
-  const chunks = chunkMap(SplitOSMData(data));
+  const result = SplitOSMData(data);
   for (const [a, b] of cells) {
-    const cell = cellOf(a, b);
-    const expected = idsOf(trimOSMData(data, cell));
-    const actualChunk = chunks.get(`${cell.minLat},${cell.minLng}`);
-    expect(actualChunk, `セル (${a},${b}) のチャンクが見つからない`).toBeDefined();
-    expect(idsOf(actualChunk!), `セル (${a},${b}) が trim と一致しない`).toEqual(expected);
+    const actual = get(result, a, b);
+    expect(actual, `セル (${a},${b}) のチャンクが見つからない`).toBeDefined();
+    expect(idsOf(actual), `セル (${a},${b}) が trim と一致しない`).toEqual(idsOf(trimOSMData(data, cellOf(a, b))));
   }
 });
 
-test("SplitOSMData: チャンク間で要素が失われない", () => {
-  const data: App.OSMData = {
+test("SplitOSMData: チャンク間で way が失われない", () => {
+  const result = SplitOSMData({
     elements: [
       { type: "node", id: 1, ...centerOf(0, 0) },
       { type: "node", id: 2, ...centerOf(4, 4) },
       { type: "way", id: 100, nodes: [1, 2], tags: {} },
-      // どのセルにも属さない孤立ノード。way から参照されないので trim で消える
-      { type: "node", id: 3, ...centerOf(8, 8) },
     ],
-  };
+  });
 
-  const chunks = SplitOSMData(data);
-  const wayIds = new Set(chunks.flatMap((c) => c.map.elements.filter((e) => e.type === "way").map((e) => e.id)));
+  const wayIds = new Set(Object.values(result).flatMap((c) => idsOf(c).ways));
   expect(wayIds).toEqual(new Set([100]));
-  // 孤立ノードのセルは生成される（way が無くてもノードがあれば作られる）
-  expect(chunks.map((c) => `${c.lat},${c.lng}`)).toContain(`${8 * D_LAT},${8 * D_LNG}`);
 });
 
 test("SplitOSMData: ノードのないセルはチャンクを生成しない", () => {
   // 16 セルのうちノードが入る 1 セルだけ
-  const region: Boundary = {
-    minLat: 0, maxLat: 4 * D_LAT,
-    minLng: 0, maxLng: 4 * D_LNG,
-  };
+  const region: Boundary = { minLat: 0, maxLat: 4 * D_LAT, minLng: 0, maxLng: 4 * D_LNG };
   const cells = divideBoundary(region);
-  const chunks = SplitOSMData({ elements: [{ type: "node", id: 1, ...centerOf(0, 0) }] });
+  const data: App.OSMData = { elements: [{ type: "node", id: 1, ...centerOf(0, 0) }] };
+  const result = SplitOSMData(data);
 
   expect(cells.length).toBe(16);
-  expect(chunks.length).toBe(1);
+  expect(Object.keys(result).length).toBe(1);
 
-  // 保存側は boundariesToGet の全セルを保存するので、欠けたセルは呼び出し側で補う
-  const covered = new Set(chunks.map((c) => `${c.lat},${c.lng}`));
-  const missing = cells.filter((c) => !covered.has(`${c.minLat},${c.minLng}`));
+  // 保存側は boundariesToGet の全セルを保存するので、欠けたセルは呼び出し側が補う
+  const covered = new Set(Object.keys(result));
+  const missing = cells.filter((c) => !covered.has(keyOf(Math.round(c.minLat / D_LAT), Math.round(c.minLng / D_LNG))));
   expect(missing.length).toBe(15);
   // 補う値は trim 相当の空データ
-  expect(idsOf(trimOSMData({ elements: [{ type: "node", id: 1, ...centerOf(0, 0) }] }, missing[0]))).toEqual({ ways: [], nodes: [] });
+  expect(idsOf(trimOSMData(data, missing[0]))).toEqual({ ways: [], nodes: [] });
 });
 
 test("SplitOSMData: グリッド境界上のノードは上位セルにのみ属する (trimOSMData は両セルに含む)", () => {
   // trimOSMData は両端を含むので境界上のノードは隣接セル双方に入るが、
   // SplitOSMData は Math.floor で一意に振り分ける（重複しない）
-  const data: App.OSMData = {
-    elements: [{ type: "node", id: 1, lat: D_LAT, lon: D_LNG }],
-  };
+  const data: App.OSMData = { elements: [{ type: "node", id: 1, lat: D_LAT, lon: D_LNG }] };
+  const result = SplitOSMData(data);
 
-  const chunks = SplitOSMData(data);
-  expect(chunks.length).toBe(1);
-  expect(chunks[0].lat).toBe(D_LAT);
-  expect(chunks[0].lng).toBe(D_LNG);
+  // 境界上のノードは (1,1) のチャンクだけを作る。(0,0) のチャンクは作られない
+  expect(Object.keys(result)).toEqual([keyOf(1, 1)]);
+  expect(get(result, 0, 0)).toBeUndefined();
+  // このノードは孤立しているので要素は入らない (キーは存在する)
+  expect(idsOf(get(result, 1, 1))).toEqual({ ways: [], nodes: [] });
 
   // 対照: trimOSMData は 2 セルともに入る
   expect(trimOSMData(data, cellOf(0, 0)).elements.length).toBe(1);
@@ -237,16 +256,32 @@ test("SplitOSMData: グリッド境界上のノードは上位セルにのみ属
 
 test("SplitOSMData: 境界上のノードを way が参照しても必要なチャンクには入る", () => {
   // 境界上のノードは「セルの元になるノード」としては数えられないが、
-  // way が参照していれば outputNodes 経由でチャンクに入る
-  const data: App.OSMData = {
+  // way が参照していれば登録を通じてチャンクに入る
+  const result = SplitOSMData({
     elements: [
       { type: "node", id: 1, ...centerOf(0, 0) },
       { type: "node", id: 2, lat: D_LAT, lon: D_LNG },
       { type: "way", id: 100, nodes: [1, 2], tags: {} },
     ],
-  };
+  });
 
-  const chunks = chunkMap(SplitOSMData(data));
-  expect(idsOf(chunks.get("0,0")!).ways).toEqual([100]);
-  expect(idsOf(chunks.get("0,0")!).nodes).toEqual([1, 2]);
+  const c = get(result, 0, 0);
+  expect(idsOf(c).ways).toEqual([100]);
+  expect(idsOf(c).nodes).toEqual([1, 2]);
+});
+
+test("SplitOSMData: 同じ要素が同じチャンクに重複して入らない", () => {
+  const result = SplitOSMData({
+    elements: [
+      { type: "node", id: 1, ...centerOf(0, 0) },
+      { type: "node", id: 2, ...centerOf(0, 1) },
+      // 同じ 2 ノードを 2 回参照する way
+      { type: "way", id: 100, nodes: [1, 2, 1, 2], tags: {} },
+    ],
+  });
+
+  for (const c of Object.values(result)) {
+    const ids = c.elements.map((e) => e.id);
+    expect(new Set(ids).size, `重複あり: ${ids}`).toBe(ids.length);
+  }
 });
