@@ -43,12 +43,11 @@ export async function requireOSMData(
     const saveCacheMeasurement = reqCtx.begin("saveCache");
     const splittedGrids = new Map(SplitOSMData(fetchedData).map(x => [`${x.lat},${x.lng}`, x.map]));
     for (const b of boundariesToGet) {
-      const subData = splittedGrids.get(`${b.minLat},${b.minLat}`) ?? { elements: [] };
+      const subData = splittedGrids.get(`${b.minLat},${b.minLng}`) ?? { elements: [] };
       await saveCache(b, subData);
       cachedChunks.push(subData);
     }
     saveCacheMeasurement();
-
   }
 
   if (ignoreResult) {
