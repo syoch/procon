@@ -137,12 +137,15 @@
 		totalDistance = 0;
 		totalIntersections = 0;
 
+		const totalSlider = slider1 + slider2 + slider3;
+
 		const params: App.SearchParameters = {
-			...ctx.searchParameters,
-			mix_score_weight: slider1 / (slider1+slider2+slider3),
-			view_score_weight: slider2 / (slider1+slider2+slider3),
-			width_score_weight: slider3 / (slider1+slider2+slider3),
-		}
+    		...ctx.searchParameters,
+    		mix_score_weight: totalSlider === 0 ? 0 : slider1 / totalSlider,
+    		view_score_weight: totalSlider === 0 ? 0 : slider2 / totalSlider,
+    		width_score_weight: totalSlider === 0 ? 0 : slider3 / totalSlider,
+		};
+		
 
 		isLoading = true;
 		const res = await fetch("/api/path-find", {
@@ -547,8 +550,8 @@
                 <div class="route-row">
                     <img 
                         src={
-                            step.type === "右折" ? turnrightLogo :
-                            step.type === "左折" ? turnleftLogo : straightLogo
+                            step.type === "right" ? turnrightLogo :
+                            step.type === "left" ? turnleftLogo : straightLogo
                         } 
                         alt={step.type} 
                         class="route-icon" 
@@ -571,6 +574,7 @@
                             {:else if step.type === "到着"}
                                 {step.distance}m直進
                             {:else}
+							
                                 {step.cross}個目の交差点を{step.type}
                             {/if}
                         </div>
