@@ -7,6 +7,7 @@ import { splitScenario } from "./scenarios/split";
 import { cacheReadScenario } from "./scenarios/cache-read";
 import type { Scenario, ScenarioResult } from "./scenarios/types";
 import { readFixtureMeta } from "./lib/data";
+import { measureCalibration, type Calibration } from "./lib/reference";
 
 
 const SCENARIOS: Scenario[] = [pipelineScenario, splitScenario, cacheReadScenario];
@@ -80,10 +81,27 @@ function printUsage() {
 
 回帰チェックはここでは行わない。CI が「base と head を同じランナー上で 2 回測って比べる」
 ので、compare.mjs に結果 JSON を渡して判定する。machine ごとに違う値をリポジトリに
-保存しないため、記録用の基準ファイルは要らない。`);
+保存しないため、記録用の基準ファイルは要らない。
+
+校正ワークロードも同時に測り、JSON の calibration に入れておく。compare.mjs がこれを
+比べることで「機械の速度が変わった」だけの差を検出して、回帰と区別できる。`);
 }
 
 const ms = (value: number) => (Number.isNaN(value) ? "-" : `${value.toFixed(2)}ms`);
+
+/**
+ * 校正の測定結果を 1 行で出す。
+ *
+ * CI は 2 回の計測出力をそのまま `$GITHUB_STEP_SUMMARY` に貼るので、ここにも出しておくと
+ * 「機械の速度が 2 回の間で変わっていないか」を成果物だけで判断できる。
+ */
+function printCalibration(calibration: Calibration) {
+  console.log(
+    `calibration: ${ms(calibration.median)} ` +
+      `(min=${ms(calibration.min)}, max=${ms(calibration.max)}, ${calibration.iterations} 回, ` +
+      `checksum=${calibration.checksum})`,
+  );
+}
 
 function printResult(result: ScenarioResult) {
   console.log(`\n## ${result.scenario}`);
@@ -178,6 +196,11 @@ async function main() {
   }
 
   const results: ScenarioResult[] = [];
+  // 校正はシナリオより先に測る。フィクスチャを展開した直後でメモリが動いていると、
+  // 校正がメモリを測ることになってしまうため、計測対象に触る前に済ませる。
+  const calibration = await measureCalibration();
+  if (!options.quiet) printCalibration(calibration);
+
   for (const scenario of selected) {
     const { value, log } = await withSummarizedOutput(() =>
       scenario.run({
@@ -203,6 +226,9 @@ async function main() {
       node: process.version,
       mode: options.mode,
       fixture: readFixtureMeta(),
+      // 段の結果とは別に、校正の測定値をトップレベルに置く。
+      // 比較する 2 つの JSON はこれの有無が同じになるよう、同じ版で出力するのが前提。
+      calibration,
       results,
     };
     mkdirSync(dirname(options.json), { recursive: true });
