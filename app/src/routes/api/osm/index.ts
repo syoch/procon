@@ -1,6 +1,6 @@
 
 import { type OSMCacheManager, type OSMFetcher } from './types';
-import { mergeOSMData, trimOSMData } from './osm-data';
+import { mergeOSMData, SplitOSMData, trimOSMData } from './osm-data';
 import { divideBoundary, simplifyBoundaries, type Boundary } from './boundary';
 import type { RequestContext } from '$lib/requestContext';
 
@@ -41,8 +41,9 @@ export async function requireOSMData(
     const fetchedData = await reqCtx.measureAsync("fetch", () => fetchOSM(boundariesToQuery));
 
     const saveCacheMeasurement = reqCtx.begin("saveCache");
+    const splittedGrids = new Map(SplitOSMData(fetchedData).map(x => [`${x.lat},${x.lng}`, x.map]));
     for (const b of boundariesToGet) {
-      const subData = trimOSMData(fetchedData, b);
+      const subData = splittedGrids.get(`${b.minLat},${b.minLat}`) ?? { elements: [] };
       await saveCache(b, subData);
       cachedChunks.push(subData);
     }

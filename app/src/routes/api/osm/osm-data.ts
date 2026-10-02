@@ -1,5 +1,6 @@
 import { boundaryContains, type Boundary } from "./boundary";
 import { isAccessible, resolveModeOneway, type ModeProfile } from "$lib/mode_profiles";
+import { deltaLatitude, deltaLongitude } from "./grid";
 
 
 
@@ -95,6 +96,77 @@ export function trimOSMData(data: App.OSMData, boundary: Boundary): App.OSMData 
     }
 
     return trimmedData;
+}
+
+/**
+ * スナップされた OSMData をグリッド事に分割する
+ * @param data deltaLat/Lng 境界にスナップされた OSMData
+ * @returns lat/lng でグリッド分けされた OSMData
+ */
+export function SplitOSMData(data: App.OSMData): { lat: number, lng: number, map: App.OSMData }[] {
+    let result: {
+        [key: string]: {
+            lat: number,
+            lng: number,
+            map: App.OSMData,
+            outputNodes: Set<number>;
+            savedNodes: Set<number>;
+        }
+    } = {}
+    const deriveResKey = (lat: number, lon: number) => `${lat}-${lon}`;
+
+    for (const element of data.elements) {
+        if (element.type !== "node") continue;
+
+        const lat = Math.floor(element.lat / deltaLatitude);
+        const lng = Math.floor(element.lon / deltaLongitude);
+        const key = deriveResKey(lat, lng);
+
+        if (result[key] === undefined) {
+            result[key] = {
+                lat: lat * deltaLatitude,
+                lng: lng * deltaLongitude,
+                map: {
+                    elements: []
+                },
+                outputNodes: new Set(),
+                savedNodes: new Set()
+            }
+        }
+        result[key]?.savedNodes.add(element.id);
+        result[key]?.outputNodes.add(element.id);
+    }
+
+    for (const element of data.elements) {
+        if (element.type !== "way") continue;
+
+        for (const chunkKey of Object.keys(result)) {
+            const chunk = result[chunkKey];
+            if (element.nodes.every(nodeId => !chunk.savedNodes.has(nodeId))) {
+                continue;
+            }
+            chunk.map.elements.push(element);
+
+            for (const nodeId of element.nodes) {
+                chunk.outputNodes.add(nodeId);
+            }
+        }
+    }
+
+    for (const element of data.elements) {
+        if (element.type !== "node") continue;
+
+        for (const chunkKey of Object.keys(result)) {
+            const chunk = result[chunkKey];
+            if (!chunk.outputNodes.has(element.id)) {
+                continue;
+            }
+
+            chunk.map.elements.push(element);
+        }
+    }
+
+    return Object.values(result);
 }
 
 /**
