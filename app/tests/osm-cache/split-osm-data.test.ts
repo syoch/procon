@@ -7,12 +7,11 @@ const D_LAT = deltaLatitude;
 const D_LNG = deltaLongitude;
 
 /**
- * SplitOSMData の返り値キー。グリッド番号 (floor(lat / delta)) の組で、
- * セルの角の座標ではない。index.ts 側で参照するときは
- * `${Math.floor(bound.minLat / deltaLatitude)},${Math.floor(bound.minLng / deltaLongitude)}`
- * に変換する必要がある。
+ * SplitOSMData の返り値キー。セル左下隅の座標 (`minLat,minLng`) の組で、
+ * divideBoundary が作るセルの minLat/minLng とそのまま一致する。
+ * index.ts は `${b.minLat},${b.minLng}` で参照する。
  */
-const keyOf = (latIndex: number, lngIndex: number) => `${latIndex},${lngIndex}`;
+const keyOf = (latIndex: number, lngIndex: number) => `${latIndex * D_LAT},${lngIndex * D_LNG}`;
 
 /** セル (latIndex, lngIndex) の境界。divideBoundary が返すセルと同じ形 */
 function cellOf(latIndex: number, lngIndex: number): Boundary {
@@ -36,7 +35,9 @@ function idsOf(data: App.OSMData) {
   };
 }
 
-const get = (result: Record<string, App.OSMData>, latIndex: number, lngIndex: number) =>
+type Split = Record<string, App.OSMData>;
+
+const get = (result: Split, latIndex: number, lngIndex: number): App.OSMData =>
   result[keyOf(latIndex, lngIndex)];
 
 test("SplitOSMData はノードが無ければ空オブジェクトを返す", () => {
@@ -46,11 +47,13 @@ test("SplitOSMData はノードが無ければ空オブジェクトを返す", (
   expect(SplitOSMData({ elements: [{ type: "way", id: 1, nodes: [999], tags: {} }] })).toEqual({});
 });
 
-test("SplitOSMData のキーはグリッド番号の組", () => {
+test("SplitOSMData のキーはセル左下隅の座標で divideBoundary と一致する", () => {
   const result = SplitOSMData({ elements: [{ type: "node", id: 1, ...centerOf(2, 3) }] });
   expect(Object.keys(result)).toEqual([keyOf(2, 3)]);
-  // 角の座標ではなく番号であること (index.ts の参照とズレないため)
-  expect(Object.keys(result)).not.toContain(`${2 * D_LAT},${3 * D_LNG}`);
+  // index.ts は `${b.minLat},${b.minLng}` で引くので、この形式が必須
+  expect(Object.keys(result)).toContain(`${2 * D_LAT},${3 * D_LNG}`);
+  // グリッド番号ではない
+  expect(Object.keys(result)).not.toContain("2,3");
 });
 
 test("SplitOSMData はノードをセルごとに分ける", () => {
@@ -109,10 +112,8 @@ test("SplitOSMData のキーは divideBoundary のセルと対応する", () => 
     ],
   });
 
-  // divideBoundary が作るセルの minLat/minLng をグリッド番号に戻すと必ず一致する
-  const dividedKeys = new Set(
-    divideBoundary(region).map((b) => keyOf(Math.round(b.minLat / D_LAT), Math.round(b.minLng / D_LNG))),
-  );
+  // divideBoundary が作るセルの minLat/minLng がそのままキーになる
+  const dividedKeys = new Set(divideBoundary(region).map((b) => `${b.minLat},${b.minLng}`));
   for (const k of Object.keys(result)) expect(dividedKeys.has(k)).toBe(true);
 });
 
@@ -170,7 +171,7 @@ test("SplitOSMData: 未知の type は無視される", () => {
     { type: "relation", id: 3, members: [] },
   ] as unknown as App.OSMData["elements"];
 
-  for (const c of Object.values(SplitOSMData({ elements }))) {
+  for (const c of Object.values(SplitOSMData({ elements }) as Split)) {
     expect(c.elements.map((e) => (e as { type: string }).type)).not.toContain("relation");
   }
 });
@@ -215,7 +216,7 @@ test("SplitOSMData: チャンク間で way が失われない", () => {
     ],
   });
 
-  const wayIds = new Set(Object.values(result).flatMap((c) => idsOf(c).ways));
+  const wayIds = new Set(Object.values(result as Split).flatMap((c) => idsOf(c).ways));
   expect(wayIds).toEqual(new Set([100]));
 });
 
@@ -231,7 +232,7 @@ test("SplitOSMData: ノードのないセルはチャンクを生成しない", 
 
   // 保存側は boundariesToGet の全セルを保存するので、欠けたセルは呼び出し側が補う
   const covered = new Set(Object.keys(result));
-  const missing = cells.filter((c) => !covered.has(keyOf(Math.round(c.minLat / D_LAT), Math.round(c.minLng / D_LNG))));
+  const missing = cells.filter((c) => !covered.has(`${c.minLat},${c.minLng}`));
   expect(missing.length).toBe(15);
   // 補う値は trim 相当の空データ
   expect(idsOf(trimOSMData(data, missing[0]))).toEqual({ ways: [], nodes: [] });
@@ -280,8 +281,88 @@ test("SplitOSMData: 同じ要素が同じチャンクに重複して入らない
     ],
   });
 
-  for (const c of Object.values(result)) {
+  for (const c of Object.values(result as Split)) {
     const ids = c.elements.map((e) => e.id);
     expect(new Set(ids).size, `重複あり: ${ids}`).toBe(ids.length);
+  }
+});
+
+/**
+ * 回帰: チャンク番号 0 を falsy と判定すると、最初のセルが登録先にならない
+ * (`if (!chunkKey) continue` / `if (!idx)`)。
+ */
+test("SplitOSMData: 最初のセル (index 0) にも way とノードが入る", () => {
+  const result = SplitOSMData({
+    elements: [
+      { type: "node", id: 1, ...centerOf(0, 0) },
+      { type: "node", id: 2, ...centerOf(0, 5) },
+      { type: "way", id: 100, nodes: [1, 2], tags: {} },
+    ],
+  });
+
+  // (0,0) は最初に見つかるチャンクなので内部インデックス 0 になる
+  expect(idsOf(get(result, 0, 0))).toEqual({ ways: [100], nodes: [1, 2] });
+  expect(idsOf(get(result, 0, 5))).toEqual({ ways: [100], nodes: [1, 2] });
+});
+
+/**
+ * 回帰: 同じセルのノードを複数回する way で、way がチャンクに重複して入っていた
+ * (重複排除用配列が長さ 0 で、書き込みが破棄されていた)。
+ */
+test("SplitOSMData: 同一セルのノードを重複参照する way は 1 回しか入らない", () => {
+  const result = SplitOSMData({
+    elements: [
+      { type: "node", id: 1, ...centerOf(0, 0) },
+      { type: "node", id: 2, ...centerOf(0, 0) },
+      { type: "way", id: 9, nodes: [1, 2, 1, 2], tags: {} },
+    ],
+  });
+
+  expect(idsOf(get(result, 0, 0)).ways).toEqual([9]);
+  expect(idsOf(get(result, 0, 0)).nodes).toEqual([1, 2]);
+  expect(get(result, 0, 0).elements).toHaveLength(3);
+});
+
+/**
+ * 回帰: 同じセルの 2 ノードで別々のチャンク名为作られていた
+ * (`if (!idx)` で index 0 が falsy になるため、2 個目以降のノードが別チャンクになっていた)。
+ */
+test("SplitOSMData: 同じセルのノードは 1 つのチャンクにまとめられる", () => {
+  const result = SplitOSMData({
+    elements: [
+      { type: "node", id: 1, ...centerOf(0, 0) },
+      { type: "node", id: 2, ...centerOf(0, 0) },
+      { type: "node", id: 3, ...centerOf(0, 0) },
+      { type: "way", id: 9, nodes: [1, 2, 3], tags: {} },
+    ],
+  });
+
+  expect(Object.keys(result)).toEqual([keyOf(0, 0)]);
+  expect(get(result, 0, 0).elements).toHaveLength(4);
+});
+
+/** 回帰: 重複排除が効いていないと、キャッシュの要素数が実データ比で膨張する */
+test("SplitOSMData: 出力に重複要素が一切ない", () => {
+  const result = SplitOSMData({
+    elements: [
+      { type: "node", id: 1, ...centerOf(0, 0) },
+      { type: "node", id: 2, ...centerOf(0, 1) },
+      { type: "node", id: 3, ...centerOf(1, 0) },
+      { type: "node", id: 4, ...centerOf(1, 1) },
+      // 全セルをまたぎ、各ノードを 2 回ずつ参照する
+      { type: "way", id: 100, nodes: [1, 2, 3, 4, 1, 2, 3, 4], tags: {} },
+      { type: "way", id: 200, nodes: [1, 3, 2, 4], tags: {} },
+    ],
+  });
+
+  for (const [k, chunk] of Object.entries(result as Split)) {
+    const ids = chunk.elements.map((e) => `${e.type}${e.id}`);
+    expect(new Set(ids).size, `重複あり (${k}): ${ids}`).toBe(ids.length);
+  }
+  // 4 セルすべてに way 2 本と 4 ノードが入る
+  expect(Object.keys(result).length).toBe(4);
+  for (const k of Object.keys(result)) {
+    expect(get(result, 0, 0).elements.length).toBe(6);
+    expect(idsOf(result[k]).ways).toEqual([100, 200]);
   }
 });
