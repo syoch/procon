@@ -249,7 +249,7 @@ declare global {
 		};
 
 		type InformationGraph = {
-      type: ("start" | "finish" | "straight" | "left" | "right" | "segments");
+      type: ("start" | "finish" | "straight" | "left" | "right" | "segments")[];
       distance: number[]; // 曲がるまでの累積距離
     };
 	}

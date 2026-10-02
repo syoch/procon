@@ -303,9 +303,10 @@ export function buildInformationGraph(
     });
 
     const dist = getEdgeDistance(mapData, edge, reversed, current, nextNodeId);
+    const isCrossNode = mapData.nodes[nextNodeId]?.type === "MapVCrossNode";
 
     let edgeType = "segments";
-    if (nodeType === "MapVCrossNode") {
+    if (nodeType === "MapVCrossNode" || isCrossNode) {
       if (crossCount === 1) {
         edgeType = "TURN_JUDGE"; // 後でまとめて判定する目印
         crossCount = 0;

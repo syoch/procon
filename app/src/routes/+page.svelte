@@ -43,7 +43,7 @@
 	let isLoading = $state(false);
 	/** 手動・自動を問わず検索を実行済みか（$state ではない） */
 	let hasSearched = false;
-	let informationGraph=$state<App.InformationGraph>({ type: [], distance: [] })
+	let informationGraph=$state<App.InformationGraph>({ type: [], distance: [] });
 
 	const parameterVariants: ParameterVariant[] = [
 		{
@@ -686,7 +686,7 @@
         top: 550px; /* 上部の出発点・終着点情報が収まる位置より下に配置 */
         left: 10px; /* 左側の余白を調整 */
         width: 95%;
-        height: calc(100% -550px); /* パネルの残り全体の高さに合わせる */
+        height: calc(100% - 550px); /* パネルの残り全体の高さに合わせる */
         overflow-y: auto;
         overflow-x: hidden;
 }
