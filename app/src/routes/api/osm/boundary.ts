@@ -1,6 +1,5 @@
-// 浮動小数点数誤差を避けるために 2 の累乗の分割をするといい
-const deltaLatitude = 0.015625; // 1/64
-const deltaLongitude = 0.015625; // 1/64
+import { deltaLatitude, deltaLongitude } from "./grid";
+
 
 export type Boundary = {
     minLat: number,

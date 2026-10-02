@@ -17,6 +17,7 @@ import { GSI_FETCH_BUDGET_MS, MAX_GSI_TILES, requireGsiRoadSegmentsForTiles, til
 import { gsiCacheManager } from '../gsi/fs-cache-manager';
 import { fetchGsiRoadTile } from '../gsi/gsi-fetcher';
 import type { RequestContext } from '$lib/requestContext';
+import { deltaLatitude, deltaLongitude } from '../osm/grid';
 
 /**
  * 経路の辺列から、始点を含むノード列を走行順に復元する。
@@ -104,8 +105,6 @@ function calcTotalDistance(path: App.Coordinate[]) {
     return distance;
 }
 
-const deltaLatitude = 0.015625; // 1/64
-const deltaLongitude = 0.015625; // 1/64
 /**
  * 始点・終点を囲む範囲に足す余白 (格子のマス数)
  * 余白が無いと、範囲の外を回る道 (山道など) が切れて道路網から切り離されたり、
@@ -113,7 +112,7 @@ const deltaLongitude = 0.015625; // 1/64
  */
 const BOUNDARY_MARGIN_CELLS = 1;
 /**
- * 経路探索に使う地図データの範囲を求める (1/64° の格子に合わせ、周りに余白を足す)
+ * 経路探索に使う地図データの範囲を求める
  */
 export function getBoundaryBox(begin: App.Coordinate, end: App.Coordinate): {
     minLat: number;
