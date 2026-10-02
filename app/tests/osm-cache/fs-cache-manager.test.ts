@@ -62,11 +62,12 @@ test("saveCache は書き込み後に一時ファイルを残さない", async (
   expect(files.some((f) => f.includes("-tmp."))).toBe(false);
 });
 
-test("saveCache は空データを保存しない", async () => {
+test("saveCache は空データも保存する (その領域に道が無いのは正当な状態)", async () => {
   await mod.cacheManager.saveCache(cell(0, 0), { elements: [] });
   const files = await readdir(cacheDir);
-  expect(files).toHaveLength(0);
-  expect(await mod.cacheManager.readCache(cell(0, 0))).toBeNull();
+  expect(files).toHaveLength(1);
+  // ヒットになるので、このセルは検索のたびに Overpass を問い合わせない
+  expect(await mod.cacheManager.readCache(cell(0, 0))).toEqual({ elements: [] });
 });
 
 test("saveCache はキャッシュディレクトリが無ければ作る", async () => {
@@ -79,12 +80,13 @@ test("saveCache はキャッシュディレクトリが無ければ作る", asyn
 });
 
 
-test("readCache は空データをキャッシュヒットにしない (残骸の空ファイルで地図が空にならない)", async () => {
+test("readCache は空データもキャッシュヒットとして返す", async () => {
+  // 空をヒットにしないと、道路のない領域は検索のたびに Overpass を問い合わせることになる
   const bound = cell(0, 0);
   const name = `${bound.minLat}-${bound.minLng}-${bound.maxLat}-${bound.maxLng}.json`;
   await writeFile(join(cacheDir, name), JSON.stringify({ elements: [] }), "utf-8");
 
-  expect(await mod.cacheManager.readCache(bound)).toBeNull();
+  expect(await mod.cacheManager.readCache(bound)).toEqual({ elements: [] });
 });
 
 test("saveCache を並行実行しても一時ファイルが残らない (atomic)", async () => {
@@ -314,11 +316,3 @@ test("復元できないファイルは警告する (無音で無視しない)",
   warn.mockRestore();
 });
 
-test("removeCache はファイルを消す (存在しなければ何も起きない)", async () => {
-  const bound = cell(0, 0);
-  await mod.cacheManager.saveCache(bound, SAMPLE);
-  expect(await mod.cacheManager.readCache(bound)).toEqual(SAMPLE);
-  await mod.removeCache(bound);
-  expect(await mod.cacheManager.readCache(bound)).toBeNull();
-  await expect(mod.removeCache(bound)).resolves.toBeUndefined();
-});

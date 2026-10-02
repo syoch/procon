@@ -3,12 +3,7 @@ import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { env } from '$env/dynamic/private';
 import { refreshExpiredOSMCache, ttlMs } from '../osm/expired-cache';
-import {
-  cacheManager,
-  cleanupStaleTempFiles,
-  listCachedOSMCells,
-  removeCache,
-} from '../osm/fs-cache-manager';
+import { cacheManager, cleanupStaleTempFiles, listCachedOSMCells } from '../osm/fs-cache-manager';
 import { fetchOverpassData } from '../osm/osm-fetcher';
 
 /**
@@ -35,13 +30,12 @@ export const POST: RequestHandler = async ({ request }) => {
       listCachedOSMCells,
       fetchOverpassData,
       cacheManager.saveCache,
-      { removeCache, readCache: cacheManager.readCache },
       { ttlMs: ttlMs(env.OSM_CACHE_TTL_DAYS) },
     );
 
     // 非 2xx にしないと `curl --fail-with-body` が成功扱いになり、Overpass の
     // 障害が systemd 上は「成功」に見える
-    if (result.failed > 0 || result.skipped > 0) {
+    if (result.failed > 0) {
       return json(
         { ...result, error: '一部のセルの更新に失敗しました' },
         { status: 500 },

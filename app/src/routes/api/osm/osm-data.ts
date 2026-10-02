@@ -34,15 +34,11 @@ export function mergeOSMData(data: App.OSMData, ...otherDatas: App.OSMData[]) {
  * Overpass を一度も呼ばずに経路探索が恒久的に 500 になる。
  *
  * 未知の `type` は通す（将来 Overpass が要素を追加しても壊れないように）。
- *
- * @param alsoRejectEmpty `readCache` は空をヒットにしないので true、
- *   更新側の応答検証は `skipped` 判定に委ねるので false
  */
-export function isOSMData(value: unknown, alsoRejectEmpty = false): value is App.OSMData {
+export function isOSMData(value: unknown): value is App.OSMData {
     if (typeof value !== "object" || value === null) return false;
     const elements = (value as { elements?: unknown }).elements;
     if (!Array.isArray(elements)) return false;
-    if (alsoRejectEmpty && elements.length === 0) return false;
 
     return elements.every((element) => {
         if (typeof element !== "object" || element === null) return false;

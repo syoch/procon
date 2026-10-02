@@ -42,8 +42,6 @@ export type RefreshResult = {
     scanned: number;
     expired: number;
     refreshed: number;
-    /** 空データだったので保存・削除を見送ったセル数 */
-    skipped: number;
     failed: number;
     /** 1 クエリに含まれた bbox 句の数。HTTP リクエストは常に 1 回 */
     regions: number;
@@ -63,23 +61,11 @@ function isCoveredBy(cell: Boundary, query: Boundary): boolean {
  * `simplifyBoundaries` はリクエスト数ではなく取得データ量の重複を減らすので、
  * 散在セルでは bbox 句（`regions`）が増えても HTTP リクエストは 1 回のまま。
  *
- * 既知の制約: 空でないが不完全な応答はそのまま保存され mtime も更新される。
- * 古いデータを失って次周期まで TTL が解けなくなるが、次の実行で回復する。
  */
 export async function refreshExpiredOSMCache(
     listCached: ListCachedCells,
     fetchOSM: OSMFetcher,
     saveCache: (bound: Boundary, map: App.OSMData) => Promise<void>,
-    {
-        removeCache,
-        readCache,
-    }: {
-        /** 空・壊れたセルを削除する。省略すると削除しないので `{elements:[]}` の
-         *  残骸を掃除できず、毎晩 500 が恒続する */
-        removeCache?: (bound: Boundary) => Promise<void>;
-        /** 空・壊れたデータをヒットにしないので `null` がその判定になる */
-        readCache?: (bound: Boundary) => Promise<App.OSMData | null>;
-    } = {},
     options: { now?: number; ttlMs?: number } = {},
 ): Promise<RefreshResult> {
     const now = options.now ?? Date.now();
@@ -90,7 +76,6 @@ export async function refreshExpiredOSMCache(
         scanned: cells.length,
         expired: 0,
         refreshed: 0,
-        skipped: 0,
         failed: 0,
         regions: 0,
     };
@@ -133,34 +118,8 @@ export async function refreshExpiredOSMCache(
             continue;
         }
 
-        const trimmed = trimOSMData(fetched, cell.bound);
-        if (trimmed.elements.length === 0) {
-            /**
-             * 「trim が空」≠「ディスクのファイルが空」ではない。trimOSMData は
-             * セルの外側ノードしか含まれない応答でも空を返すので、削除条件に
-             * ディスクの状態を使うと一過的な異常応答で有効データを消してしまう。
-             * 空で上書きすると mtime が解けて TTL の間地図が空のままになるため、
-             * saveCache は空を保存せず，这里でも skipped に数える。
-             */
-            if (removeCache && readCache) {
-                // readCache は EACCES などを再スローするので try に入れる。
-                // 判断できなければ削除しない（削除は取り消せない）
-                try {
-                    if ((await readCache(cell.bound)) === null) {
-                        await removeCache(cell.bound);
-                    }
-                } catch (e) {
-                    console.warn(`キャッシュの読み取りまたは削除に失敗しました: ${cell.bound.minLat},${cell.bound.minLng},${cell.bound.maxLat},${cell.bound.maxLng}`, e);
-                    result.failed += 1;
-                    continue;
-                }
-            }
-            result.skipped += 1;
-            continue;
-        }
-
         try {
-            await saveCache(cell.bound, trimmed);
+            await saveCache(cell.bound, trimOSMData(fetched, cell.bound));
             result.refreshed += 1;
         } catch (e) {
             console.warn(`OSM キャッシュの保存に失敗しました: ${cell.bound.minLat},${cell.bound.minLng},${cell.bound.maxLat},${cell.bound.maxLng}`, e);

@@ -47,12 +47,6 @@ const TEMP_FILE_RE = /-tmp\.\d+\.\d+\.json$/;
 let saveSeq = 0;
 
 async function saveCache(bound: Boundary, map: App.OSMData) {
-    // 空で上書きすると mtime が解け、TTL の間そのまま地図が空になる
-    if (map.elements.length === 0) {
-        console.warn(`OSM Cache[${encodeFilename(bound)}] は空のため保存をスキップします`);
-        return;
-    }
-
     const CACHE_DIR = getCacheDir();
     if (existsSync(CACHE_DIR) === false) {
         await mkdir(CACHE_DIR, { recursive: true });
@@ -79,9 +73,8 @@ async function readCache(bound: Boundary): Promise<App.OSMData | null> {
         const content = (await readFile(fileName)).toString();
         const mapData: unknown = JSON.parse(content);
 
-        // 空・壊れたデータはヒットにしない。ファイルがあるのに空ということは
-        // 変更前の実装か異常な経路で書き込まれた残骸なので、再取得させる
-        if (!isOSMData(mapData, true)) {
+        // 壊れたデータだけを弾く。
+        if (!isOSMData(mapData)) {
             return null;
         }
 
@@ -180,18 +173,3 @@ export const cacheManager: OSMCacheManager = {
     saveCache,
     readCache,
 };
-
-/**
- * `readCache` から見えない空ファイルの残骸を消す。放置すると更新ジョブが
- * 毎晩そのセルを `skipped` にし、HTTP 500 が恒続する。
- */
-export async function removeCache(bound: Boundary): Promise<void> {
-    const fileName = join(getCacheDir(), encodeFilename(bound));
-    try {
-        await rm(fileName, { force: true });
-    } catch (e) {
-        if ((e as { code?: string }).code !== "ENOENT") {
-            throw e;
-        }
-    }
-}
