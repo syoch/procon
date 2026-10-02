@@ -2,15 +2,91 @@
     let boots = $state<
         {
             id: string;
-            booted_at: Date;
-            head_hash: string;
+            bootedAt: Date;
+            headHash: string;
+        }[]
+    >([]);
+    let requestsBootId = $state<string | undefined>(undefined);
+    let requests = $state<
+        {
+            id: string;
+            requestedAt: Date;
+            bootId: string;
+            method: string;
+            url: string;
+            performance: object
         }[]
     >([]);
 
     async function updateBoots() {
         const res = await fetch("/api/trace/boots");
-        boots = await res.json();
+        const resultObject = await res.json();
+        if (!(resultObject instanceof Array)) {
+            throw new Error("/api/trace/boots response must be array");
+        }
+        boots = resultObject.map((entry) => {
+            if (typeof entry !== "object") {
+                throw new Error("/api/trace/boots response[] must be object");
+            }
+            const id = entry.id;
+            if (typeof id !== "string") {
+                throw new Error(
+                    "/api/trace/boots response[].id must be string",
+                );
+            }
+            const headHash = entry.headHash;
+            if (typeof headHash !== "string") {
+                throw new Error(
+                    "/api/trace/boots response[].headHash must be string",
+                );
+            }
+            const bootedAt = entry.bootedAt;
+            if (typeof bootedAt !== "number") {
+                throw new Error(
+                    "/api/trace/boots response[].bootedAt must be number",
+                );
+            }
+
+            return { id, headHash: headHash, bootedAt: new Date(bootedAt) };
+        });
     }
+
+    $effect(() => {
+        (async () => {
+            const res = await fetch("/api/trace/boots");
+            const resultObject = await res.json();
+            if (!(resultObject instanceof Array)) {
+                throw new Error("/api/trace/boots response must be array");
+            }
+            boots = resultObject.map((entry) => {
+                if (typeof entry !== "object") {
+                    throw new Error(
+                        "/api/trace/boots response[] must be object",
+                    );
+                }
+                const id = entry.id;
+                if (typeof id !== "string") {
+                    throw new Error(
+                        "/api/trace/boots response[].id must be string",
+                    );
+                }
+                const headHash = entry.headHash;
+                if (typeof headHash !== "string") {
+                    throw new Error(
+                        "/api/trace/boots response[].headHash must be string",
+                    );
+                }
+                const bootedAt = entry.bootedAt;
+                if (typeof bootedAt !== "number") {
+                    throw new Error(
+                        "/api/trace/boots response[].bootedAt must be number",
+                    );
+                }
+
+                return { id, headHash: headHash, bootedAt: new Date(bootedAt) };
+            });
+        })();
+    });
 
     $effect(() => {
         (async () => {
@@ -33,8 +109,8 @@
         {#each boots as boot}
             <tr>
                 <td>{boot.id}</td>
-                <td>{boot.booted_at}</td>
-                <td>{boot.head_hash}</td>
+                <td>{boot.bootedAt.toISOString()}</td>
+                <td>{boot.headHash}</td>
             </tr>
         {/each}
     </tbody>
@@ -60,6 +136,4 @@
     Request Preload
 </button>
 
-<button onclick={updateBoots}>
-    Update Boots
-</button>
+<button onclick={updateBoots}> Update Boots </button>

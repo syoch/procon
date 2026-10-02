@@ -79,10 +79,10 @@ function ensureDatabaseInitialized(): Init {
 
     const query = database.prepare("INSERT INTO boots (id, head_hash, booted_at) VALUES (?, ?, ?)");
     const bootId = randomUUID();
-    const bootedAt = Math.floor(Date.now() / 1000);
+    const bootedAt = Math.floor(Date.now());
     query.run(bootId, HEAD_HASH, bootedAt);
 
-    initialization = {bootId: bootId};
+    initialization = { bootId: bootId };
 
     return initialization;
 }
@@ -105,7 +105,7 @@ export function getBoots() {
         result.push({
             id: row.id,
             headHash: row.head_hash,
-            bootedAt: new Date(row.booted_at * 1000)
+            bootedAt: new Date(row.booted_at)
         });
     }
 
@@ -115,7 +115,7 @@ export function getBoots() {
 export function getRequests(bootId?: string) {
     ensureDatabaseInitialized();
 
-    const res = bootId ? database.prepare("SELECT id from requests WHERE boot_id == ?").all(bootId)
+    const res = bootId ? database.prepare("SELECT id, requested_at, boot_id, method, url, performance from requests WHERE boot_id == ?").all(bootId)
         : database.prepare("SELECT id from requests").all();
     let result: string[] = [];
 
@@ -134,9 +134,9 @@ export function saveRequest(
     url: string,
     performance: { name: string; startTime: number; endTime: number; }[]
 ) {
-    const {bootId} = ensureDatabaseInitialized();
+    const { bootId } = ensureDatabaseInitialized();
     const id = randomUUID();
-    
+
     const query = database.prepare("INSERT INTO requests (id, requested_at, boot_id, method, url, performance) VALUES (?, ?, ?, ?, ?, jsonb(?))");
-    query.run(id, Math.floor(requestedAt.getTime() / 1000), bootId, method, url, JSON.stringify(performance));
+    query.run(id, Math.floor(requestedAt.getTime()), bootId, method, url, JSON.stringify(performance));
 }
