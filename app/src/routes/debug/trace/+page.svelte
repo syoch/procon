@@ -1,5 +1,11 @@
 <script lang="ts">
-    import { isRawBootRecord, isRawRequestRecord, type RequestRecord } from "$lib/tracing";
+    import {
+        isRawBootRecord,
+        isRawRequestRecord,
+        type RequestRecord,
+    } from "$lib/tracing";
+    import RequestCard from "./RequestCard.svelte";
+    import RequestDetail from "./RequestDetail.svelte";
 
     let boots = $state<
         {
@@ -20,10 +26,12 @@
         }
         boots = resultObject.map((entry) => {
             if (!isRawBootRecord(entry)) {
-                throw new Error("/api/trace/boots response[] must be RawBootRecord");
+                throw new Error(
+                    "/api/trace/boots response[] must be RawBootRecord",
+                );
             }
 
-            return {...entry, bootedAt: new Date(entry.bootedAt)};
+            return { ...entry, bootedAt: new Date(entry.bootedAt) };
         });
     }
 
@@ -31,8 +39,8 @@
         (async () => {
             const res = await fetch(
                 requestsBootId
-                    ? `/api/trace/requests?b=${requestsBootId}`
-                    : "/api/trace/requests",
+                    ? `/api/trace/requests?b=${requestsBootId}&s=desc`
+                    : "/api/trace/requests?s=desc",
             );
             const resultObject = await res.json();
             if (!(resultObject instanceof Array)) {
@@ -40,7 +48,7 @@
             }
             requests = resultObject.map((entry) => {
                 if (!isRawRequestRecord(entry)) {
-                    console.log(entry)
+                    console.log(entry);
                     throw new Error(
                         "/api/trace/boots response[] must be RawRequestInfo",
                     );
@@ -65,90 +73,59 @@
     });
 </script>
 
-<table>
-    <thead>
-        <tr>
-            <th>booted_at</th>
-            <th>head_hash</th>
-        </tr>
-    </thead>
-    <tbody>
-        {#each boots as boot}
-            <tr>
-                <td>{boot.bootedAt.toISOString()}</td>
-                <td>{boot.headHash}</td>
-            </tr>
-        {/each}
-    </tbody>
-</table>
-<button onclick={updateBoots}> Update Boots </button>
-
-<table>
-    <thead>
-        <tr>
-            <th>requestedAt</th>
-            <th>method</th>
-            <th>url</th>
-            <th>whole time</th>
-        </tr>
-    </thead>
-    <tbody>
-        {#each requests as req}
-            <tr>
-                <td>
-                    <button
-                        onclick={() => {
-                            selectedRequest = req;
-                        }}
-                    >
-                        {req.requestedAt.toISOString()}
-                    </button>
-                </td>
-                <td>{req.method}</td>
-                <td>{req.url}</td>
-                <td
-                    >{(req.perf.end - req.perf.start).toFixed(2)} ms</td
-                >
-            </tr>
-        {/each}
-    </tbody>
-</table>
-
-{#if selectedRequest}
-    <section>
-        <h2>Request - {selectedRequest.id}</h2>
+<div class="container">
+    <div class="boot-list" style="display: none">
         <table>
             <thead>
                 <tr>
-                    <th>label</th>
-                    <th>value</th>
+                    <th>booted_at</th>
+                    <th>head_hash</th>
                 </tr>
             </thead>
             <tbody>
-                <tr>
-                    <td>Boot ID</td>
-                    <td>{selectedRequest.bootId}</td>
-                </tr>
-                <tr>
-                    <td>Requested At</td>
-                    <td>{selectedRequest.requestedAt}</td>
-                </tr>
-                <tr>
-                    <td>Whole time</td>
-                    <td
-                        >{(
-                            selectedRequest.perf.end -
-                            selectedRequest.perf.start
-                        ).toFixed(2)} ms</td
-                    >
-                </tr>
-                {#each selectedRequest.perf.entries as p}
+                {#each boots as boot}
                     <tr>
-                        <td>{p.name}</td>
-                        <td>{(p.endTime - p.startTime).toFixed(2)} ms</td>
+                        <td>{boot.bootedAt.toISOString()}</td>
+                        <td>{boot.headHash}</td>
                     </tr>
                 {/each}
             </tbody>
         </table>
-    </section>
-{/if}
+        <button onclick={updateBoots}> Update Boots </button>
+    </div>
+
+    <div class="req-list">
+        {#each requests as req}
+            <RequestCard
+                request={req}
+                onclick={() => {
+                    selectedRequest = req;
+                }}
+            />
+        {/each}
+    </div>
+
+    {#if selectedRequest}
+        <div class="req-detail">
+            <RequestDetail request={selectedRequest} />
+        </div>
+    {/if}
+</div>
+
+<style>
+    .container {
+        display: flex;
+        flex-direction: row;
+        gap: 1rem;
+        margin: 10px;
+        .req-list {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+            width: 300px;
+        }
+        .req-detail {
+            margin-top: 1rem;
+        }
+    }
+</style>

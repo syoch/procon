@@ -59,11 +59,11 @@ function ensureDatabaseInitialized(): Init | undefined {
     if (!db_locator) {
         return undefined;
     }
-    
+
     console.log("init() called");
 
     const database = new DatabaseSync(db_locator);
-    
+
     const tables = database.prepare("SELECT tbl_name from sqlite_master WHERE type == 'table'");
     let tables_created: string[] = []
     for (const result of tables.all()) {
@@ -114,13 +114,25 @@ export function getBoots() {
     return result
 }
 
-export function getRequests(bootId?: string) {
+export function getRequests(bootId?: string, sort?: "asc" | "desc") {
     const init = ensureDatabaseInitialized();
     if (!init) return []
     const database = init.database;
 
-    const res = bootId ? database.prepare("SELECT id, requested_at, boot_id, method, url, json_quote(performance) AS perf from requests WHERE boot_id == ?").all(bootId)
-        : database.prepare("SELECT id, requested_at, boot_id, method, url, json_quote(performance) AS perf from requests").all();
+    const queryStmt = "SELECT id, requested_at, boot_id, method, url, json_quote(performance) AS perf from requests";
+    const sortClause = sort === "asc"
+        ? "ORDER BY requested_at ASC"
+        : sort === "desc"
+            ? "ORDER BY requested_at DESC"
+            : "";
+
+    const res = bootId
+        ? database.prepare(`${queryStmt} WHERE boot_id == ? ${sortClause}`).all(bootId)
+        : database.prepare(`${queryStmt} ${sortClause}`).all();
+    console.log("QUERY", queryStmt, bootId, sortClause, res.length);
+    console.log(bootId
+        ? `${queryStmt} WHERE boot_id == ? ${sortClause}`
+        : `${queryStmt} ${sortClause}`)
     let result: RawRequestRecord[] = [];
 
     for (const rawRow of res) {
@@ -156,7 +168,7 @@ export function saveRequest(
 ) {
     const init = ensureDatabaseInitialized();
     if (!init) return []
-    const {database, bootId} = init;
+    const { database, bootId } = init;
 
     const id = randomUUID();
 
