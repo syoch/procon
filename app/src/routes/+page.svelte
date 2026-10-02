@@ -515,9 +515,9 @@
                         accumCross++;
                     }
                     else if (t === "right" || t === "left") {
-                        if (accumCross > 0 || accumDist > 0) {
+                        if (accumDist > 0) {
                             aggregated.push({
-                                type: "直進",
+                                type: "straight",
                                 distance: Math.round(accumDist),
                                 cross: accumCross
                             });
@@ -532,10 +532,10 @@
                         accumDist = 0;
                         accumCross = 0;
                     } 
-                    else if (i === informationGraph.type.length - 1) {
-                        if (accumDist > 0 || accumCross > 0) {
+                    else if (i === informationGraph.type.length - 1|| t === "finish") {
+                        if (accumDist > 0) {
                             aggregated.push({
-                                type: "到着",
+                                type: "finish",
                                 distance: Math.round(accumDist),
                                 cross: accumCross
                             });
@@ -550,8 +550,11 @@
                 <div class="route-row">
                     <img 
                         src={
+							step.type === "straight" ? straightLogo :
                             step.type === "right" ? turnrightLogo :
-                            step.type === "left" ? turnleftLogo : straightLogo
+                            step.type === "left" ? turnleftLogo :
+							step.type === "finish" ? finishpointLogo :
+							""
                         } 
                         alt={step.type} 
                         class="route-icon" 
@@ -559,23 +562,26 @@
 
                     <div class="route-info">
                         <div class="text-title">
-                            {#if step.type === "直進"}
+                            {#if step.type === "straight"}
                                 直進
-                            {:else if step.type === "到着"}
-                                直進
-                            {:else}
-                                {step.type}
+                            {:else if step.type === "finish"}
+                                到着
+                            {:else if step.type === "right"}
+								右折
+							{:else if step.type === "left"}
+								左折
                             {/if}
                         </div>
 
                         <div class="text-sub">
-                            {#if step.type === "直進"}
+                            {#if step.type === "straight"}
                                 {step.distance}m直進
-                            {:else if step.type === "到着"}
-                                {step.distance}m直進
-                            {:else}
-							
-                                {step.cross}個目の交差点を{step.type}
+                            {:else if step.type === "finish"}
+                                {step.distance}m直進で到着
+							{:else if step.type === "right"}
+								{step.cross}個目の交差点を右折
+							{:else if step.type === "left"}
+								{step.cross}個目の交差点を左折
                             {/if}
                         </div>
                     </div>
@@ -685,7 +691,7 @@
         top: 550px; /* 上部の出発点・終着点情報が収まる位置より下に配置 */
         left: 10px; /* 左側の余白を調整 */
         width: 95%;
-        height: calc(100% - 450px); /* パネルの残り全体の高さに合わせる */
+        height: calc(100% - 550px); /* パネルの残り全体の高さに合わせる */
         overflow-y: auto;
         overflow-x: hidden;
 }
