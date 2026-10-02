@@ -2,7 +2,7 @@
 import { type OSMCacheManager, type OSMFetcher } from './types';
 import { mergeOSMData, trimOSMData } from './osm-data';
 import { divideBoundary, simplifyBoundaries, type Boundary } from './boundary';
-import { beginMeasure, measurePerf, measurePerfAsync } from '$lib/performance';
+import type { RequestContext } from '$lib/requestContext';
 
 /**
  * キャッシュを参照しつつ、OSM データを取得する。
@@ -14,14 +14,15 @@ import { beginMeasure, measurePerf, measurePerfAsync } from '$lib/performance';
  *   ignoreResult フラグはシステムリソースを節約する用途に使われる
  */
 export async function requireOSMData(
+  reqCtx: RequestContext,
   boundary: Boundary,
   { readCache, saveCache }: OSMCacheManager,
   fetchOSM: OSMFetcher,
   ignoreResult: boolean = false
 ): Promise<App.OSMData> {
-  const dividedBoundaries = measurePerf("divide", () => divideBoundary(boundary));
+  const dividedBoundaries = reqCtx.measure("divide", () => divideBoundary(boundary));
 
-  const cacheReadMeasurement = beginMeasure("cache");
+  const cacheReadMeasurement = reqCtx.begin("cache");
   const boundariesToGet: Boundary[] = [];
   const cachedChunks: App.OSMData[] = [];
   for (const b of dividedBoundaries) {
@@ -36,10 +37,10 @@ export async function requireOSMData(
   cacheReadMeasurement();
 
   if (boundariesToGet.length > 0) {
-    const boundariesToQuery = measurePerf("simplify", () => simplifyBoundaries(boundariesToGet));
-    const fetchedData = await measurePerfAsync("fetch", () => fetchOSM(boundariesToQuery));
+    const boundariesToQuery = reqCtx.measure("simplify", () => simplifyBoundaries(boundariesToGet));
+    const fetchedData = await reqCtx.measureAsync("fetch", () => fetchOSM(boundariesToQuery));
 
-    const saveCacheMeasurement = beginMeasure("saveCache");
+    const saveCacheMeasurement = reqCtx.begin("saveCache");
     for (const b of boundariesToGet) {
       const subData = trimOSMData(fetchedData, b);
       await saveCache(b, subData);
@@ -54,7 +55,7 @@ export async function requireOSMData(
   }
 
   const mergedData: App.OSMData = { elements: [] };
-  measurePerf("merge", () => mergeOSMData(mergedData, ...cachedChunks));
+  reqCtx.measure("merge", () => mergeOSMData(mergedData, ...cachedChunks));
 
-  return measurePerf("trim", () => trimOSMData(mergedData, boundary));
+  return reqCtx.measure("trim", () => trimOSMData(mergedData, boundary));
 }

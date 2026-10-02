@@ -5,8 +5,7 @@ import { z } from 'zod';
 import { cacheManager } from '../osm/fs-cache-manager';
 import { fetchOverpassData } from '../osm/osm-fetcher';
 import { requireOSMData } from '../osm';
-import { endPerfMeasure, startPerfMeasure } from '$lib/performance';
-
+import { RequestContext } from '$lib/requestContext';
 
 const requestSchema = z.object({
   minLat: z.number(),
@@ -15,7 +14,7 @@ const requestSchema = z.object({
   maxLng: z.number(),
 });
 export const POST: RequestHandler = async ({ request }) => {
-  startPerfMeasure();
+  const reqCtx = new RequestContext();
   try {
     const body = await request.json();
     const query = requestSchema.safeParse(body);
@@ -24,13 +23,13 @@ export const POST: RequestHandler = async ({ request }) => {
     }
 
     // preload を目的としたリクエストなので、結果を無視する
-    await requireOSMData(query.data, cacheManager, fetchOverpassData, true);
+    await requireOSMData(reqCtx, query.data, cacheManager, fetchOverpassData, true);
 
     return json({ success: true });
   } catch (error) {
     console.error(error);
     return json({ error: 'Failed to fetch OSM data' }, { status: 500 });
   } finally {
-    endPerfMeasure();
+    reqCtx.endMeasurement();
   }
 };

@@ -4,7 +4,9 @@ import type { RequestHandler } from './$types';
 import { z } from 'zod';
 import { doPathFind } from './pathFind';
 import { MODE_IDS, MODE_PROFILES, type ModeId } from '$lib/mode_profiles';
-import { endPerfMeasure, startPerfMeasure } from '$lib/performance';
+import { RequestContext } from '$lib/requestContext';
+
+
 
 const coordinateSchema = z.object({
     lat: z.number(),
@@ -42,11 +44,11 @@ export const POST: RequestHandler = async ({ request }) => {
     }
     const req = query.data;
 
-    startPerfMeasure();
+    const perfCtx = new RequestContext();
     const res = "mode" in req
-        ? await doPathFind(req.begin, req.end, req.parameters ?? MODE_PROFILES[req.mode].defaultParameters, [], req.mode)
-        : await doPathFind(req.begin, req.end, req.parameters, req.wayHighway);
-    endPerfMeasure();
+        ? await doPathFind(perfCtx, req.begin, req.end, req.parameters ?? MODE_PROFILES[req.mode].defaultParameters, [], req.mode)
+        : await doPathFind(perfCtx, req.begin, req.end, req.parameters, req.wayHighway);
+    perfCtx.endMeasurement();
 
     return json(res)
 };

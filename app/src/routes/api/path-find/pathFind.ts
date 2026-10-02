@@ -16,6 +16,7 @@ import { applyGsiWidths, GsiRoadIndex, measureSegmentsWidthCoverage, removeNarro
 import { GSI_FETCH_BUDGET_MS, MAX_GSI_TILES, requireGsiRoadSegmentsForTiles, tileKey, tilesAlongPath, type GsiTile } from '../gsi';
 import { gsiCacheManager } from '../gsi/fs-cache-manager';
 import { fetchGsiRoadTile } from '../gsi/gsi-fetcher';
+import type { RequestContext } from '$lib/requestContext';
 
 /**
  * 経路の辺列から、始点を含むノード列を走行順に復元する。
@@ -164,6 +165,7 @@ export type PathFindResult =
  * @param mode 移動モード。指定した場合、通行可否・一方通行の扱いは mode_profiles.ts のルールで決まる
  */
 export async function doPathFind(
+    reqCtx: RequestContext,
     begin: App.Coordinate,
     end: App.Coordinate,
     parameters: App.SearchParameters,
@@ -175,7 +177,7 @@ export async function doPathFind(
     }
 
     const bbox = getBoundaryBox(begin, end);
-    const rawOsmData = await requireOSMData(bbox, cacheManager, fetchOverpassData);
+    const rawOsmData = await requireOSMData(reqCtx, bbox, cacheManager, fetchOverpassData);
     const profile = mode ? MODE_PROFILES[mode] : undefined;
     // mode 指定時はモードのルールで、未指定時は従来どおり highway 種別だけで絞り込む
     const osmData = profile
