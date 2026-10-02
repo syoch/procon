@@ -46,6 +46,12 @@ export function isRawBootRecord(info: any): info is RawBootRecord {
     return true;
 }
 
+export type BootRecord = {
+    id: string,
+    headHash: string,
+    bootedAt: Date
+};
+
 export type RawRequestRecord = {
     id: string
     requestedAt: number

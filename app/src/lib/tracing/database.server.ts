@@ -129,10 +129,7 @@ export function getRequests(bootId?: string, sort?: "asc" | "desc") {
     const res = bootId
         ? database.prepare(`${queryStmt} WHERE boot_id == ? ${sortClause}`).all(bootId)
         : database.prepare(`${queryStmt} ${sortClause}`).all();
-    console.log("QUERY", queryStmt, bootId, sortClause, res.length);
-    console.log(bootId
-        ? `${queryStmt} WHERE boot_id == ? ${sortClause}`
-        : `${queryStmt} ${sortClause}`)
+
     let result: RawRequestRecord[] = [];
 
     for (const rawRow of res) {
