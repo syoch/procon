@@ -4,7 +4,7 @@ import type { RequestHandler } from './$types';
 import { z } from 'zod';
 import { doPathFind } from './pathFind';
 import { MODE_IDS, MODE_PROFILES, type ModeId } from '$lib/mode_profiles';
-import { RequestContext } from '$lib/requestContext';
+import { RequestContext } from '$lib/tracing/requestContext';
 
 
 

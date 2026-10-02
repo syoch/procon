@@ -16,7 +16,7 @@ import { applyGsiWidths, GsiRoadIndex, measureSegmentsWidthCoverage, removeNarro
 import { GSI_FETCH_BUDGET_MS, MAX_GSI_TILES, requireGsiRoadSegmentsForTiles, tileKey, tilesAlongPath, type GsiTile } from '../gsi';
 import { gsiCacheManager } from '../gsi/fs-cache-manager';
 import { fetchGsiRoadTile } from '../gsi/gsi-fetcher';
-import type { RequestContext } from '$lib/requestContext';
+import type { RequestContext } from '$lib/tracing/requestContext';
 import { deltaLatitude, deltaLongitude } from '../osm/grid';
 
 /**

@@ -1,4 +1,4 @@
-import { saveRequest } from "./tracing";
+import { saveRequest } from "./database.server";
 
 export class RequestContext {
   startTime: number | undefined;
@@ -16,8 +16,12 @@ export class RequestContext {
     if (this.startTime === undefined) {
       throw new Error("Performance measurement has not been started.");
     }
-    
-    saveRequest(requestedAt, method, url, this.measuredEntries);
+
+    saveRequest(requestedAt, method, url, {
+      entries: this.measuredEntries,
+      start: this.startTime,
+      end: performance.now()
+    });
   }
 
   measure<T>(name: string, fn: () => T): T {

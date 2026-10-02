@@ -5,7 +5,7 @@ import { z } from 'zod';
 import { cacheManager } from '../osm/fs-cache-manager';
 import { fetchOverpassData } from '../osm/osm-fetcher';
 import { requireOSMData } from '../osm';
-import { RequestContext } from '$lib/requestContext';
+import { RequestContext } from '$lib/tracing/requestContext';
 
 const requestSchema = z.object({
   minLat: z.number(),

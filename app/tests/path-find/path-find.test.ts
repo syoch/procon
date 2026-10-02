@@ -23,7 +23,7 @@ import { doPathFind, getBoundaryBox, MAX_SNAP_DISTANCE_M } from "../../src/route
 import { tilesAlongPath, tilesForBoundary } from "../../src/routes/api/gsi";
 import { MODE_PROFILES } from "../../src/lib/mode_profiles";
 import type { GsiRoadSegment } from "../../src/lib/road_width";
-import { RequestContext } from "$lib/requestContext";
+import { RequestContext } from "$lib/tracing/requestContext";
 
 const CELL = 0.015625;
 const node = (id: number, lat: number, lon: number): App.OSMRawNode => ({ type: "node", id, lat, lon });
