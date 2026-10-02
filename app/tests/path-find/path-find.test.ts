@@ -23,6 +23,7 @@ import { doPathFind, getBoundaryBox, MAX_SNAP_DISTANCE_M } from "../../src/route
 import { tilesAlongPath, tilesForBoundary } from "../../src/routes/api/gsi";
 import { MODE_PROFILES } from "../../src/lib/mode_profiles";
 import type { GsiRoadSegment } from "../../src/lib/road_width";
+import { RequestContext } from "$lib/requestContext";
 
 const CELL = 0.015625;
 const node = (id: number, lat: number, lon: number): App.OSMRawNode => ({ type: "node", id, lat, lon });
@@ -54,7 +55,7 @@ describe("doPathFind: 到達できない場合のエラー", () => {
 
   test("道のすぐ近くなら経路が出て、吸着のずれも返す", async () => {
     mapData = baseMap();
-    const res = await doPathFind({ lat: 0.0001, lng: 0.001 }, { lat: 0.0001, lng: 0.009 }, car, [], "car");
+    const res = await doPathFind(new RequestContext(), { lat: 0.0001, lng: 0.001 }, { lat: 0.0001, lng: 0.009 }, car, [], "car");
     if (!res.found) throw new Error(res.message);
     expect(res.coords.length).toBeGreaterThan(0);
     expect(res.snapDistance.begin).toBeLessThan(20);
@@ -64,13 +65,13 @@ describe("doPathFind: 到達できない場合のエラー", () => {
   test("目的地が道路網から切り離された道の上なら、遠くの道に黙って吸着せず「到達できない」を返す", async () => {
     mapData = baseMap();
     // 終点は孤立した道 (lat 0.009) の上。最大の道路網 (lat 0) までは約 1km
-    const res = await doPathFind({ lat: 0, lng: 0.001 }, { lat: 0.009, lng: 0.005 }, car, [], "car");
+    const res = await doPathFind(new RequestContext(), { lat: 0, lng: 0.001 }, { lat: 0.009, lng: 0.005 }, car, [], "car");
     expect(res).toMatchObject({ found: false, reason: "END_UNREACHABLE" });
   });
 
   test(`出発地の ${MAX_SNAP_DISTANCE_M}m 以内に通れる道が無ければ「到達できない」を返す`, async () => {
     mapData = baseMap();
-    const res = await doPathFind({ lat: -0.005, lng: 0.005 }, { lat: 0, lng: 0.009 }, car, [], "car");
+    const res = await doPathFind(new RequestContext(), { lat: -0.005, lng: 0.005 }, { lat: 0, lng: 0.009 }, car, [], "car");
     expect(res).toMatchObject({ found: false, reason: "BEGIN_UNREACHABLE" });
   });
 
@@ -82,7 +83,7 @@ describe("doPathFind: 到達できない場合のエラー", () => {
       ],
     };
     // 一方通行 (西 → 東) を東から西へ向かう
-    const res = await doPathFind({ lat: 0, lng: 0.009 }, { lat: 0, lng: 0.001 }, car, [], "car");
+    const res = await doPathFind(new RequestContext(), { lat: 0, lng: 0.009 }, { lat: 0, lng: 0.001 }, car, [], "car");
     expect(res).toMatchObject({ found: false, reason: "NO_ROUTE" });
   });
 
@@ -94,8 +95,8 @@ describe("doPathFind: 到達できない場合のエラー", () => {
       ],
     };
     const bicycle = MODE_PROFILES.bicycle.defaultParameters;
-    expect(await doPathFind({ lat: 0, lng: 0.009 }, { lat: 0, lng: 0.001 }, bicycle, [], "bicycle")).toMatchObject({ found: true });
-    expect(await doPathFind({ lat: 0, lng: 0.009 }, { lat: 0, lng: 0.001 }, car, [], "car")).toMatchObject({ found: false });
+    expect(await doPathFind(new RequestContext(), { lat: 0, lng: 0.009 }, { lat: 0, lng: 0.001 }, bicycle, [], "bicycle")).toMatchObject({ found: true });
+    expect(await doPathFind(new RequestContext(), { lat: 0, lng: 0.009 }, { lat: 0, lng: 0.001 }, car, [], "car")).toMatchObject({ found: false });
   });
 
   test("車は舗装された track の先にある目的地 (展望台など) にも行ける", async () => {
@@ -106,7 +107,7 @@ describe("doPathFind: 到達できない場合のエラー", () => {
         node(1, 0, 0), node(2, 0, 0.005), node(3, 0.004, 0.009),
       ],
     };
-    const res = await doPathFind({ lat: 0, lng: 0.001 }, { lat: 0.004, lng: 0.009 }, car, [], "car");
+    const res = await doPathFind(new RequestContext(), { lat: 0, lng: 0.001 }, { lat: 0.004, lng: 0.009 }, car, [], "car");
     expect(res).toMatchObject({ found: true });
   });
 
@@ -124,8 +125,8 @@ describe("doPathFind: 到達できない場合のエラー", () => {
     const maxLat = (res: Awaited<ReturnType<typeof doPathFind>>) =>
       res.found ? Math.max(...res.coords.map((c) => c.lat)) : NaN;
     const begin = { lat: 0, lng: -0.0015 }, end = { lat: 0, lng: 0.0115 };
-    expect(maxLat(await doPathFind(begin, end, car, [], "car"))).toBeGreaterThan(0.0019);
-    expect(maxLat(await doPathFind(begin, end, MODE_PROFILES.walk.defaultParameters, [], "walk"))).toBeLessThan(0.0001);
+    expect(maxLat(await doPathFind(new RequestContext(), begin, end, car, [], "car"))).toBeGreaterThan(0.0019);
+    expect(maxLat(await doPathFind(new RequestContext(), begin, end, MODE_PROFILES.walk.defaultParameters, [], "walk"))).toBeLessThan(0.0001);
   });
 
   describe("国土地理院の幅員", () => {
@@ -148,25 +149,25 @@ describe("doPathFind: 到達できない場合のエラー", () => {
       mapData = twoRoads();
       // 直進の residential は 3m-5.5m (代表値 4m)
       gsiSegments = [{ begin: { lat: 0, lng: 0 }, end: { lat: 0, lng: 0.01 }, width: 4 }];
-      expect(maxLat(await doPathFind(begin, end, truck, [], "truck"))).toBeGreaterThan(0.0029);
-      expect(maxLat(await doPathFind(begin, end, car, [], "car"))).toBeLessThan(0.0001);
+      expect(maxLat(await doPathFind(new RequestContext(), begin, end, truck, [], "truck"))).toBeGreaterThan(0.0029);
+      expect(maxLat(await doPathFind(new RequestContext(), begin, end, car, [], "car"))).toBeLessThan(0.0001);
     });
 
     test("幅が十分なら大型トラックも通る", async () => {
       mapData = twoRoads();
       gsiSegments = [{ begin: { lat: 0, lng: 0 }, end: { lat: 0, lng: 0.01 }, width: 8 }];
-      expect(maxLat(await doPathFind(begin, end, truck, [], "truck"))).toBeLessThan(0.0001);
+      expect(maxLat(await doPathFind(new RequestContext(), begin, end, truck, [], "truck"))).toBeLessThan(0.0001);
     });
 
     test("幅員の網羅率を応答に含める (国土地理院のデータが無ければ 0)", async () => {
       mapData = twoRoads();
       gsiSegments = [{ begin: { lat: 0, lng: 0 }, end: { lat: 0, lng: 0.01 }, width: 8 }];
-      const withGsi = await doPathFind(begin, end, truck, [], "truck");
+      const withGsi = await doPathFind(new RequestContext(), begin, end, truck, [], "truck");
       expect(withGsi.found && withGsi.widthCoverage.known).toBe(1);
       expect(withGsi.found && withGsi.widthCoverage.ratio).toBeGreaterThan(0);
 
       gsiSegments = [];
-      const withoutGsi = await doPathFind(begin, end, truck, [], "truck");
+      const withoutGsi = await doPathFind(new RequestContext(), begin, end, truck, [], "truck");
       expect(withoutGsi.found && withoutGsi.widthCoverage.ratio).toBe(0);
     });
 
@@ -182,7 +183,7 @@ describe("doPathFind: 到達できない場合のエラー", () => {
         ],
       };
       gsiSegments = [{ begin: { lat: 0, lng: 0 }, end: { lat: 0, lng: 0.01 }, width: 8 }];
-      expect(maxLat(await doPathFind(begin, end, car, [], "car"))).toBeLessThan(0.0001);
+      expect(maxLat(await doPathFind(new RequestContext(), begin, end, car, [], "car"))).toBeLessThan(0.0001);
       gsiSegments = [];
     });
   });
@@ -202,7 +203,7 @@ describe("doPathFind: 国土地理院のタイルは経路の周りだけ使う"
     mapData = longRoad();
     gsiSegments = [];
     requestedTiles = [];
-    const res = await doPathFind(begin, end, car, [], "car");
+    const res = await doPathFind(new RequestContext(), begin, end, car, [], "car");
     expect(res.found).toBe(true);
     expect(requestedTiles).toHaveLength(2);
 
@@ -219,7 +220,7 @@ describe("doPathFind: 国土地理院のタイルは経路の周りだけ使う"
     mapData = longRoad();
     gsiSegments = [];
     requestedTiles = [];
-    await doPathFind(begin, end, car, [], "car");
+    await doPathFind(new RequestContext(), begin, end, car, [], "car");
     const all = tilesForBoundary(getBoundaryBox(begin, end));
     expect(requestedTiles[requestedTiles.length - 1].length).toBeLessThan(all.length);
   });
