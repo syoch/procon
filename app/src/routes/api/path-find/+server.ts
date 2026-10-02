@@ -4,6 +4,9 @@ import type { RequestHandler } from './$types';
 import { z } from 'zod';
 import { doPathFind } from './pathFind';
 import { MODE_IDS, MODE_PROFILES, type ModeId } from '$lib/mode_profiles';
+import { RequestContext } from '$lib/requestContext';
+
+
 
 const coordinateSchema = z.object({
     lat: z.number(),
@@ -40,9 +43,12 @@ export const POST: RequestHandler = async ({ request }) => {
         return json({ error: 'Invalid request body', details: query.error.issues }, { status: 400 });
     }
     const req = query.data;
+
+    const perfCtx = new RequestContext();
     const res = "mode" in req
-        ? await doPathFind(req.begin, req.end, req.parameters ?? MODE_PROFILES[req.mode].defaultParameters, [], req.mode)
-        : await doPathFind(req.begin, req.end, req.parameters, req.wayHighway);
+        ? await doPathFind(perfCtx, req.begin, req.end, req.parameters ?? MODE_PROFILES[req.mode].defaultParameters, [], req.mode)
+        : await doPathFind(perfCtx, req.begin, req.end, req.parameters, req.wayHighway);
+    perfCtx.endMeasurement();
 
     return json(res)
 };

@@ -1,21 +1,20 @@
 import { json } from '@sveltejs/kit';
 
 import type { RequestHandler } from './$types';
-import { trimOSMDataByWayHighway } from './osm-data';
 import { z } from 'zod';
-import { cacheManager } from './fs-cache-manager';
-import { fetchOverpassData } from './osm-fetcher';
-import { requireOSMData } from '.';
-
+import { cacheManager } from '../osm/fs-cache-manager';
+import { fetchOverpassData } from '../osm/osm-fetcher';
+import { requireOSMData } from '../osm';
+import { RequestContext } from '$lib/requestContext';
 
 const requestSchema = z.object({
   minLat: z.number(),
   minLng: z.number(),
   maxLat: z.number(),
   maxLng: z.number(),
-  wayHighway: z.array(z.string()),
 });
 export const POST: RequestHandler = async ({ request }) => {
+  const reqCtx = new RequestContext();
   try {
     const body = await request.json();
     const query = requestSchema.safeParse(body);
@@ -23,13 +22,14 @@ export const POST: RequestHandler = async ({ request }) => {
       return json({ error: 'Invalid request body', details: query.error.issues }, { status: 400 });
     }
 
-    const osmData = await requireOSMData(query.data, cacheManager, fetchOverpassData);
+    // preload を目的としたリクエストなので、結果を無視する
+    await requireOSMData(reqCtx, query.data, cacheManager, fetchOverpassData, true);
 
-    const result = trimOSMDataByWayHighway(osmData, query.data.wayHighway);
-
-    return json(result);
+    return json({ success: true });
   } catch (error) {
     console.error(error);
     return json({ error: 'Failed to fetch OSM data' }, { status: 500 });
+  } finally {
+    reqCtx.endMeasurement();
   }
 };

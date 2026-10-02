@@ -31,12 +31,10 @@
 	let beginMarker: SelectMarker | null = $state(null);
 	let endMarker: SelectMarker | null = $state(null);
 
-	let mapData = $state<App.SearchGraph>({ edges: {}, nodes: {} });
 	let pathResult: App.Coordinate[] = $state([]);
 	let sharpTurns: SharpTurn[] = $state([]);
 	let totalDistance = $state<number | undefined>(undefined);
 	let totalIntersections = $state<number | undefined>(undefined);
-	let isLoading = $state(false);
 	/** 手動・自動を問わず検索を実行済みか（$state ではない） */
 	let hasSearched = false;
 
@@ -63,12 +61,6 @@
 
 	function onClick(lat: number, lng: number) {
 		console.debug("Clicked at", lat, lng);
-		const res = findNearestEdge(mapData, { lat, lng });
-		if (!res) {
-			console.error("No edge found");
-			return;
-		}
-
 		if (!ctx.state.locationSelection) {
 			return; // no selection mode
 		}
@@ -78,8 +70,8 @@
 				? ctx.state.begin
 				: ctx.state.end;
 		locationState.state = "confirmed";
-		locationState.query = `${res.projection.lat}, ${res.projection.lng}`;
-		ctx.state.setCoordinate(ctx.state.locationSelection, res.projection);
+		locationState.query = `${lat}, ${lat}`;
+		ctx.state.setCoordinate(ctx.state.locationSelection, {lat, lng});
 	}
 	$effect(() => {
 		const coordinate = ctx.state.coordinate("begin");
@@ -105,11 +97,6 @@
 			error = "終点が指定されていません";
 			return false;
 		}
-		if (Object.keys(mapData.edges).length === 0) {
-			error = "地図データを読み込み中です。少し待って再度お試しください";
-			console.error("[startSearch]", error);
-			return false;
-		}
 		error = null;
 		hasSearched = true;
 		pathResult = [];
@@ -117,7 +104,6 @@
 		totalIntersections = 0;
 		sharpTurns = [];
 
-		isLoading = true;
 		// 送るのは重みの数値だけ (プリセットの表示名などは含めない)
 		const { lambda, mix_score_weight, view_score_weight, width_score_weight } = ctx.searchParameters;
 		const parameters = { lambda, mix_score_weight, view_score_weight, width_score_weight };
@@ -146,7 +132,6 @@
 						},
 			),
 		});
-		isLoading = false;
 
 		if (!res.ok) {
 			error = `/api/path-find API エラー: ${res.status}`;
@@ -173,41 +158,7 @@
 		}
 		return true;
 	}
-	const doLoadMap = async (
-		minLat: number,
-		minLng: number,
-		maxLat: number,
-		maxLng: number,
-	) => {
-		const osmGraph = await loadOSMMap(minLat, minLng, maxLat, maxLng);
-		if (osmGraph instanceof Error) {
-			throw new Error(osmGraph.message, { cause: osmGraph });
-		}
-		assertGraph("Retrieved OSM graph", osmGraph);
-
-		console.time("CrossConvert");
-		const ccGraph = CrossConvert(osmGraph);
-		console.timeEnd("CrossConvert");
-		if (ccGraph instanceof Error) {
-			throw new Error(ccGraph.message, { cause: ccGraph });
-		}
-		assertGraph("CrossConverted graph", ccGraph);
-
-		console.time("fold2DegreeEdges");
-		const foldGraph = fold2DegreeEdges(ccGraph);
-		console.timeEnd("fold2DegreeEdges");
-		if (foldGraph instanceof Error) {
-			throw new Error(foldGraph.message, { cause: foldGraph });
-		}
-		assertGraph("Folded graph", foldGraph);
-
-		return foldGraph;
-	};
-	let latestCallId = 0;
 	async function loadMap() {
-		const callId = latestCallId + 1;
-		latestCallId += 1;
-
 		const bounds = map?.getBounds();
 		if (!bounds) {
 			console.error("Failed to load map (bounds is falsy)");
@@ -218,22 +169,22 @@
 		const maxLat = bounds.getNorth();
 		const maxLng = bounds.getEast();
 
-		isLoading = true;
 		try {
-			const foldGraph = await doLoadMap(minLat, minLng, maxLat, maxLng);
+			await fetch("/api/preload-osm", {
+    		method: "POST",
+    		headers: { "Content-Type": "application/json" },
+    		body: JSON.stringify({
+    		  minLat,
+    		  minLng,
+    		  maxLat,
+    		  maxLng
+    		}),
+  		});
 
-			// 古い応答が返ってきた場合無視する
-			if (latestCallId != callId) {
-				return;
-			}
-			mapData = foldGraph;
 		} catch (e) {
 			console.error("Error loading map:", e);
 		} finally {
-			// 最新のリクエストのみ読み込み完了として扱う
-			if (latestCallId == callId) {
-				isLoading = false;
-			}
+			
 		}
 	}
 
@@ -264,8 +215,7 @@
 		if (!ctx.state.booted) return;
 		if (ctx.state.appState !== "menu-result") return;
 		if (hasSearched) return;
-		if (Object.keys(mapData.edges).length === 0) return;
-
+		
 		(async () => {
 			if (!(await startSearch())) {
 				// 経路が出せない共有リンクでは詳細メニューへ戻す
@@ -386,10 +336,6 @@
 			in:fly={{ delay: 500, y: -600, duration: 958, easing: backOut }}
 		/>
 	</button>
-{/if}
-
-{#if isLoading}
-	<SearchingOverlay />
 {/if}
 
 {#if error}

@@ -16,6 +16,8 @@ import { applyGsiWidths, GsiRoadIndex, measureSegmentsWidthCoverage, removeNarro
 import { GSI_FETCH_BUDGET_MS, MAX_GSI_TILES, requireGsiRoadSegmentsForTiles, tileKey, tilesAlongPath, type GsiTile } from '../gsi';
 import { gsiCacheManager } from '../gsi/fs-cache-manager';
 import { fetchGsiRoadTile } from '../gsi/gsi-fetcher';
+import type { RequestContext } from '$lib/requestContext';
+import { deltaLatitude, deltaLongitude } from '../osm/grid';
 
 /**
  * 経路の辺列から、始点を含むノード列を走行順に復元する。
@@ -103,8 +105,6 @@ function calcTotalDistance(path: App.Coordinate[]) {
     return distance;
 }
 
-const deltaLatitude = 0.015625; // 1/64
-const deltaLongitude = 0.015625; // 1/64
 /**
  * 始点・終点を囲む範囲に足す余白 (格子のマス数)
  * 余白が無いと、範囲の外を回る道 (山道など) が切れて道路網から切り離されたり、
@@ -112,7 +112,7 @@ const deltaLongitude = 0.015625; // 1/64
  */
 const BOUNDARY_MARGIN_CELLS = 1;
 /**
- * 経路探索に使う地図データの範囲を求める (1/64° の格子に合わせ、周りに余白を足す)
+ * 経路探索に使う地図データの範囲を求める
  */
 export function getBoundaryBox(begin: App.Coordinate, end: App.Coordinate): {
     minLat: number;
@@ -164,6 +164,7 @@ export type PathFindResult =
  * @param mode 移動モード。指定した場合、通行可否・一方通行の扱いは mode_profiles.ts のルールで決まる
  */
 export async function doPathFind(
+    reqCtx: RequestContext,
     begin: App.Coordinate,
     end: App.Coordinate,
     parameters: App.SearchParameters,
@@ -175,12 +176,12 @@ export async function doPathFind(
     }
 
     const bbox = getBoundaryBox(begin, end);
-    const rawOsmData = await requireOSMData(bbox, cacheManager, fetchOverpassData);
+    const rawOsmData = await requireOSMData(reqCtx, bbox, cacheManager, fetchOverpassData);
     const profile = mode ? MODE_PROFILES[mode] : undefined;
     // mode 指定時はモードのルールで、未指定時は従来どおり highway 種別だけで絞り込む
     const osmData = profile
-        ? trimOSMDataByMode(rawOsmData, profile)
-        : trimOSMDataByWayHighway(rawOsmData, wayHighway);
+        ? reqCtx.measure("trim", () => trimOSMDataByMode(rawOsmData, profile))
+        : reqCtx.measure("trim", () => trimOSMDataByWayHighway(rawOsmData, wayHighway));
     // 国土地理院の幅員は、探索範囲全体ではなく経路の周りのタイルだけ使う (長い経路でタイル数の上限を超えないようにするため)。
     // 1. 始点・終点の周りのタイルで探索する
     // 2. 見つかった経路の周りのタイルを足して、もう一度探索する (経路が変わったら、その周りのタイルも足して繰り返す)
@@ -201,7 +202,7 @@ export async function doPathFind(
         const gsiSegments = await requireGsiRoadSegmentsForTiles([...tiles.values()], gsiCacheManager, fetchGsiRoadTile, {
             budgetMs: Math.max(0, deadline - Date.now()),
         });
-        result = searchWithWidths({ begin, end, parameters, profile, osmData, rawOsmData, bbox }, gsiSegments);
+        result = searchWithWidths(reqCtx, { begin, end, parameters, profile, osmData, rawOsmData, bbox }, gsiSegments);
         if (!result.found) break;
 
         const newTiles = tilesAlongPath(result.coords).filter((tile) => !tiles.has(tileKey(tile)));
@@ -260,6 +261,7 @@ type SearchContext = {
  * (幅員の補完・狭い道の除去でグラフを書き換えるため、毎回 osmData からグラフを作り直す)
  */
 function searchWithWidths(
+    reqCtx: RequestContext,
     { begin, end, parameters, profile, osmData, rawOsmData, bbox }: SearchContext,
     gsiSegments: GsiRoadSegment[],
 ): PathFindResult {
@@ -272,11 +274,11 @@ function searchWithWidths(
         removeNarrowEdges(osmGraph, profile.minRoadWidth);
     }
 
-    const ccGraph = CrossConvert(osmGraph);
+    const ccGraph = reqCtx.measure("crossConvert", () => CrossConvert(osmGraph));
     if (ccGraph instanceof Error) {
         throw ccGraph;
     }
-    const mapData = fold2DegreeEdges(ccGraph);
+    const mapData = reqCtx.measure("fold2deg", () => fold2DegreeEdges(ccGraph));
     if (mapData instanceof Error) {
         throw mapData;
     }
@@ -310,11 +312,12 @@ function searchWithWidths(
         };
     }
 
-    const pathEdges = pathFind(mapData, parameters, [beginNodeId], [endNodeId], {
+    const searchOptions = {
         ignoreOneway: profile?.ignoreOneway,
         highwayCostFactor: profile?.highwayCostFactor,
         scoring: profile?.scoring,
-    });
+    };
+    const pathEdges = reqCtx.measure("pathFind", () => pathFind(mapData, parameters, [beginNodeId], [endNodeId], searchOptions));
     if (pathEdges.length <= 0) {
         return {
             found: false,

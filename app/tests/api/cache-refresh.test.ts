@@ -151,6 +151,6 @@ test("更新対象が無ければ 2xx", async () => {
   const body = await res.json();
 
   expect(res.status).toBe(200);
-  expect(body).toMatchObject({ scanned: 0, expired: 0, refreshed: 0, skipped: 0, failed: 0 });
+  expect(body).toMatchObject({ scanned: 0, expired: 0, refreshed: 0, failed: 0 });
   await rm(dir, { recursive: true, force: true });
 });

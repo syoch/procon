@@ -1,0 +1,171 @@
+import { CrossConvert } from "../../src/lib/cross_transform";
+import { fold2DegreeEdges } from "../../src/lib/fold2degree";
+import { largestComponentEdges } from "../../src/lib/utils/graph";
+import { transformOSMMapToOSMGraph } from "../../src/lib/map_loader/osm";
+import { transientSplit } from "../../src/lib/transient-split";
+import { pathFind } from "../../src/lib/path_finder";
+import { collectRoadJunctions, detectSharpTurnsOnPath } from "../../src/lib/sharp_turn";
+import { measureSegmentsWidthCoverage } from "../../src/lib/road_width";
+import { MODE_PROFILES, type ModeId } from "../../src/lib/mode_profiles";
+import {
+  SplitOSMData,
+  mergeOSMData,
+  trimOSMData,
+  trimOSMDataByMode,
+} from "../../src/routes/api/osm/osm-data";
+import { divideBoundary, simplifyBoundaries } from "../../src/routes/api/osm/boundary";
+import { clone, fixtureBoundary, loadFixture, pickEndpointsOnMainComponent } from "../lib/data";
+import { StageRecorder, type Scenario, type ScenarioResult } from "./types";
+
+/**
+ * 1 回の経路探索にかかる CPU を段ごとに測る。
+ *
+ * 本番の `RequestContext` は `requireOSMData` しか計測していないため、グラフ構築・
+ * 経路探索・急カーブ判定は現状どのログにも現れない。このシナリオはその穴を埋める。
+ *
+ * GSI の幅員データ（`requireGsiRoadSegmentsForTiles`）はネットワーク依存なので含めない。
+ * 本番では `MAX_GSI_PASSES` 回グラフを作り直すので、グラフ構築と探索の段は
+ * 1 パスあたりの値であり、実際には最大その回数倍になる。
+ */
+export const pipelineScenario: Scenario = {
+  name: "pipeline",
+  description: "1 回の経路探索（キャッシュ済み）にかかる CPU を段ごとに測る",
+  defaultIterations: 20,
+  run({ mode, iterations, warmup }): ScenarioResult {
+    const profile = MODE_PROFILES[mode as ModeId];
+    const parameters = profile.defaultParameters;
+    const fixture = loadFixture();
+    const boundary = fixtureBoundary();
+    const cellCount = divideBoundary(boundary).length;
+
+    // 始点・終点は最大連結成分上の実ノードから選ぶ。
+    // bbox の補間点だと道から離れ、transientSplit が「エッジの長さがゼロです」で
+    // 警告を出し、pathFind が空振りして時間を計測できなくなる。
+    const probe = buildSearchGraph(trimOSMDataByMode(clone(fixture), profile));
+    const { begin, end } = pickEndpointsOnMainComponent(mainComponentCoordinates(probe));
+
+    const recorder = new StageRecorder(warmup);
+    let info: Record<string, string | number | boolean> = {};
+
+    for (let i = 0; i < iterations + warmup; i++) {
+      const data = clone(fixture);
+      recorder.mark("__start__");
+
+      const divided = divideBoundary(boundary);
+      recorder.mark("divideBoundary");
+
+      const simplified = simplifyBoundaries(divided);
+      recorder.mark("simplifyBoundaries");
+
+      const split = SplitOSMData(data);
+      recorder.mark("SplitOSMData");
+
+      // requireOSMData の read 側と同じ構造: セルごとのデータを結合してから境界で trim する
+      const merged: App.OSMData = { elements: [] };
+      mergeOSMData(
+        merged,
+        ...Object.values(split).map((chunk) => chunk),
+      );
+      recorder.mark("mergeOSMData");
+
+      trimOSMData(merged, boundary);
+      recorder.mark("trimOSMData");
+
+      const osmData = trimOSMDataByMode(data, profile);
+      recorder.mark("trimOSMDataByMode");
+
+      const osmGraph = transformOSMMapToOSMGraph(osmData);
+      recorder.mark("transformOSMMapToOSMGraph");
+
+      const crossGraph = CrossConvert(osmGraph);
+      if (crossGraph instanceof Error) throw crossGraph;
+      recorder.mark("CrossConvert");
+
+      const searchGraph = fold2DegreeEdges(crossGraph);
+      if (searchGraph instanceof Error) throw searchGraph;
+      recorder.mark("fold2DegreeEdges");
+
+      const mainEdges = largestComponentEdges(searchGraph);
+      recorder.mark("largestComponentEdges");
+
+      const beginNode = transientSplit(searchGraph, begin, mainEdges);
+      const endNode = transientSplit(searchGraph, end, mainEdges);
+      recorder.mark("transientSplit");
+
+      const path = pathFind(searchGraph, parameters, [beginNode], [endNode], {
+        ignoreOneway: profile.ignoreOneway,
+        highwayCostFactor: profile.highwayCostFactor,
+        scoring: profile.scoring,
+      });
+      recorder.mark("pathFind");
+
+      let sharpTurnCount = 0;
+      if (profile.sharpTurnMinRadius !== undefined && path.length > 0) {
+        const junctions = collectRoadJunctions(osmData);
+        recorder.mark("collectRoadJunctions");
+
+        sharpTurnCount = detectSharpTurnsOnPath(searchGraph, path, beginNode, {
+          minRadius: profile.sharpTurnMinRadius,
+          junctions,
+          bounds: boundary,
+        }).length;
+        recorder.mark("detectSharpTurnsOnPath");
+      }
+
+      const segments = path.flatMap((edgeId) =>
+        "segments" in searchGraph.edges[edgeId] ? searchGraph.edges[edgeId].segments : [],
+      );
+      measureSegmentsWidthCoverage(segments);
+      recorder.mark("measureSegmentsWidthCoverage");
+
+      if (i === warmup) {
+        info = {
+          mode,
+          cellCount,
+          simplifiedRegionCount: simplified.length,
+          splitChunkCount: Object.keys(split).length,
+          fixtureNodes: fixture.elements.filter((e) => e.type === "node").length,
+          fixtureWays: fixture.elements.filter((e) => e.type === "way").length,
+          searchGraphNodes: Object.keys(searchGraph.nodes).length,
+          searchGraphEdges: Object.keys(searchGraph.edges).length,
+          componentEdges: mainEdges.size,
+          pathLength: path.length,
+          sharpTurnCount,
+        };
+      }
+    }
+
+    const stages = recorder.result();
+    delete stages["__start__"];
+    return {
+      scenario: "pipeline",
+      stages,
+      total: Object.values(stages).reduce((sum, s) => sum + s.median, 0),
+      info,
+    };
+  },
+};
+
+function buildSearchGraph(osmData: App.OSMData): App.SearchGraph {
+  const crossGraph = CrossConvert(transformOSMMapToOSMGraph(osmData));
+  if (crossGraph instanceof Error) throw crossGraph;
+  const searchGraph = fold2DegreeEdges(crossGraph);
+  if (searchGraph instanceof Error) throw searchGraph;
+  return searchGraph;
+}
+
+function mainComponentCoordinates(graph: App.SearchGraph): { coordinate: App.Coordinate }[] {
+  const mainEdges = largestComponentEdges(graph);
+  const seen = new Set<App.NodeId>();
+  const coordinates: { coordinate: App.Coordinate }[] = [];
+  for (const edgeId of mainEdges) {
+    const edge = graph.edges[edgeId];
+    for (const nodeId of [edge.begin, edge.end]) {
+      if (seen.has(nodeId)) continue;
+      seen.add(nodeId);
+      const node = graph.nodes[nodeId];
+      if (node?.coordinate) coordinates.push({ coordinate: node.coordinate });
+    }
+  }
+  return coordinates;
+}

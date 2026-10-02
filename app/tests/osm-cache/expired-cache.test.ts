@@ -87,7 +87,6 @@ test("TTL 内なら更新しない (Overpass に問い合わせない)", async (
     async () => [cached(cell(0, 0), 1 * DAY), cached(cell(0, 1), 29 * DAY)],
     fetchOSM,
     saveCache,
-    undefined,
     { now: NOW, ttlMs: 30 * DAY },
   );
 
@@ -107,7 +106,6 @@ test("TTL を超えたセルだけを更新する", async () => {
     async () => [cached(fresh, 1 * DAY), cached(stale, 40 * DAY)],
     fetchOSM,
     saveCache,
-    undefined,
     { now: NOW, ttlMs: 30 * DAY },
   );
 
@@ -123,7 +121,6 @@ test("境界ちょうどのセルは失効扱いにならない (TTL は > で�
     async () => [cached(cell(0, 0), 30 * DAY)],
     fetchOSM,
     vi.fn(),
-    undefined,
     { now: NOW, ttlMs: 30 * DAY },
   );
   expect(result.expired).toBe(0);
@@ -139,7 +136,6 @@ test("散在セルでも Overpass への問い合わせは 1 回", async () => {
     async () => scattered.map((b) => cached(b, 40 * DAY)),
     fetchOSM,
     vi.fn().mockResolvedValue(undefined),
-    undefined,
     { now: NOW, ttlMs: 30 * DAY },
   );
 
@@ -164,7 +160,6 @@ test("隣接した 4x4 ブロックは 1 矩形にまとめられ、1 回の問�
     async () => block.map((b) => cached(b, 40 * DAY)),
     fetchOSM,
     vi.fn().mockResolvedValue(undefined),
-    undefined,
     { now: NOW, ttlMs: 30 * DAY },
   );
 
@@ -183,7 +178,6 @@ test("取得に失敗しても例外を投げず、全セルを failed に数え
     async () => [cell(0, 0), cell(1, 1)].map((b) => cached(b, 40 * DAY)),
     fetchOSM,
     saveCache,
-    undefined,
     { now: NOW, ttlMs: 30 * DAY },
   );
 
@@ -193,21 +187,22 @@ test("取得に失敗しても例外を投げず、全セルを failed に数え
   expect(saveCache).not.toHaveBeenCalled();
 });
 
-test("空の結果は保存しない (Overpass が 200 で空を返した場合の保護)", async () => {
-  const fetchOSM = vi.fn().mockResolvedValue({ elements: [] } as App.OSMData);
+test("空の結果も保存する (その領域に道が無いのは正当な状態)", async () => {
+  // 保存しないと mtime が解けず、毎晩同じセルを pulled し続ける。取得自体が
+  // 壊れている場合は fetchOSM の remark 検査で失敗として扱われるのでここでは区別しなくてよい
+  const cells = [cell(0, 0), cell(5, 5)];
   const saveCache = vi.fn().mockResolvedValue(undefined);
 
   const result = await refreshExpiredOSMCache(
-    async () => [cell(0, 0), cell(5, 5)].map((b) => cached(b, 40 * DAY)),
-    fetchOSM,
+    async () => cells.map((b) => cached(b, 40 * DAY)),
+    vi.fn().mockResolvedValue({ elements: [] } as App.OSMData),
     saveCache,
-    undefined,
     { now: NOW, ttlMs: 30 * DAY },
   );
 
-  expect(saveCache).not.toHaveBeenCalled();
-  expect(result.skipped).toBe(2);
-  expect(result.refreshed).toBe(0);
+  expect(saveCache).toHaveBeenCalledTimes(2);
+  expect(saveCache.mock.calls[0][1]).toEqual({ elements: [] });
+  expect(result.refreshed).toBe(2);
   expect(result.failed).toBe(0);
 });
 
@@ -222,7 +217,6 @@ test("1 セルの保存に失敗しても他のセルは保存される", async 
     async () => [good, bad].map((b) => cached(b, 40 * DAY)),
     vi.fn().mockResolvedValue(osmDataFor([good, bad])),
     saveCache,
-    undefined,
     { now: NOW, ttlMs: 30 * DAY },
   );
 
@@ -233,7 +227,7 @@ test("1 セルの保存に失敗しても他のセルは保存される", async 
 
 test("キャッシュが空でも例外にならない", async () => {
   const fetchOSM = vi.fn();
-  const result = await refreshExpiredOSMCache(async () => [], fetchOSM, vi.fn(), undefined, {
+  const result = await refreshExpiredOSMCache(async () => [], fetchOSM, vi.fn(), {
     now: NOW,
     ttlMs: 30 * DAY,
   });
@@ -241,7 +235,6 @@ test("キャッシュが空でも例外にならない", async () => {
     scanned: 0,
     expired: 0,
     refreshed: 0,
-    skipped: 0,
     failed: 0,
     regions: 0,
   });
@@ -260,7 +253,6 @@ test("古いものから順に処理する", async () => {
     vi.fn().mockImplementation(async (b: Boundary) => {
       order.push(b);
     }),
-    undefined,
     { now: NOW, ttlMs: 30 * DAY },
   );
 
@@ -277,7 +269,6 @@ test("取得応答の形が違う場合は全セルを failed にする (例外�
     async () => [cell(0, 0), cell(1, 1)].map((b) => cached(b, 40 * DAY)),
     fetchOSM,
     saveCache,
-    undefined,
     { now: NOW, ttlMs: 30 * DAY },
   );
 
@@ -298,13 +289,12 @@ test("クエリ領域に含まれないセルは failed に数える (黙って�
     async () => [cached(oversized, 40 * DAY), cached(onGrid, 40 * DAY)],
     vi.fn().mockResolvedValue(osmDataFor([onGrid])),
     vi.fn().mockResolvedValue(undefined),
-    undefined,
     { now: NOW, ttlMs: 30 * DAY },
   );
 
   expect(result.failed).toBe(1);
   expect(result.refreshed).toBe(1);
-  expect(result.expired).toBe(result.refreshed + result.skipped + result.failed);
+  expect(result.expired).toBe(result.refreshed + result.failed);
   expect(warn).toHaveBeenCalled();
   warn.mockRestore();
 });
@@ -347,7 +337,7 @@ test("2 回続けて走らせると 2 回目は expired: 0 で Overpass に問�
   const fetchOSM = vi.fn().mockResolvedValue(osmDataFor([cell(0, 0)]));
   const listCached = async () => [cached(cell(0, 0), 40 * DAY)];
 
-  const first = await refreshExpiredOSMCache(listCached, fetchOSM, vi.fn(), undefined, {
+  const first = await refreshExpiredOSMCache(listCached, fetchOSM, vi.fn(), {
     now: NOW,
     ttlMs: 30 * DAY,
   });
@@ -360,60 +350,14 @@ test("2 回続けて走らせると 2 回目は expired: 0 で Overpass に問�
     async () => [{ bound: cell(0, 0), fetchedAt: afterSave }],
     fetchOSM,
     vi.fn(),
-    undefined,
     { now: afterSave, ttlMs: 30 * DAY },
   );
   expect(second.expired).toBe(0);
   expect(fetchOSM).toHaveBeenCalledTimes(1);
 });
 
-test("skipped になったセルは削除される (mtime が更新されず恒久的に 500 になるのを防ぐ)", async () => {
-  // 変更前の saveCache が残した空ファイル。削除しないと mtime が解けず毎晩 500
-  const removed: Boundary[] = [];
-  const b = cell(0, 0);
-  const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
 
-  const result = await refreshExpiredOSMCache(
-    async () => [cached(b, 40 * DAY)],
-    vi.fn().mockResolvedValue({ elements: [] } as App.OSMData),
-    vi.fn().mockResolvedValue(undefined),
-    { removeCache: async (t) => { removed.push(t); }, readCache: async () => null },
-    { now: NOW, ttlMs: 30 * DAY },
-  );
 
-  expect(result.skipped).toBe(1);
-  expect(removed).toEqual([b]);
-  warn.mockRestore();
-});
-
-test("削除に失敗したら failed に数える (成功に見せない)", async () => {
-  const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-  const result = await refreshExpiredOSMCache(
-    async () => [cached(cell(0, 0), 40 * DAY)],
-    vi.fn().mockResolvedValue({ elements: [] } as App.OSMData),
-    vi.fn().mockResolvedValue(undefined),
-    {
-      removeCache: async () => { throw new Error("EPERM"); },
-      readCache: async () => null,
-    },
-    { now: NOW, ttlMs: 30 * DAY },
-  );
-  expect(result.failed).toBe(1);
-  expect(result.skipped).toBe(0);
-  warn.mockRestore();
-});
-
-test("removeCache を渡さなくても skipped は数えられる (後方互換)", async () => {
-  const result = await refreshExpiredOSMCache(
-    async () => [cached(cell(0, 0), 40 * DAY)],
-    vi.fn().mockResolvedValue({ elements: [] } as App.OSMData),
-    vi.fn().mockResolvedValue(undefined),
-    undefined,
-    { now: NOW, ttlMs: 30 * DAY },
-  );
-  expect(result.skipped).toBe(1);
-  expect(result.failed).toBe(0);
-});
 
 test("ttlMs: 日数の積がオーバーフローしたら既定値に倒す (警告なしで Infinity にしない)", () => {
   const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
@@ -425,49 +369,7 @@ test("ttlMs: 日数の積がオーバーフローしたら既定値に倒す (�
 });
 
 
-test("有効データを持つセルは部分応答でも削除しない (B-4)", async () => {
-  // 削除は readCache が null (ファイルが無い / 空 / 壊れている) セルだけ。
-  // trim が空という理由だけで消すと部分応答で有効データを失う
-  const A = cell(0, 0);
-  const B = cell(0, 1);
-  const removed: Boundary[] = [];
 
-  const partial = {
-    elements: [
-      { type: "node", id: 1, lat: A.minLat + 0.001, lon: A.minLng + 0.001 },
-      { type: "way", id: 11, nodes: [1], tags: { highway: "residential" } },
-    ],
-  } as App.OSMData;
-
-  const result = await refreshExpiredOSMCache(
-    async () => [cached(A, 40 * DAY), cached(B, 40 * DAY)],
-    async () => partial,
-    vi.fn().mockResolvedValue(undefined),
-    { removeCache: async (b) => { removed.push(b); }, readCache: async () => osmDataFor([A, B]) },
-    { now: NOW, ttlMs: 30 * DAY },
-  );
-
-  expect(result.skipped).toBe(1);
-  expect(result.refreshed).toBe(1);
-  expect(removed).toEqual([]);
-});
-
-test("有効データを持つセルは完全空応答でも削除しない (B-4)", async () => {
-  const A = cell(0, 0);
-  const valid = osmDataFor([A]);
-  const removed: Boundary[] = [];
-
-  const result = await refreshExpiredOSMCache(
-    async () => [cached(A, 40 * DAY)],
-    async () => ({ elements: [] }) as App.OSMData,
-    vi.fn().mockResolvedValue(undefined),
-    { removeCache: async (b) => { removed.push(b); }, readCache: async () => valid },
-    { now: NOW, ttlMs: 30 * DAY },
-  );
-
-  expect(result.skipped).toBe(1);
-  expect(removed).toEqual([]);
-});
 
 test("取得応答の要素が壊れていれば全セルを failed にする (走査全体が TypeError で中断しない)", async () => {
   const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
@@ -478,7 +380,6 @@ test("取得応答の要素が壊れていれば全セルを failed にする (�
     async () => [cell(0, 0), cell(1, 1)].map((b) => cached(b, 40 * DAY)),
     async () => broken,
     saveCache,
-    undefined,
     { now: NOW, ttlMs: 30 * DAY },
   );
 
@@ -493,43 +394,9 @@ test("取得応答の要素が null 混在でも走査全体が落ちない", as
     async () => [cell(0, 0)].map((b) => cached(b, 40 * DAY)),
     async () => ({ elements: [null] }) as unknown as App.OSMData,
     vi.fn().mockResolvedValue(undefined),
-    undefined,
     { now: NOW, ttlMs: 30 * DAY },
   );
   expect(result.failed).toBe(1);
   warn.mockRestore();
 });
 
-test("readCache が例外を投げても走査全体が中断しない (以降のセルも処理される)", async () => {
-  // readCache は EACCES などを再スローするので、try の外では走査全体が reject する
-  const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-  const A = cell(0, 0);   // 読み取りが失敗するセル
-  const B = cell(0, 1);   // 正常に処理されるべきセル
-  const removed: Boundary[] = [];
-  const saveCache = vi.fn().mockResolvedValue(undefined);
-
-  const result = await refreshExpiredOSMCache(
-    async () => [cached(A, 40 * DAY), cached(B, 40 * DAY)],
-    async () => osmDataFor([B]),
-    saveCache,
-    {
-      removeCache: async (b) => { removed.push(b); },
-      readCache: async (b) => {
-        if (b === A) throw Object.assign(new Error("EACCES: permission denied"), { code: "EACCES" });
-        return osmDataFor([B]);
-      },
-    },
-    { now: NOW, ttlMs: 30 * DAY },
-  );
-
-  // 全体が reject せず、結果が返る
-  expect(result.expired).toBe(2);
-  // B は保存されている
-  expect(result.refreshed).toBe(1);
-  expect(saveCache).toHaveBeenCalledWith(B, expect.anything());
-  // 判断できなかった A は削除しない (安全側)
-  expect(removed).toEqual([]);
-  expect(result.expired).toBe(result.refreshed + result.skipped + result.failed);
-  expect(warn).toHaveBeenCalled();
-  warn.mockRestore();
-});
