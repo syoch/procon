@@ -50,6 +50,148 @@ jobs:
           pnpm install --frozen-lockfile
           pnpm test
 
+  # 1 検索にかかる時間の回帰を見るのが目的のジョブ。
+  #
+  # 記録用の基準ファイルは持たない。代わりに **base と head を同じランナー上で
+  # 2 回測って比べる**。CPU も Node も実行環境も同じなので、差分はそのまま PR の変更による
+  # ものとして読める。git に基準値を持つと runner ごとの差と
+  # PR 同士で基準ファイルの衝突も起きる。
+  #
+  # 検出したいのは O(E x C) -> O(E) のような計算量の変化（数倍）だけなので、
+  # 許容倍率は 1.5 のまま緩めにしている。BENCH_TOLERANCE で調整できる。
+  bench:
+    runs-on: ubuntu-latest
+    steps:
+      # 比較する 2 つの作業ディレクトリを用意する
+      - uses: actions/checkout@v4
+        with:
+          path: head
+
+      - uses: actions/checkout@v4
+        with:
+          path: base
+          ref: ${{ github.event.pull_request.base.sha || github.event.before }}
+
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 11.27.0
+          package_json_file: head/app/package.json
+          cache_dependency_path: head/app/pnpm-lock.yaml
+          cache: true
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 26
+
+      - name: 依存関係をインストール
+        working-directory: head/app
+        run: pnpm install --frozen-lockfile
+
+      - name: base 側にも依存関係を入れる
+        working-directory: base/app
+        run: pnpm install --frozen-lockfile --ignore-scripts
+
+      # bench コードは head 版を base 側にも配置する。測るのは app のソースだけなので、
+      # 計測ハーネスは両方で同一にする（PR が bench を変えても比較が成立する）。
+      - name: base 側に bench を配置
+        run: |
+          rm -rf base/app/bench
+          cp -r head/app/bench base/app/bench
+          rm -rf base/app/bench/.build
+
+      - name: 基準となる base の sha を控える
+        id: refs
+        run: |
+          {
+            echo "base_sha=${{ github.event.pull_request.base.sha || github.event.before }}"
+            echo "head_sha=${{ github.event.pull_request.head.sha || github.sha }}"
+          } >> "$GITHUB_OUTPUT"
+
+      # base のビルドが失敗するケース（PR がソースを移動/改名した等）は比較を諦める
+      - name: base を計測
+        id: base_bench
+        working-directory: base/app
+        continue-on-error: true
+        env:
+          BENCH_FIXTURE: ${{ github.workspace }}/head/app/bench/fixtures/nagaoka-central.json.gz
+        run: |
+          set -o pipefail
+          node bench/build.mjs
+          node bench/.build/bench.mjs \
+            --quiet \
+            --json "${{ runner.temp }}/bench-base.json" \
+            | tee "${{ runner.temp }}/bench-base.txt"
+
+      - name: head を計測
+        working-directory: head/app
+        env:
+          BENCH_FIXTURE: ${{ github.workspace }}/head/app/bench/fixtures/nagaoka-central.json.gz
+        run: |
+          set -o pipefail
+          node bench/build.mjs
+          node bench/.build/bench.mjs \
+            --quiet \
+            --json "${{ runner.temp }}/bench-head.json" \
+            | tee "${{ runner.temp }}/bench-head.txt"
+
+      # base の計測が落ちていたら（ソースの移動・改名で base がビルドできない場合など）、head の値だけ提示して成功にする
+      - name: 結果を比較
+        id: compare
+        if: steps.base_bench.outcome == 'success'
+        working-directory: head/app
+        run: |
+          set -o pipefail
+          node bench/compare.mjs \
+            --base "${{ runner.temp }}/bench-base.json" \
+            --head "${{ runner.temp }}/bench-head.json" \
+            --tolerance "${{ vars.BENCH_TOLERANCE || '1.5' }}" \
+            --format markdown \
+            | tee "${{ runner.temp }}/bench-compare.md"
+
+      - name: 比較できなかった旨を表示
+        if: steps.base_bench.outcome != 'success'
+        run: |
+          {
+            echo "## bench"
+            echo
+            echo "> base 側の計測に失敗したため比較しませんでした（head の値のみ下記）"
+            echo
+            echo '```'
+            cat "${{ runner.temp }}/bench-head.txt" 2>/dev/null || echo "(出力なし)"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "::warning::base の bench が失敗したため、性能の比較はスキップしました"
+
+      - name: 比較結果をサマリーに貼る
+        if: always() && steps.base_bench.outcome == 'success'
+        run: |
+          {
+            echo '## bench'
+            echo
+            echo '```'
+            cat "${{ runner.temp }}/bench-compare.md" 2>/dev/null || echo "(出力なし)"
+            echo '```'
+            echo
+            echo "<details><summary>計測したジョブの sha</summary>"
+            echo ""
+            echo "- base: \`${{ steps.refs.outputs.base_sha }}\`"
+            echo "- head: \`${{ steps.refs.outputs.head_sha }}\`"
+            echo ""
+            echo "</details>"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: 結果をアーティファクトとして保存
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bench-results
+          path: |
+            ${{ runner.temp }}/bench-base.json
+            ${{ runner.temp }}/bench-head.json
+            ${{ runner.temp }}/bench-compare.md
+          if-no-files-found: warn
+          retention-days: 30
+
   # 最大限キャッシュを活用するために、pnpm check/test の結果によらず nix ビルドは行う
   build:
     runs-on: ubuntu-latest
