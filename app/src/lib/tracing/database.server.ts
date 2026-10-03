@@ -19,18 +19,13 @@ type Init = {
 const HEAD_HASH = env.PROCON_HEAD_HASH || "no-git";
 let initialization: Init | undefined = undefined
 
-const TABLES = [
-    {
-        name: "boots",
-        query: `CREATE TABLE boots(
+const SQL_INIT = `
+CREATE TABLE IF NOT EXISTS boots(
     id TEXT PRIMARY KEY, -- uuid
     head_hash TEXT,
     booted_at INTEGER
-);`,
-    },
-    {
-        name: "requests",
-        query: `CREATE TABLE requests(
+);
+CREATE TABLE IF NOT EXISTS requests(
     id TEXT PRIMARY KEY, -- uuid
     requested_at INTEGER,
     boot_id TEXT,
@@ -39,20 +34,18 @@ const TABLES = [
     performance BLOB, -- JSONB, RequestContext で収集できるもの
 
     FOREIGN KEY(boot_id) REFERENCES boots(id)
-);`
-    },
-    {
-        name: "log_lines",
-        query: `CREATE TABLE log_lines(
+);
+CREATE TABLE IF NOT EXISTS log_lines(
     id TEXT PRIMARY KEY, -- uuid
     logged_at INTEGER,
     request_id TEXT,
     log TEXT,
 
     FOREIGN KEY(request_id) REFERENCES requests(id)
-);`
-    }
-];
+);
+CREATE INDEX IF NOT EXISTS idx_requests_boot_id ON requests(boot_id);
+CREATE INDEX IF NOT EXISTS idx_requests_requested_at ON requests(requested_at DESC);
+`
 
 export function isTracingEnabled(): boolean {
     const db_locator = getDatabaseLocator();
@@ -70,25 +63,7 @@ function ensureDatabaseInitialized(): Init | undefined {
     }
 
     const database = new DatabaseSync(db_locator);
-
-    const tables = database.prepare("SELECT tbl_name from sqlite_master WHERE type == 'table'");
-    let tables_created: string[] = []
-    for (const result of tables.all()) {
-        for (const key of Object.keys(result)) {
-            const value = result[key];
-
-            if (typeof value !== "string")
-                throw new Error("Invalid sqlite_master.tbl_name type");
-
-            tables_created.push(value);
-        }
-    }
-
-    for (const table of TABLES) {
-        if (!tables_created.includes(table.name)) {
-            database.exec(table.query);
-        }
-    }
+    database.exec(SQL_INIT);
 
     const boot = database.prepare("INSERT INTO boots (id, head_hash, booted_at) VALUES (?, ?, ?)");
     const bootId = randomUUID();
