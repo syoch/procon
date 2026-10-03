@@ -35,8 +35,7 @@
         <td>{p.name}</td>
         <td
           >{(p.endTime - p.startTime).toFixed(2)} ms ({(
-            ((p.endTime - p.startTime) / wholeTime) *
-            100
+            (wholeTime === 0 ? 0 : (p.endTime - p.startTime) / wholeTime) * 100
           ).toFixed(2)}%)</td
         >
       </tr>
