@@ -100,12 +100,19 @@ function ensureDatabaseInitialized(): Init | undefined {
     return initialization;
 }
 
-export function getBoots() {
+export function getBoots(sort?: "asc" | "desc") {
     const init = ensureDatabaseInitialized();
     if (!init) return []
     const database = init.database;
 
-    const query = database.prepare("SELECT id, head_hash, booted_at from boots");
+    const queryStmt = "SELECT id, head_hash, booted_at from boots";
+    const sortClause = sort === "asc"
+        ? "ORDER BY booted_at ASC"
+        : sort === "desc"
+            ? "ORDER BY booted_at DESC"
+            : "";
+
+    const query = database.prepare(`${queryStmt} ${sortClause}`);
     let result: RawBootRecord[] = [];
 
     for (const rawRow of query.all()) {

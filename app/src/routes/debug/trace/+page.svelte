@@ -16,7 +16,7 @@
     let sideView = $state<"boots" | "requests">("boots");
 
     async function fetchBoots(): Promise<BootRecord[]> {
-        const res = await fetch("/api/trace/boots");
+        const res = await fetch("/api/trace/boots?s=desc");
         const resultObject = await res.json();
         if (!(resultObject instanceof Array)) {
             throw new Error("/api/trace/boots response must be array");
@@ -35,7 +35,7 @@
     async function fetchRequests(): Promise<RequestRecord[]> {
         const res = await fetch(
             requestsBootId
-                ? `/api/trace/requests?b=${requestsBootId}&s=desc`
+                ? `/api/trace/requests?s=desc&b=${requestsBootId}`
                 : "/api/trace/requests?s=desc",
         );
         const resultObject = await res.json();
