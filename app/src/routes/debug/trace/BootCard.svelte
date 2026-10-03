@@ -1,16 +1,18 @@
 <script lang="ts">
-  import type { BootRecord, RequestRecord } from "$lib/tracing";
+  import type { BootRecord } from "$lib/tracing";
 
   let {
     request,
+    active,
     onclick,
   }: {
     request: BootRecord;
+    active: boolean;
     onclick: () => void;
   } = $props();
 </script>
 
-<button {onclick} class="request-card">
+<button {onclick} class="request-card" class:active>
   <span class="a">{request.bootedAt.toLocaleString()}</span>
   <span class="b">{request.headHash}</span>
   <span class="c">{request.id}</span>
@@ -35,6 +37,9 @@
     * {
       margin: 0.1rem;
     }
+  }
+  .request-card.active {
+    background-color: #e0e0e0;
   }
 
   .request-card:hover {

@@ -114,8 +114,10 @@
                 {#each boots as boot}
                     <BootCard
                         request={boot}
+                        active={requestsBootId === boot.id}
                         onclick={() => {
-                            requestsBootId = boot.id;
+                            requestsBootId =
+                                requestsBootId == boot.id ? undefined : boot.id;
                             sideView = "requests";
                         }}
                     />
@@ -143,8 +145,12 @@
                 {#each requests as req}
                     <RequestCard
                         request={req}
+                        active={selectedRequest?.id === req.id}
                         onclick={() => {
-                            selectedRequest = req;
+                            selectedRequest =
+                                selectedRequest?.id === req.id
+                                    ? undefined
+                                    : req;
                         }}
                     />
                 {/each}

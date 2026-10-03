@@ -3,9 +3,11 @@
 
   let {
     request,
+    active,
     onclick,
   }: {
     request: RequestRecord;
+    active: boolean;
     onclick: () => void;
   } = $props();
 
@@ -14,7 +16,7 @@
   );
 </script>
 
-<button {onclick} class="request-card">
+<button {onclick} class="request-card" class:active>
   <span class="digest"
     >{request.method} {request.requestedAt.toLocaleString()}</span
   >
@@ -43,6 +45,9 @@
     * {
       margin: 0.1rem;
     }
+  }
+  .request-card.active {
+    background-color: #e0e0e0;
   }
 
   .request-card:hover {
