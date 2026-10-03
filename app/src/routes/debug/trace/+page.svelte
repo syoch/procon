@@ -5,6 +5,7 @@
         type BootRecord,
         type RequestRecord,
     } from "$lib/tracing";
+    import BootCard from "./BootCard.svelte";
     import RequestCard from "./RequestCard.svelte";
     import RequestDetail from "./RequestDetail.svelte";
 
@@ -12,6 +13,7 @@
     let requestsBootId = $state<string | undefined>(undefined);
     let requests = $state<RequestRecord[] | Error>([]);
     let selectedRequest = $state<RequestRecord | undefined>(undefined);
+    let sideView = $state<"boots" | "requests">("boots");
 
     async function fetchBoots(): Promise<BootRecord[]> {
         const res = await fetch("/api/trace/boots");
@@ -73,57 +75,70 @@
 </script>
 
 <div class="container">
-    <div class="boot-list" style="display: none">
-        {#if boots instanceof Error}
-            <p>Error: {boots.message}</p>
-        {:else if boots.length === 0}
-            <p>No boots found.</p>
-        {:else}
-            <table>
-                <thead>
-                    <tr>
-                        <th>booted_at</th>
-                        <th>head_hash</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {#each boots as boot}
-                        <tr>
-                            <td>{boot.bootedAt.toISOString()}</td>
-                            <td>{boot.headHash}</td>
-                        </tr>
-                    {/each}
-                </tbody>
-            </table>
-        {/if}
-        <button
-            onclick={async () => {
-                try {
-                    boots = await fetchBoots();
-                } catch (error) {
-                    boots = error as Error;
-                }
-            }}
-        >
-            Update Boots
-        </button>
-    </div>
+    <div class="sidebar">
+        <div class="actions">
+            <button
+                class:active={sideView === "boots"}
+                onclick={() => {
+                    sideView = "boots";
+                }}
+            >
+                Boots
+            </button>
+            <button
+                class:active={sideView === "requests"}
+                onclick={() => {
+                    sideView = "requests";
+                }}
+            >
+                Requests
+            </button>
+        </div>
+        <div class="boot-list" class:active={sideView === "boots"}>
+            {#if boots instanceof Error}
+                <p>Error: {boots.message}</p>
+            {:else if boots.length === 0}
+                <p>No boots found.</p>
+            {:else}
+                {#each boots as boot}
+                    <BootCard
+                        request={boot}
+                        onclick={() => {
+                            requestsBootId = boot.id;
+                            sideView = "requests";
+                        }}
+                    />
+                {/each}
+            {/if}
+            <button
+                onclick={async () => {
+                    try {
+                        boots = await fetchBoots();
+                    } catch (error) {
+                        boots = error as Error;
+                    }
+                }}
+            >
+                Update Boots
+            </button>
+        </div>
 
-    <div class="req-list">
-        {#if requests instanceof Error}
-            <p>Error: {requests.message}</p>
-        {:else if requests.length === 0}
-            <p>No requests found.</p>
-        {:else}
-            {#each requests as req}
-                <RequestCard
-                    request={req}
-                    onclick={() => {
-                        selectedRequest = req;
-                    }}
-                />
-            {/each}
-        {/if}
+        <div class="req-list" class:active={sideView === "requests"}>
+            {#if requests instanceof Error}
+                <p>Error: {requests.message}</p>
+            {:else if requests.length === 0}
+                <p>No requests found.</p>
+            {:else}
+                {#each requests as req}
+                    <RequestCard
+                        request={req}
+                        onclick={() => {
+                            selectedRequest = req;
+                        }}
+                    />
+                {/each}
+            {/if}
+        </div>
     </div>
 
     {#if selectedRequest}
@@ -139,11 +154,20 @@
         flex-direction: row;
         gap: 1rem;
         margin: 10px;
-        .req-list {
+        .sidebar {
             display: flex;
             flex-direction: column;
-            gap: 0.5rem;
-            width: 300px;
+            div.req-list,
+            div.boot-list {
+                display: none;
+                flex-direction: column;
+                gap: 0.5rem;
+                width: 300px;
+            }
+            div.active {
+                display: flex;
+                background-color: #f0f0f0;
+            }
         }
         .req-detail {
             margin-top: 1rem;
