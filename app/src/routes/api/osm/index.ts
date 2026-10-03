@@ -2,7 +2,7 @@
 import { type OSMCacheManager, type OSMFetcher } from './types';
 import { mergeOSMData, SplitOSMData, trimOSMData } from './osm-data';
 import { divideBoundary, simplifyBoundaries, type Boundary } from './boundary';
-import type { RequestContext } from '$lib/requestContext';
+import type { RequestContext } from '$lib/tracing/requestContext';
 
 /**
  * キャッシュを参照しつつ、OSM データを取得する。

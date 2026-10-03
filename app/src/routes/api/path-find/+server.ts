@@ -4,7 +4,7 @@ import type { RequestHandler } from './$types';
 import { z } from 'zod';
 import { doPathFind } from './pathFind';
 import { MODE_IDS, MODE_PROFILES, type ModeId } from '$lib/mode_profiles';
-import { RequestContext } from '$lib/requestContext';
+import { RequestContext } from '$lib/tracing/requestContext';
 
 
 
@@ -37,18 +37,23 @@ const legacyRequestSchema = z.strictObject({
 const requestSchema = z.union([modeRequestSchema, legacyRequestSchema]);
 
 export const POST: RequestHandler = async ({ request }) => {
-    const body = await request.json();
-    const query = requestSchema.safeParse(body);
-    if (!query.success) {
-        return json({ error: 'Invalid request body', details: query.error.issues }, { status: 400 });
-    }
-    const req = query.data;
-
+    const requestedAt = new Date();
     const perfCtx = new RequestContext();
-    const res = "mode" in req
-        ? await doPathFind(perfCtx, req.begin, req.end, req.parameters ?? MODE_PROFILES[req.mode].defaultParameters, [], req.mode)
-        : await doPathFind(perfCtx, req.begin, req.end, req.parameters, req.wayHighway);
-    perfCtx.endMeasurement();
+    try {
+        const body = await request.json();
+        const query = requestSchema.safeParse(body);
+        if (!query.success) {
+            return json({ error: 'Invalid request body', details: query.error.issues }, { status: 400 });
+        }
+        const req = query.data;
 
-    return json(res)
+        const res = "mode" in req
+            ? await doPathFind(perfCtx, req.begin, req.end, req.parameters ?? MODE_PROFILES[req.mode].defaultParameters, [], req.mode)
+            : await doPathFind(perfCtx, req.begin, req.end, req.parameters, req.wayHighway);
+
+
+        return json(res)
+    } finally {
+        perfCtx.endMeasurement(requestedAt, "POST", request.url);
+    }
 };

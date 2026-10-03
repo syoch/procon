@@ -1,3 +1,5 @@
+import { isTracingEnabled, saveRequest } from "./database.server";
+
 export class RequestContext {
   startTime: number | undefined;
   measuredEntries: {
@@ -10,18 +12,23 @@ export class RequestContext {
     this.measuredEntries = [];
   }
 
-  endMeasurement() {
+  endMeasurement(requestedAt: Date, method: string, url: string) {
     if (this.startTime === undefined) {
       throw new Error("Performance measurement has not been started.");
     }
-    const totalTime = performance.now() - this.startTime;
-    console.log(`Total time: ${totalTime.toFixed(2)}ms`);
-    for (const entry of this.measuredEntries) {
-      const duration = entry.endTime - entry.startTime;
-      console.log(`${entry.name}: ${duration.toFixed(2)}ms`);
+
+    if (isTracingEnabled()) {
+      try {
+        saveRequest(requestedAt, method, url, {
+          entries: this.measuredEntries,
+          start: this.startTime,
+          end: performance.now()
+        });
+      } catch (error) {
+        console.error("Failed to save request performance data:", error);
+      }
     }
-    this.startTime = undefined;
-    this.measuredEntries = [];
+
   }
 
   measure<T>(name: string, fn: () => T): T {

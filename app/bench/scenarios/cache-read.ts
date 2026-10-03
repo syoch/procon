@@ -4,7 +4,7 @@ import { join } from "node:path";
 
 import { requireOSMData } from "../../src/routes/api/osm/index";
 import { cacheManager } from "../../src/routes/api/osm/fs-cache-manager";
-import { RequestContext } from "../../src/lib/requestContext";
+import { RequestContext } from "../../src/lib/tracing/requestContext";
 import { divideBoundary } from "../../src/routes/api/osm/boundary";
 import { fixtureBoundary, listFixtureCells, readFixtureCell } from "../lib/data";
 import { measure, summarize } from "../lib/harness";
