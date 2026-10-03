@@ -1,4 +1,4 @@
-import { measure, type Samples } from "./harness";
+import { sampleRuns, summarize, type Samples } from "./harness";
 
 /**
  * 校正ワークロード: 2 回の計測の間で「機械の速度」が変わっていないことを確かめる。
@@ -92,11 +92,17 @@ export type Calibration = Samples & {
  *
  * 引数は取らない。アプリ本体の実測回数（`--iterations`）に追随させると、
  * base と head で仕事量が揃わないので固定値にする。
+ * 校正は測定項目 ID を持たないので `StageRecorder` を通さず、素のサンプル列を
+ * 暖機ぶん捨てて中央値に落とす。
  */
 export async function measureCalibration(): Promise<Calibration> {
   let work = 0;
-  const samples = await measure(resetTable, () => {
-    work = runKernel(ITERATIONS);
-  }, { warmup: WARMUP, iterations: SAMPLES });
-  return { ...samples, work };
+  const runs = await sampleRuns(
+    resetTable,
+    () => {
+      work = runKernel(ITERATIONS);
+    },
+    { warmup: WARMUP, iterations: SAMPLES },
+  );
+  return { ...summarize(runs.slice(WARMUP)), work };
 }

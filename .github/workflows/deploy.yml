@@ -68,7 +68,13 @@ jobs:
   #
   # **step の判定条件は変えない**。exit 2 でもジョブは落とす（回帰検出を黙って止めるのは
   # 禁物なので、落ちたことを見つけてもう一度走ってもらう）。exit 2 の中身は
-  # 「性能が悪い」ではなく「機械の速度が動かなかった」なので、中身を見れば区別できる。
+  # 「性能が悪い」ではなく「比較が成立しない」なので、中身を見れば区別できる。
+  #
+  # 2 つの計測は**測定項目 ID**（`{シナリオ}/{段}`、`app/bench/ids.ts` に宣言する）で
+  # 突き合わせる。base は自分の bench で自分の `app/src` を測るので、head が bench を
+  # 変えていようが同じ ID の測定項目同士は比較できる。base に無い ID は「削除」、
+  # head に無い ID は「追加」として compare.mjs が明示する。
+  # app/src のモジュールを移動しただけのような、性能的に中立な変更でも比較が成立する。
   bench:
     runs-on: ubuntu-latest
     steps:
@@ -105,10 +111,9 @@ jobs:
           # install を --ignore-scripts にしたので svelte-kit sync が走らないので、明示的に実行する。
           pnpm exec svelte-kit sync
 
-      # bench が main にあるかどうかで 3 通りに分かれる。
-      #   A. base に bench が無い  -> この PR で bench を入れたので比較しない（正常）
-      #   B. bench が両側同じ     -> 必ず比較する。base の計測が落ちたらこれは失敗
-      #   C. bench が base と違う  -> PR が計測ハーネスを変えたので比較しない（明示表示）
+      # bench が main にあるかどうかで 2 通りに分かれる。
+      #   A. base に bench が無い -> この PR で bench を入れたので比較しない（正常）
+      #   B. base に bench がある -> 必ず base を測り、測定項目 ID で突き合わせる
       # 「base の計測が落ちても比較をスキップして緑にする」のは禁物。
       # 緑に見えるのに回帰を検出していない状態は、検証されていないより悪い。
       - name: base に bench があるか確認する
@@ -125,29 +130,9 @@ jobs:
       # 解決される。app/src 配下のモジュールを移動しただけで（性能的には中立でも）base のビルドが
       # 失敗し、その PR が完全にブロックされてしまう。
       #
-      # コピーの代わりに同一性を検証する。ハーネスが違えば「比較する意味がない」ので、
-      # 暗黙の緑にせず ::notice:: で明示する。これを満たさないと、PR がハーネスを弱めても
-      # base も同じハーネスで動いて差分がゼロになり、「コードが速くなった」と「計測が弱くなった」を区別できない。
-      - name: bench が base と同一か判定する
-        id: harness_drift
-        if: steps.base_has_bench.outputs.exists == 'true'
-        run: |
-          set -o pipefail
-          # .build はビルド生成物なので比較対象から除外する。
-          if diff -rq -x .build head/app/bench base/app/bench > "${{ runner.temp }}/bench-drift.txt" 2>&1; then
-            echo "changed=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::bench は base と同一なので性能を比較します"
-          else
-            echo "changed=true" >> "$GITHUB_OUTPUT"
-            {
-              echo "changed=true"
-              echo "diff<<DIFF_EOF"
-              cat "${{ runner.temp }}/bench-drift.txt"
-              echo "DIFF_EOF"
-            } >> "$GITHUB_OUTPUT"
-            echo "::warning::bench が base と異なるため性能の比較をスキップします"
-          fi
-
+      # ハーネスの同一性は求めない。比較は**測定項目 ID 単位**で行うので、
+      # base の bench が head の bench と違っても、同じ ID の測定項目同士は比較できる。
+      # base に無い ID は「削除」、head に無い ID は「追加」として compare.mjs が明示する。
       - name: 基準となる sha を控える
         id: refs
         run: |
@@ -156,14 +141,11 @@ jobs:
             echo "head_sha=${{ github.event.pull_request.head.sha || github.sha }}"
           } >> "$GITHUB_OUTPUT"
 
-      # base を bench で計測できるのは、base に bench があって、なおかつ head と同一なときだけ。
-      # それ以外の 2 通りは次の通り。
-      #   base に bench が無い -> 計測する bench が存在しない
-      #   bench が base と違う -> 比較対象にならない
-      # head は自分の bench で常に計測する（絶対値として参考になり、下の通知で提示する）。
+      # base を bench で計測できないのは、base に bench が無いときだけ。
+      # base の bench が head と違っても ID で突き合わせるので、必ず計測する。
       - name: base を計測
         id: base_bench
-        if: steps.base_has_bench.outputs.exists == 'true' && steps.harness_drift.outputs.changed != 'true'
+        if: steps.base_has_bench.outputs.exists == 'true'
         working-directory: base/app
         continue-on-error: true
         env:
@@ -204,11 +186,11 @@ jobs:
             --format markdown \
             | tee "${{ runner.temp }}/bench-compare.md"
 
-      # bench が base と同一で、base に bench が有るのに base の計測が落ちた場合。
+      # base に bench が有るのに base の計測が落ちた場合。
       # base は自分の bench を自分の src でビルドしているので、この失敗は base 自身の破損を意味する。
       # これを黙ってスキップすると回帰検出が止まるので失敗させる。
       - name: base の計測失敗を報告する
-        if: steps.base_has_bench.outputs.exists == 'true' && steps.harness_drift.outputs.changed != 'true' && steps.base_bench.outcome != 'success'
+        if: steps.base_has_bench.outputs.exists == 'true' && steps.base_bench.outcome != 'success'
         run: |
           {
             echo "## bench"
@@ -249,39 +231,6 @@ jobs:
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
           echo "::notice::base に bench がまだ無い（この PR で追加）ため、性能の比較はスキップしました"
-
-      # PR が計測ハーネスを変えた場合、比較は意味がない。
-      # ここで黙って緑にすると「コードが速くなった」と「計測が弱くなった」を区別できなくなるので、
-      # 差分そのものが結果として表示される。
-      - name: bench が base と異なる旨を表示する
-        if: steps.harness_drift.outputs.changed == 'true'
-        run: |
-          {
-            echo '## bench'
-            echo
-            echo "> **この PR が計測ハーネス（bench）を変更したため、性能の比較をスキップしました。**"
-            echo
-            echo "base と head でハーネスが違うと、性能の差とハーネスの差が混ざり"
-            echo "「コードが速くなった」と「計測が弱くなった」を区別できません。"
-            echo
-            echo "ハーネスを変更しない PR なら性能の比較は実行されます。"
-            echo "変更する場合は、その理由を PR の説明に書いてください。"
-            echo
-            echo "head の計測値:"
-            echo
-            echo '```'
-            cat "${{ runner.temp }}/bench-head.txt" 2>/dev/null || echo "(出力なし)"
-            echo '```'
-            echo
-            echo "<details><summary>base と head の bench の差分</summary>"
-            echo
-            echo '```'
-            echo '${{ steps.harness_drift.outputs.diff }}'
-            echo '```'
-            echo
-            echo "</details>"
-          } >> "$GITHUB_STEP_SUMMARY"
-          echo "::notice::この PR が bench を変更したため、性能の比較をスキップしました（暗黙の緑にはしません）"
 
       - name: 比較結果をサマリーに貼る
         if: always() && steps.base_bench.outcome == 'success'

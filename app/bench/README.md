@@ -1,6 +1,6 @@
 # bench
 
-経路探索 1 回にかかる時間を、段ごとに測るためのハーネス。
+経路探索 1 回にかかる時間を、測定項目ごとに測るためのハーネス。
 
 ## なぜ必要か
 
@@ -30,7 +30,7 @@ node bench/compare.mjs --base base.json --head head.json --calibration-tolerance
 # 比較不成立（exit 2）でも回帰リストを「参考値」として出す
 node bench/compare.mjs --base base.json --head head.json --report-on-invalid
 
-# 同じコードを N 回走らせて、段と校正のばらつきを採取する
+# 同じコードを N 回走らせて、測定項目と校正のばらつきを採取する
 node bench/build.mjs   # 先にバンドルする
 node bench/scripts/measure-noise.mjs --runs 9
 ```
@@ -52,8 +52,48 @@ Vite / SvelteKit は通さない。
 
 `pipeline` は GSI の幅員データ（`requireGsiRoadSegmentsForTiles`）を含まない。
 ネットワーク依存のためで、本番では幅員で経路が変わると `MAX_GSI_PASSES` 回グラフを作り直すので
-`CrossConvert` と `fold2DegreeEdges` の段は 1 パスあたりの値、
+`CrossConvert` と `fold2DegreeEdges` の測定項目は 1 パスあたりの値、
 **実際はその回数倍**になる点に注意。
+
+## 測定項目 ID
+
+**測定項目は ID で突き合わせる。** ID は `{シナリオ}/{段}` の形式で、
+全 ID を [`bench/ids.ts`](./ids.ts) の `SCENARIO_STAGE_IDS` に 1 箇所で列挙する。
+
+```ts
+export const SCENARIO_STAGE_IDS = {
+  pipeline: ["__start__", "divideBoundary", ..., "measureSegmentsWidthCoverage"],
+  split: ["SplitOSMData"],
+  "cache-read": ["requireOSMData", "RequestContext.divide", ...],
+} as const;
+```
+
+シナリオは `StageRecorder` にシナリオ名を渡してから段名を並べる。
+生成時のシナリオ名から「そのシナリオが測る段」だけを要求するので、
+`mark("SplitOSMDdata")` のような typo はコンパイルエラーになる。
+`bench/**/*.ts` は `pnpm check`（`jsconfig.json` の `include`）の対象なので、
+CI でもこの保証が効く。
+
+| 記法 | 用途 |
+|---|---|
+| `recorder.mark("段")` | 1 パスの中の区切りを測る（`pipeline`） |
+| `recorder.measure("段", setup, fn)` | 段だけの処理を暖機込みで繰り返し測る（`split` / `cache-read`） |
+| `recorder.record(id, samples)` | 実行時に ID が確定する測定項目に、生のサンプルを積む（`cache-read` の `RequestContext.*`） |
+
+`RequestContext` の計測名は文字列で届くので、`toStageId()` でレジストリに無い名前は
+JSON を作る前に落とす。
+本番側に計測が追加されたら、bench 側で ID を足すまで落ちる。
+
+### 測定条件を変えるなら ID を変える
+
+ID は「何を、どの条件で測ったか」の識別子である。
+
+- ID をリネームすると **削除 + 追加** になり、比較されない
+- 同じ ID で測定条件（`iterations` / `warmup` / `fixture` / `fixtureNodeCount` / `mode` / `node`）が
+  違う場合、比較対象から外して exit 2 にする
+
+「同じ測定対象だが条件が違う」比較は、同じ ID で数値だけが違う比較になり意味が読めなくなる。
+したがって条件が変わったなら ID を変える。
 
 ## 出力の読み方
 
@@ -86,21 +126,65 @@ Vite / SvelteKit は通さない。
 ### CI がやること
 
 1. `actions/checkout` を 2 回使って `base/` と `head/` を作る
-2. `base/app/bench` と `head/app/bench` が同一かを確認する
-   （`diff -rq -x .build`）。異なる場合は比較しない
-3. `base` を計測して `bench-base.json`、`head` を計測して `bench-head.json`
-4. `compare.mjs` で比較。許容倍率（既定 1.5 倍）を超えた段があれば exit 1
+2. `base` を計測して `bench-base.json`、`head` を計測して `bench-head.json`
+3. `compare.mjs` で測定項目 ID ごとに比較。許容倍率（既定 1.5 倍）を超えた項目があれば exit 1
 
-2 の確認をしているのは、**base は自分の bench を自分の `app/src` に対してビルドする**ため。
-bench を head から複製すると、bench が import する `../../src/...` のパスが
-base 側に持ち越され、ソースを移動しただけの PR で base のビルドが失敗する。
+`base` は**自分の bench で自分の `app/src` をビルドする**ので、head の bench を base に
+コピーしない。コピーすると bench が import する `../../src/...` のパスが base 側に持ち越され、
+ソースを移動しただけの PR で base のビルドが失敗する。
 
-比較の前提が崩れている場合は exit 2 で区別する。フィクスチャや Node のバージョンが
-違う、`searchGraphEdges` などデータ規模が変わっている場合がこれに当たる。
+**ハーネスの同一性は求めない。** 比較は測定項目 ID 単位で行うので、
+base の bench が head の bench と違っても同じ ID の測定項目同士は比較できる。
+
+```
+App@base    <-> bench/Measure@base   ->  bench 結果 ---+
+                「同一でなくても良い」                  +-> 比較@HEAD -> CI の可否 / Summary
+App@HEAD   <-> bench/Measure@HEAD   ->  bench 結果 ---+
+```
+
+これで `app/src` のモジュール移動が自由になる。移動すると bench の import パスも追随して
+bench の内容が変わるが、測定項目が同じなら比較はそのまま成立する。
+
+比較の前提が崩れている場合は exit 2 で区別する。測定項目 ID を取り出せない、
+測定条件が両側で揃わない、`searchGraphEdges` などデータ規模が変わっている場合がこれに当たる。
 このときは「性能が悪くなった」ではなく「比較できない」として扱う。
 
-`base` のビルドが失敗するケース（PR がソースを移動または改名した等）は比較を諦めて、
-`head` の値だけ提示して成功にする（`continue-on-error`）。
+`base` のビルドが失敗するケース（base（main）側の依存関係が壊れている等）は失敗として報告する
+（`base の計測失敗を報告する` ステップ）。
+
+### 追加と削除
+
+base に無い ID は「追加」、head に無い ID は「削除」として `compare.mjs` が明示する。
+どちらも「測定対象が変わった」ことを意味するので、回帰判定には入らない。
+
+追加は「測り始めた」、削除は「もう測っていない」（条件が変わったので ID を変えた）ことを表す。
+どちらの ID も一致する項目は通常どおり比率で比較する。
+
+### 共有するのは 3 つだけ
+
+比較@HEAD は base の版が作った JSON を読むので、base の bench が変わっていても
+その構造は base の版次第である。したがって**構造を共有すると drift が再発する**ため、
+共有する契約は次の 3 つだけに絞る。
+
+| 共有するもの | 形式 |
+|---|---|
+| 測定項目 ID | `{シナリオ}/{段}` |
+| 測定値 | `median`（中央値、ms） |
+| 測定条件 | `mode` / `iterations` / `warmup` / `fixture` / `fixtureNodeCount` / `node` |
+
+共有しないもの:
+
+- `measurements` がどの階層で持つしているか、`total` があるかどうかといった**構造**
+- シナリオの実装、`StageRecorder` などの計測インフラ
+- JSON のその他のキー
+
+そのため `lib/report.mjs` は JSON の構造を固定せず再帰的に走査して
+「ID を持つオブジェクトで `median` が数値のもの」を探す。
+base 側の JSON が別の階層で別のキーを持っていても、同じ ID の測定項目は比較できる。
+
+校正（`calibration` / `scenarioCalibration`）は測定項目 ID を持たない。
+アプリに依存しない固定仕事量の 1 項工作なので、ID の比較とは別の判定になる。
+校正の `work` は「同じ仕事をした」ことを確かめる検算値で、測定項目の値とは別の意味を持つ。
 
 ### 校正ゲート（機械の速度が変わっていないかの確認）
 
@@ -111,7 +195,7 @@ base 側に持ち越され、ソースを移動しただけの PR で base の�
 base と head の計測の直前に 1 回ずつ測る。使う仕事量は常に同じなので、所要時間だけが
 機械の速度を反映する。`compare.mjs` はこの 2 つの比が `1 ± 0.10`
 （`--calibration-tolerance` で変更できる）の外に出た場合、exit 2 にして
-**「性能が悪化した」とは報告しない**。段の表はそのまま出すが、回帰の判定は出さない
+**「性能が悪化した」とは報告しない**。測定項目の表はそのまま出すが、回帰の判定は出さない
 （校正面が通っているときだけ出す）。ジョブをもう一度動かせば解決する、という扱いにする。
 
 ### シナリオ直前の校正
@@ -124,15 +208,16 @@ JSON では `scenarioCalibration` にシナリオ名で入る）。
 `compare.mjs` は base と head の「シナリオ N の直前」を 1 シナリオずつ突き合わせ、
 ずれたシナリオの名前を含む警告を出して exit 2 にする。判定の閾値は開始時の校正と同じ
 `--calibration-tolerance` で、`--tolerance` とは独立している。
+両側に同じ ID の測定項目があるシナリオだけを見るので、追加または削除になった
+シナリオの校正は比較しない。
 
 このとき、**開始時の校正が一致していてシナリオ N だけずれていれば、
 「序盤は正常で、計測の途中で遅くなった」と読める**ので、
 警告を読むだけで、どのシナリオの計測が別々の状態で取られたかが分かる。
 
 校正マップ（`scenarioCalibration`）が無い JSON を渡すと、この検査は exit 2 になる。
-比較する 2 つの JSON は同じ版の bench で取るのが前提なので、
-これは「片方だけ古い bench で取っている」という状態を検出しているだけである。
-CI は `base/app/bench` に `head/app/bench` を丸ごと上書きするので、両方の JSON は同じ版になる。
+校正は測定項目 ID を持たないので、校正の版と測定項目の版が同じである保証はない。
+校正マップが無ければ「片方の校正が別の版で取られている」という状態で、比べる意味がないので exit 2 にする。
 
 なお校正の絶対値は実行の途中で動く。1 つの job の開始時の校正だけを見ると、
 この開発機では 72ms のまま 46ms まで落ちた（CPU の省電力状態から boost に移るため）。
@@ -150,7 +235,8 @@ CI は `base/app/bench` に `head/app/bench` を丸ごと上書きするので�
   校正ワークロードの中身が違う）
 
 `work` が一致しないときは、校正の `median` が完全に一致していても exit 2 にする。
-校正も段も「同じ仕事をした」ことが前提になる。その前提が崩れるので、比べる意味がない。
+校正も測定項目も「同じ仕事をした」ことが前提になる。
+その前提が崩れるので、比べる意味がない。
 
 ### 参考値としての回帰レポート（`--report-on-invalid`）
 
@@ -159,7 +245,7 @@ CI は `base/app/bench` に `head/app/bench` を丸ごと上書きするので�
 
 そこで `--report-on-invalid` を付けると、**exit 2 を保ったまま**
 「性能回帰の参考値（機械の状態が信用できないため判定ではない）」として回帰リストを出す。
-CI はこのフラグを付けるので、失敗した PR でも「本当に遅くなった段があったか」が読める。
+CI はこのフラグを付けるので、失敗した PR でも「本当に遅くなった測定項目があったか」が読める。
 判定（exit code）は 2 のままなので、比較不成立という結論は変わらない。既定では従来どおり出さない。
 
 **なぜ基準ファイルを git に入れないのにこのゲートが要るか**:
@@ -170,16 +256,16 @@ CI はこのフラグを付けるので、失敗した PR でも「本当に遅�
 **ランナー間の差を吸収できるが、ランナー自身の変動は検出できない**ので、
 このゲートを足して穴を塞いでいる。両者は別々の問題に対する別の解で、互いに代用できない。
 
-校正の判定は段ごとの判定（`--min-ms` のノイズ床、`--tolerance` の許容倍率）とは独立している。
-校正は 1 段だけの話ではなく「段の集合全体」の話なので、どの段が何倍でも同じ判定になる。
+校正の判定は測定項目ごとの判定（`--min-ms` のノイズ床、`--tolerance` の許容倍率）とは独立している。
+校正は 1 項目だけの話ではなく「項目の集合全体」の話なので、どの項目が何倍でも同じ判定になる。
 開始時の校正・シナリオ直前の校正・`work` の 3 つも同じ枠で、独立に判定される。
 
 ### 許容倍率
 
 1.5 のまま緩めにしている。検出したいのは `SplitOSMData` の O(E×C) から O(E) へみたいな
 **アルゴリズム単位**の変化（数倍）であって、数値が 1.2 倍動いた程度ではない。
-同じランナー・同じフィクスチャで 2 回測ると machine 間の差は小さく、同じコードを 2 回
-計測したときの段の比率は 0.87〜1.07 倍に収まる（開発機での実測）。1.2 倍は測定ノイズの
+同じランナー・同じフィクスチャで 2 回測すると machine 間の差は小さく、同じコードを 2 回
+計測したときの項目の比率は 0.87〜1.07 倍に収まる（開発機での実測）。1.2 倍は測定ノイズの
 範囲だが 1.5 倍なら確実に検出できる。
 
 ただしこの余裕は**ランナーの状態が変わらない前提**の上に立っている。前提が崩れたときの
@@ -189,7 +275,7 @@ CI はこのフラグを付けるので、失敗した PR でも「本当に遅�
 ### ノイズの採取（`scripts/measure-noise.mjs`）
 
 上の 2 つの許容値は「同じコードを 2 回測るとどれくらい動くか」という測定に根拠を
-置いている。採取はこのスクリプトで、**校正と段を N 回分まとめて採取して
+置いている。採取はこのスクリプトで、**校正と測定項目を N 回分まとめて採取して
 ばらつきを数値で見せる**。
 
 ```bash
@@ -210,8 +296,8 @@ node bench/scripts/measure-noise.mjs --runs 9 --json /tmp/noise.json  # 生デ�
 |---|---|
 | 校正の連続比 | 0.81x - 1.19x（32 組） |
 | うち負荷の変動が無いときの連続比 | 0.98x - 1.05x（5 組） |
-| 判定対象の段の連続比 | 0.83x - 1.28x（128 組） |
-| 1.5x を超えた段 | 0 組 |
+| 判定対象の測定項目の連続比 | 0.83x - 1.28x（128 組） |
+| 1.5x を超えた測定項目 | 0 組 |
 | 採取中のドリフト（開始時の校正の最大/最小） | 1.23x |
 
 このうち 1.19x と 0.81x は 2 回連続で他の job が重なったときの往復で、校正は
@@ -225,33 +311,36 @@ node bench/scripts/measure-noise.mjs --runs 9 --json /tmp/noise.json  # 生デ�
 
 ### ノイズ床（`--min-ms`）
 
-**0.5ms 未満の段は回帰判定の対象外**にする（表では `*` が付く）。
-0.02ms の段が 0.04ms になっても、それは測定解像度の問題であって性能の回帰ではない。
+**0.5ms 未満の測定項目は回帰判定の対象外**にする（表では `*` が付く）。
+0.02ms の項目が 0.04ms になっても、それは測定解像度の問題であって性能の回帰ではない。
 この判定がないと、`divideBoundary` が毎回 2 倍速度で PR が落ち続ける。
 
-`*` が付かない段だけが判定対象。表を読むときはこの点に注意。
+`*` が付かない測定項目だけが判定対象。
+表を読むときはこの点に注意。
 
 ### 手元で再現する
 
 ```bash
 # 変更前のコミットを一時ディレクトリに切り出して、そこに対して計測する
 git worktree add /tmp/base HEAD~1
-cp -r app/bench /tmp/base/app/bench
 
 # head を測る
 cd app
 node bench/build.mjs
 node bench/.build/bench.mjs --quiet --json /tmp/head.json
 
-# base を測る
+# base を測る（base は自分の bench で自分の src をビルドする）
 cd /tmp/base/app
 node bench/build.mjs
 node bench/.build/bench.mjs --quiet --json /tmp/base.json
 
-# 比較する
+# 比較する（head の compare.mjs が両方の JSON を測定項目 ID で突き合わせる）
 cd -
 node app/bench/compare.mjs --base /tmp/base.json --head /tmp/head.json --format markdown
 ```
+
+base と head の bench が違っても比較は成立する。追加・削除された ID だけが比較から外れ、
+共通する ID の測定項目はそのまま比率が出る。
 
 ## フィクスチャ
 
@@ -284,7 +373,7 @@ git にデータを持たずに済む。`deploy.yml` は `BENCH_FIXTURE` を
 
 1. **基準線が意味を失う。** キャッシュが空の時（初回、あるいは 7 日以上
    アクセスがないと GitHub が退避させる）に Overpass から取り直すと、
-   その時点の OSM データになる。実データが僅かに変わるだけで全部の段がずれるので、
+   その時点の OSM データになる。実データが僅かに変わるだけで全部の測定項目がずれるので、
    ベンチの厚みと無関係な差を区別できなくなる。
 2. **PR の合流に外部依存が混ざる。** Overpass が遅くなったり落ちていただけで
    bench ジョブが落ちる。回帰検出という目的自体が成立しなくなる。
@@ -298,17 +387,19 @@ git にデータを持たずに済む。`deploy.yml` は `BENCH_FIXTURE` を
 bench/
 ├── README.md
 ├── build.mjs                      # esbuild でバンドルする
-├── compare.mjs                    # 2 つの結果を比べる（回帰チェック）
+├── compare.mjs                    # 2 つの結果を ID で突き合わせる（回帰チェック）
 ├── env-stub.ts                    # $env/dynamic/private の差し替え
+├── ids.ts                         # 測定項目 ID のレジストリ（全 ID を 1 箇所に列挙する）
 ├── run.ts                         # エントリ。引数解析・出力・回帰チェック
 ├── fixtures/
 │   └── nagaoka-central.json.gz    # 長岡市中心の実データ（gzip、244KB）
 ├── lib/
 │   ├── data.ts                    # フィクスチャ読み込み・始点終点の決定
-│   ├── harness.ts                 # 暖機・反復・中央値集計
-│   └── reference.ts               # 校正（固定仕事量の整数演算）
+│   ├── harness.ts                 # 暖機・反復・中央値集計と StageRecorder
+│   ├── reference.ts               # 校正（固定仕事量の整数演算）
+│   └── report.mjs                 # 結果 JSON から測定項目を取り出す（比較側共通の部品）
 ├── scenarios/
-│   ├── types.ts                   # Scenario 型と StageRecorder
+│   ├── types.ts                   # Scenario と ScenarioResult の型
 │   ├── pipeline.ts                # 1 検索の CPU 内訳
 │   ├── split.ts                   # SplitOSMData 単体
 │   └── cache-read.ts              # requireOSMData（キャッシュ全ヒット）
@@ -322,6 +413,6 @@ bench/
 `SplitOSMData` の重複やセル取りこぼしの検証は
 `app/tests/osm-cache/split-osm-data.test.ts` の責務なので、そちらに回帰テストを書くこと。
 
-`pipeline` の `pathLength` が 0 になったら測定が成立していない
+`pipeline` の `pathLength`（情報）が 0 になったら測定が成立していない
 （始点・終点が道から離れ、`transientSplit` が空振りしている）。
 `lib/data.ts` の `pickEndpointsOnMainComponent` を見直すこと。

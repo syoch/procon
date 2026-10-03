@@ -6,11 +6,29 @@ import { pipelineScenario } from "./scenarios/pipeline";
 import { splitScenario } from "./scenarios/split";
 import { cacheReadScenario } from "./scenarios/cache-read";
 import type { Scenario, ScenarioResult } from "./scenarios/types";
+import type { ScenarioName, StageId } from "./ids";
 import { readFixtureMeta } from "./lib/data";
+import type { MeasureConditions, Samples } from "./lib/harness";
+import { stageEntries } from "./lib/harness";
 import { measureCalibration, type Calibration } from "./lib/reference";
 
 
 const SCENARIOS: Scenario[] = [pipelineScenario, splitScenario, cacheReadScenario];
+
+/**
+ * 結果 JSON に並べる測定項目 1 件。
+ *
+ * CI が base と head を突き合わせるときに共有するのはこの 3 つだけなので、
+ * ここに書くのは「ID」「測定値」「測定条件」だけに絞る。
+ * `stages` をどの階層で持つとか `total` があるとかは共有しない。
+ */
+type Measurement = {
+  /** 測定項目 ID（`{シナリオ}/{段}`） */
+  id: StageId;
+} & Samples & {
+  /** この測定項目の測定条件 */
+  conditions: MeasureConditions;
+};
 
 type Options = {
   /** 実行するシナリオ名（未指定なら全部） */
@@ -80,12 +98,13 @@ function printUsage() {
   pnpm bench --json /tmp/bench.json --quiet
 
 回帰チェックはここでは行わない。CI が「base と head を同じランナー上で 2 回測って比べる」
-ので、compare.mjs に結果 JSON を渡して判定する。machine ごとに違う値をリポジトリに
-保存しないため、記録用の基準ファイルは要らない。
+ので、compare.mjs に結果 JSON を渡して判定する。比較は測定項目 ID 単位で行う。
+machine ごとに違う値をリポジトリに保存しないため、記録用の基準ファイルは要らない。
 
 校正ワークロードは開始時と各シナリオの直前に測り、JSON の calibration と
 scenarioCalibration に入れておく。compare.mjs がこれを比べることで「機械の速度が
-変わった」だけの差を検出して、回帰と区別できる。`);
+変わった」だけの差を検出して、回帰と区別できる。校正は測定項目 ID を持たない
+（アプリに依存しない固定仕事量のため）。`);
 }
 
 const ms = (value: number) => (Number.isNaN(value) ? "-" : `${value.toFixed(2)}ms`);
@@ -106,6 +125,9 @@ function printCalibration(calibration: Calibration, label?: string) {
   );
 }
 
+/** ID は `{シナリオ}/{段}` なので 40 桁で揃える */
+const ID_WIDTH = 40;
+
 function printResult(result: ScenarioResult) {
   console.log(`\n## ${result.scenario}`);
   if (result.info) {
@@ -114,15 +136,16 @@ function printResult(result: ScenarioResult) {
       .join(" ");
     console.log(`  ${info}`);
   }
-  const rows = Object.entries(result.stages).sort((a, b) => b[1].median - a[1].median);
-  const total = rows.reduce((sum, [, s]) => sum + s.median, 0);
-  console.log(`  ${"stage".padEnd(32)}${"median".padStart(10)}${"min".padStart(10)}${"max".padStart(10)}`);
-  for (const [stage, samples] of rows) {
+  const rows = stageEntries(result.stages).sort((a, b) => b[1].median - a[1].median);
+  console.log(
+    `  ${"id".padEnd(ID_WIDTH)}${"median".padStart(10)}${"min".padStart(10)}${"max".padStart(10)}`,
+  );
+  for (const [id, samples] of rows) {
     console.log(
-      `  ${stage.padEnd(32)}${ms(samples.median).padStart(10)}${ms(samples.min).padStart(10)}${ms(samples.max).padStart(10)}`,
+      `  ${id.padEnd(ID_WIDTH)}${ms(samples.median).padStart(10)}${ms(samples.min).padStart(10)}${ms(samples.max).padStart(10)}`,
     );
   }
-  console.log(`  ${"total".padEnd(32)}${ms(total).padStart(10)}`);
+  console.log(`  ${"total".padEnd(ID_WIDTH)}${ms(result.total).padStart(10)}`);
 }
 
 
@@ -199,6 +222,7 @@ async function main() {
   }
 
   const results: ScenarioResult[] = [];
+  const measurements: Measurement[] = [];
   // 校正はシナリオより先に測る。フィクスチャを展開した直後でメモリが動いていると、
   // 校正がメモリを測ることになってしまうため、計測対象に触る前に済ませる。
   const calibration = await measureCalibration();
@@ -208,7 +232,7 @@ async function main() {
   // ことを検出できない。2026-10-02 の PR #100 では `pipeline` の `fold2DegreeEdges` が
   // min 50.10ms / median 76.91ms / max 157.93ms（base は min 34.97 / median 47.32 / max 62.59）で、
   // 最小値も中央値も上がり外れ値も大きくなっていたが、開始時の校正 1 回では語れなかった。
-  const scenarioCalibration: Record<string, Calibration> = {};
+  const scenarioCalibration: Partial<Record<ScenarioName, Calibration>> = {};
 
   for (const scenario of selected) {
     // 直前の校正を先に取る。シナリオの実行中はメモリが動きっぱなしなので、
@@ -217,14 +241,25 @@ async function main() {
     scenarioCalibration[scenario.name] = before;
     if (!options.quiet) printCalibration(before, `${scenario.name} の直前`);
 
+    const iterations = options.iterations ?? scenario.defaultIterations;
+    const warmup = options.warmup ?? 5;
     const { value, log } = await withSummarizedOutput(() =>
-      scenario.run({
-        mode: options.mode,
-        iterations: options.iterations ?? scenario.defaultIterations,
-        warmup: options.warmup ?? 5,
-      }),
+      scenario.run({ mode: options.mode, iterations, warmup }),
     );
     results.push(value);
+    // 測定項目の ID と測定値を平坦に並べる。CI が base と head を突き合わせるときの
+    // 共有するのは「ID と測定値と測定条件」だけで、JSON の他の構造には依存させない。
+    const conditions: MeasureConditions = {
+      mode: options.mode,
+      iterations,
+      warmup,
+      fixture: meta.name,
+      fixtureNodeCount: meta.nodeCount,
+      node: process.version,
+    };
+    for (const [id, samples] of stageEntries(value.stages)) {
+      measurements.push({ id, ...samples, conditions });
+    }
     if (!options.quiet && log.length > 0) {
       console.log(`\n  ${scenario.name} のログ:`);
       for (const line of log.slice(0, 10)) console.log(line);
@@ -240,15 +275,22 @@ async function main() {
     const payload = {
       node: process.version,
       mode: options.mode,
-      fixture: readFixtureMeta(),
+      fixture: meta,
       // 段の結果とは別に、校正の測定値をトップレベルに置く。
-      // 比較する 2 つの JSON はこれの有無が同じになるよう、同じ版で出力するのが前提。
+      // 校正は測定項目 ID を持たないので、measurements には含めない。
       calibration,
       // シナリオ名 -> そのシナリオを走らせる直前に測った校正。
       // 開始時の 1 回だけだと「計測の途中で遅くなった」ことを語れないので、
       // シナリオ単位でも残しておく（compare.mjs はこれをシナリオごとに突き合わせる）。
       scenarioCalibration,
-      results,
+      // 測定項目の平坦な一覧。CI はここだけを使って ID 単位で突き合わせる。
+      measurements,
+      // シナリオごとの補足（データ規模・合計時間）。比較には使わないので形式を固定しない。
+      results: results.map((result) => ({
+        scenario: result.scenario,
+        total: result.total,
+        ...(result.info === undefined ? {} : { info: result.info }),
+      })),
     };
     mkdirSync(dirname(options.json), { recursive: true });
     writeFileSync(options.json, `${JSON.stringify(payload, null, 2)}\n`, "utf-8");

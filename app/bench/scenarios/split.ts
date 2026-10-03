@@ -1,6 +1,6 @@
 import { SplitOSMData } from "../../src/routes/api/osm/osm-data";
 import { loadFixture } from "../lib/data";
-import { clone, measure } from "../lib/harness";
+import { clone, stageEntries, StageRecorder } from "../lib/harness";
 import type { Scenario, ScenarioResult } from "./types";
 
 /**
@@ -18,20 +18,20 @@ export const splitScenario: Scenario = {
   defaultIterations: 30,
   async run({ iterations, warmup }): Promise<ScenarioResult> {
     const fixture = loadFixture();
-    const stages = {
-      SplitOSMData: await measure(
-        // clone は測定対象ではないので setup 側で行う
-        () => clone(fixture),
-        (data) => {
-          SplitOSMData(data);
-        },
-        { warmup, iterations },
-      ),
-    };
+    const recorder = new StageRecorder("split", { warmup, iterations });
+    await recorder.measure(
+      "SplitOSMData",
+      // clone は測定対象ではないので setup 側で行う
+      () => clone(fixture),
+      (data) => {
+        SplitOSMData(data);
+      },
+    );
+    const stages = recorder.result();
     return {
       scenario: "split",
       stages,
-      total: stages.SplitOSMData.median,
+      total: stageEntries(stages).reduce((sum, [, s]) => sum + s.median, 0),
       info: {
         elements: fixture.elements.length,
         nodes: fixture.elements.filter((e) => e.type === "node").length,

@@ -21,6 +21,8 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { extractMeasurements } from "../lib/report.mjs";
+
 const HERE = dirname(fileURLToPath(import.meta.url));
 const BENCH_DIR = join(HERE, "..");
 const APP_DIR = join(BENCH_DIR, "..");
@@ -83,13 +85,11 @@ function calibrationSamples(report) {
   return samples;
 }
 
-/** 段の測定値を `シナリオ/段` をキーにして集める */
+/** 段の測定値を測定項目 ID で集める（bench/compare.mjs と同じ取り出し方を使う） */
 function stageSamples(report) {
   const samples = [];
-  for (const result of report.results) {
-    for (const [stage, s] of Object.entries(result.stages)) {
-      samples.push({ key: `${result.scenario}/${stage}`, value: s.median });
-    }
+  for (const [id, item] of extractMeasurements(report)) {
+    samples.push({ key: id, value: item.value });
   }
   return samples;
 }
@@ -212,24 +212,24 @@ function main() {
   );
 
   console.log("\n## 校正（機械そのもの）");
-  console.log(`  ${"指標".padEnd(30)}${"中央値".padStart(9)}${"先頭回比".padStart(18)}${"連続比".padStart(18)}${"最悪の組".padStart(10)}${"CV".padStart(8)}`);
+  console.log(`  ${"指標".padEnd(40)}${"中央値".padStart(9)}${"先頭回比".padStart(18)}${"連続比".padStart(18)}${"最悪の組".padStart(10)}${"CV".padStart(8)}`);
   for (const [key, stats] of calibrationRows) {
     const over = stats.firstRatio.filter((r) => Math.abs(r - 1) > OPTIONS.calibrationTolerance).length;
     console.log(
-      `  ${key.padEnd(30)}${ms(stats.median).padStart(9)}${range(stats.firstRatio).padStart(18)}` +
+      `  ${key.padEnd(40)}${ms(stats.median).padStart(9)}${range(stats.firstRatio).padStart(18)}` +
         `${range(stats.consecutive).padStart(18)}${x2(stats.worstPair).padStart(10)}` +
         `${`${(stats.cv * 100).toFixed(1)}%`.padStart(8)}  許容外 ${over}/${stats.n}`,
     );
   }
 
   console.log("\n## 段（同じコードを N 回測ったときのばらつき）");
-  console.log(`  ${"指標".padEnd(34)}${"中央値".padStart(9)}${"先頭回比".padStart(18)}${"連続比".padStart(18)}${"最悪の組".padStart(10)}${"CV".padStart(8)}`);
+  console.log(`  ${"指標".padEnd(40)}${"中央値".padStart(9)}${"先頭回比".padStart(18)}${"連続比".padStart(18)}${"最悪の組".padStart(10)}${"CV".padStart(8)}`);
   for (const [key, stats] of stageRows) {
     const median = stats.median;
     const target = median >= OPTIONS.minMs;
     const over = stats.firstRatio.filter((r) => r > OPTIONS.tolerance).length;
     console.log(
-      `  ${key.padEnd(34)}${ms(median).padStart(9)}${range(stats.firstRatio).padStart(18)}` +
+      `  ${key.padEnd(40)}${ms(median).padStart(9)}${range(stats.firstRatio).padStart(18)}` +
         `${range(stats.consecutive).padStart(18)}${x2(stats.worstPair).padStart(10)}` +
         `${`${(stats.cv * 100).toFixed(1)}%`.padStart(8)}  ${target ? "対象" : "床"} 許容超 ${over}/${stats.n}`,
     );

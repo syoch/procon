@@ -15,7 +15,8 @@ import {
 } from "../../src/routes/api/osm/osm-data";
 import { divideBoundary, simplifyBoundaries } from "../../src/routes/api/osm/boundary";
 import { clone, fixtureBoundary, loadFixture, pickEndpointsOnMainComponent } from "../lib/data";
-import { StageRecorder, type Scenario, type ScenarioResult } from "./types";
+import { StageRecorder } from "../lib/harness";
+import type { Scenario, ScenarioResult } from "./types";
 
 /**
  * 1 回の経路探索にかかる CPU を段ごとに測る。
@@ -44,7 +45,7 @@ export const pipelineScenario: Scenario = {
     const probe = buildSearchGraph(trimOSMDataByMode(clone(fixture), profile));
     const { begin, end } = pickEndpointsOnMainComponent(mainComponentCoordinates(probe));
 
-    const recorder = new StageRecorder(warmup);
+    const recorder = new StageRecorder("pipeline", { warmup, iterations });
     let info: Record<string, string | number | boolean> = {};
 
     for (let i = 0; i < iterations + warmup; i++) {
@@ -136,7 +137,8 @@ export const pipelineScenario: Scenario = {
     }
 
     const stages = recorder.result();
-    delete stages["__start__"];
+    // `__start__` は clone() の準備時間で、比較の対象にしない
+    delete stages["pipeline/__start__"];
     return {
       scenario: "pipeline",
       stages,
