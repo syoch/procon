@@ -104,8 +104,18 @@
 		totalIntersections = 0;
 		sharpTurns = [];
 
+		const totalSlider = slider1 + slider2 + slider3;
+
+		const params: App.SearchParameters = {
+    		...ctx.searchParameters,
+    		mix_score_weight: totalSlider === 0 ? 0 : slider1 / totalSlider,
+    		view_score_weight: totalSlider === 0 ? 0 : slider2 / totalSlider,
+    		width_score_weight: totalSlider === 0 ? 0 : slider3 / totalSlider,
+		};
+
+
 		// 送るのは重みの数値だけ (プリセットの表示名などは含めない)
-		const { lambda, mix_score_weight, view_score_weight, width_score_weight } = ctx.searchParameters;
+		const { lambda, mix_score_weight, view_score_weight, width_score_weight } = params;
 		const parameters = { lambda, mix_score_weight, view_score_weight, width_score_weight };
 		const mode = ctx.searchMode;
 		const res = await fetch("/api/path-find", {
@@ -223,6 +233,22 @@
 			}
 		})();
 	});
+
+	let showSliders = $state(false);
+	//スライダー初期値
+	let slider1 = $state(50);
+    let slider2 = $state(50);
+    let slider3 = $state(50);
+
+	$effect(()=> { 
+		const params = ctx.state.parameterVariants[
+      		ctx.state.selectedVariantIndex
+    	];
+		slider1 = params.mix_score_weight * 100;
+		slider2 = params.view_score_weight * 100;
+		slider3 = params.width_score_weight * 100;
+	});
+
 </script>
 
 <MapViewer bind:map bind:pathResult {sharpTurns} {onClick}></MapViewer>
@@ -274,6 +300,30 @@
 							onclick={startSearch}
 						/>
 					</div>
+
+		<div class="slider-container">
+
+    		<!-- スライダー（動かすと自動で sliderValue の値がリアルタイムに変わる） -->
+    		<div class="slider-group">
+    			<div class="slider-item">
+        			<label>混在スコア: {slider1}<br>
+        			<input type="range" min="0" max="100" bind:value={slider1} class="custom-slider"/>
+					</label>
+    		</div>
+    		<div class="slider-item">
+       			<label>視界(曲率)スコア: {slider2}<br>
+        		<input type="range" min="0" max="100" bind:value={slider2} class="custom-slider"/>
+				</label>
+    		</div>
+
+    		<div class="slider-item">
+        		<label>振幅スコア: {slider3}<br>
+        		<input type="range" min="0" max="100" bind:value={slider3} class="custom-slider"/>
+				</label>
+    		</div>
+		</div>
+	</div>
+
 				{:else}
 					<span
 						style="position: absolute; white-space: nowrap; left: 18.3px; top: 104px;"
@@ -316,7 +366,61 @@
 							onclick={startSearch}
 						/>
 					</div>
+					
+
+    <!-- 既存の車種選択と検索ボタンがあるエリア -->
+<div
+    style="position: absolute; top: 454.5px; display: flex; flex-direction: column; align-items: flex-start; gap: 10px;"
+    transition:fade={{ duration: 140 }}
+>
+    <div style="display: flex; align-items: center;">
+        <div style="flex: 0 0 44px;"></div>
+        <div transition:fade={{ duration: 140 }}>
+            <VehicleSelect />
+        </div>
+        <div style="flex: 0 0 25px;"></div>
+        <GreenButton
+            label="検索"
+            width={60}
+            onclick={startSearch}
+        />
+    </div>
+	
+
+    <!-- ★ 車種選択のすぐ下に置いた「スライダー表示/非表示」を切り替えるボタン -->
+    <div style="margin-left: 44px;">
+        <button 
+            type="button" 
+            onclick={() => showSliders = !showSliders}
+            style="background: #f0f0f0; border: 1px solid #ccc; padding: 4px 10px; border-radius: 4px; cursor: pointer; font-size: 12px;"
+        >
+            {showSliders ? "▲ 詳細設定を閉じる" : "▼ スコア詳細設定を開く"}
+        </button>
+    </div>
+</div>
+
+<!-- ★ ボタンが押されて showSliders が true のときだけ表示されるスライダーグループ -->
+{#if showSliders}
+<div class="slider-group" style="position: absolute; top: 545px; background: white; padding: 10px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+    <div class="slider-item">
+        <label>混在スコア: {slider1}<br>
+        <input type="range" min="0" max="100" bind:value={slider1} class="custom-slider"/>
+        </label>
+    </div>
+    <div class="slider-item">
+        <label>視界(曲率)スコア: {slider2}<br>
+        <input type="range" min="0" max="100" bind:value={slider2} class="custom-slider"/>
+        </label>
+    </div>
+    <div class="slider-item">
+        <label>振幅スコア: {slider3}<br>
+        <input type="range" min="0" max="100" bind:value={slider3} class="custom-slider"/>
+        </label>
+    </div>
+</div>
+
 				{/if}
+			{/if}
 			{/snippet}
 		</DetailPanel>
 	</div>
@@ -400,4 +504,27 @@
 		height: 1px;
 		background: var(--wn-divider);
 	}
+
+	.slider-group {
+        display: flex;
+        flex-direction: column; /* 縦向きに並べる */
+        gap: 15px;              /* スライダー同士の隙間をあける */
+        padding: 15px;
+        background: white;
+        border-radius: 8px;
+		position: absolute;
+        top: 400px; /* 画面の下から30pxの位置に配置 */
+        left: 50px;   /* 画面の左から50pxの位置に配置 */
+        z-index: 1000; /* 地図などの手前に表示させる */
+    }
+    .slider-item {
+        display: flex;
+        flex-direction: column;
+        gap: 5px;
+    }
+	.custom-slider {
+        accent-color: #2f7731; /* 緑色にする例（好きなカラーコードや色名） */
+		width: 250px;
+    }
+
 </style>
