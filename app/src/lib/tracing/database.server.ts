@@ -56,7 +56,7 @@ const TABLES = [
 
 export function isTracingEnabled(): boolean {
     const db_locator = getDatabaseLocator();
-    return db_locator !== undefined;
+    return Boolean(db_locator);
 }
 
 function ensureDatabaseInitialized(): Init | undefined {
