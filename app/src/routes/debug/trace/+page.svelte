@@ -72,6 +72,15 @@
             }
         })();
     });
+
+    $effect(() => {
+        if (requests instanceof Error) {
+            return;
+        }
+        if (requests.every((r) => r.bootId !== requestsBootId)) {
+            selectedRequest = undefined;
+        }
+    });
 </script>
 
 <div class="container">
@@ -118,6 +127,7 @@
                         onclick={() => {
                             requestsBootId =
                                 requestsBootId == boot.id ? undefined : boot.id;
+                            selectedRequest = undefined;
                             sideView = "requests";
                         }}
                     />
