@@ -12,7 +12,11 @@ type Init = {
     database: DatabaseSync
 };
 
-const HEAD_HASH = "Dummy-HEAD";
+/**
+ * 起動したビルドの git commit。
+ * @ref infra/README.md
+ */
+const HEAD_HASH = env.PROCON_HEAD_HASH || "no-git";
 let initialization: Init | undefined = undefined
 
 const TABLES = [

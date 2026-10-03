@@ -68,6 +68,8 @@
           # nginx と同じホストにあるので localhost 束縛で運用する
           Environment=HOST=127.0.0.1
           EnvironmentFile=/etc/procon.env
+          # ファイルが無くても起動を妨げない
+          EnvironmentFile=-/etc/procon-head-hash.env
 
           [Install]
           WantedBy=network.target
@@ -125,6 +127,19 @@
           ln -sf ${self.packages.${system}.procon-cache-refresh-timer} /etc/systemd/system/procon-cache-refresh.timer
 
           install -d -m 0755 -o procon -g procon /var/cache/procon/osm
+
+          # .git が無い環境では空文字列になる
+          procon_head_hash=$(git -C /srv/procon rev-parse HEAD 2>/dev/null || true)
+          if [ -z "$procon_head_hash" ]; then
+            procon_head_hash=no-git
+          else
+            procon_dirty=$(git -C /srv/procon status --porcelain 2>/dev/null || true)
+            if [ -n "$procon_dirty" ]; then
+              procon_head_hash=''${procon_head_hash}-dirty
+            fi
+          fi
+          printf 'PROCON_HEAD_HASH=%s\n' "$procon_head_hash" > /etc/procon-head-hash.env
+          chmod 0644 /etc/procon-head-hash.env
 
           systemctl daemon-reload
 
