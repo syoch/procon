@@ -50,6 +50,11 @@ const TABLES = [
     }
 ];
 
+export function isTracingEnabled(): boolean {
+    const db_locator = getDatabaseLocator();
+    return db_locator !== undefined;
+}
+
 function ensureDatabaseInitialized(): Init | undefined {
     if (initialization !== undefined) {
         return initialization;
@@ -59,8 +64,6 @@ function ensureDatabaseInitialized(): Init | undefined {
     if (!db_locator) {
         return undefined;
     }
-
-    console.log("init() called");
 
     const database = new DatabaseSync(db_locator);
 
