@@ -26,9 +26,9 @@
  * 「シナリオ N の直前」がずれているかを別々に見る。ずれていれば、比較不成立の理由を
  * どのシナリオまで絞って言えるので、ジョブの再実行で直るかも判断できる。
  *
- * 校正の検算値 `checksum` も見る。同じ仕事をしたなら必ず同じ値になるので、これが
+ * 校正の仕事量の検算値 `work` も見る。同じ仕事をしたなら必ず同じ値になるので、これが
  * 違うときは `median` の時間が同じであっても「同じ仕事をした」保証が壊れているとみなす。
- * 時間の比較と検算値の比較は別の失敗なので、別々に判定する。
+ * 時間の比較と仕事量の検算値の比較は別の失敗なので、別々に判定する。
  *
  * exit code:
  *   0  許容倍率以内（改善も含む）
@@ -146,37 +146,37 @@ function checkCalibration(base, head) {
 }
 
 /**
- * 校正の検算値（`checksum`）の一致を見る。
+ * 校正の仕事量の検算値（`work`）の一致を見る。
  *
  * 校正は同じ仕事量を整数演算で回すだけなので、同じ Node で走らせれば必ず同じ値を返す。
- * つまり `median` が何倍であっても `checksum` は一致する。両者は別の失敗を見る:
- * `median` のずれは「機械の速さ」が変わったことを、`checksum` の不一致は
+ * つまり `median` が何倍であっても `work` は一致する。両者は別の失敗を見る:
+ * `median` のずれは「機械の速さ」が変わったことを、`work` の不一致は
  * 「同じ仕事をした」保証が壊れたことを示す。Node の版や bench の版が違えば
  * 整数演算が別の最適化を受けて別の値になるので、このときは時間で見ても意味がない。
  * 判定の順序に意味はないので、両者は独立に判定する。
  */
 
-/** 校正レポートから `checksum` を全部抜き出す（どこで測ったかを一緒に持つ） */
-function collectChecksums(report) {
+/** 校正レポートから `work` を全部抜き出す（どこで測ったかを一緒に持つ） */
+function collectWorks(report) {
   const entries = [];
   const add = (where, value) => {
     if (typeof value === "number" && Number.isFinite(value)) entries.push({ where, value });
   };
-  add("開始時", report.calibration?.checksum);
+  add("開始時", report.calibration?.work);
   for (const [name, calibration] of Object.entries(report.scenarioCalibration ?? {})) {
-    add(`${name} の直前`, calibration?.checksum);
+    add(`${name} の直前`, calibration?.work);
   }
   return entries;
 }
 
-function formatChecksums(entries) {
+function formatWorks(entries) {
   if (entries.length === 0) return "(なし)";
   return entries.map((e) => `${e.where} ${e.value}`).join(" / ");
 }
 
-function checkChecksum(base, head) {
-  const before = collectChecksums(base);
-  const after = collectChecksums(head);
+function checkWork(base, head) {
+  const before = collectWorks(base);
+  const after = collectWorks(head);
   const values = new Set([...before, ...after].map((e) => e.value));
   const count = before.length + after.length;
   if (values.size === 0) {
@@ -185,7 +185,7 @@ function checkChecksum(base, head) {
       count,
       ok: false,
       warnings: [
-        "校正の checksum がありません（同じ版の bench で 2 回とも計測し直してください）",
+        "校正の work がありません（同じ版の bench で 2 回とも計測し直してください）",
       ],
     };
   }
@@ -197,8 +197,8 @@ function checkChecksum(base, head) {
     count,
     ok: false,
     warnings: [
-      `校正の checksum が一致しません（同じ仕事をした保証が壊れています）: base=${formatChecksums(before)}` +
-        ` / head=${formatChecksums(after)}。校正の中身が違う（Node の版・bench の版・校正ワークロードの` +
+      `校正の work が一致しません（同じ仕事をした保証が壊れています）: base=${formatWorks(before)}` +
+        ` / head=${formatWorks(after)}。校正の中身が違う（Node の版、bench の版、校正ワークロードの` +
         "いずれかが違う）ので、校正も段も比較の対象にならない",
     ],
   };
@@ -270,10 +270,10 @@ function checkScenarioCalibration(base, head, startOk) {
  */
 function checkMachine(base, head) {
   const calibration = checkCalibration(base, head);
-  const checksum = checkChecksum(base, head);
+  const work = checkWork(base, head);
   const scenarios = checkScenarioCalibration(base, head, calibration.ok);
-  const warnings = [...calibration.warnings, ...checksum.warnings, ...scenarios.warnings];
-  return { calibration, checksum, scenarios, warnings, ok: warnings.length === 0 };
+  const warnings = [...calibration.warnings, ...work.warnings, ...scenarios.warnings];
+  return { calibration, work, scenarios, warnings, ok: warnings.length === 0 };
 }
 
 /** 同じ観測条件で結果が比較可能か（データ規模が変わっていないか） */
@@ -355,10 +355,10 @@ function calibrationText(calibration) {
   );
 }
 
-/** 検算値の結果を 1 行にまとめる */
-function checksumText(checksum) {
-  if (checksum.value === null) return `checksum: 比較できない（${checksum.count} 箇所）`;
-  return `checksum: ${checksum.value} 一致（校正 ${checksum.count} 箇所すべて同じ値）`;
+/** 仕事量の検算値の結果を 1 行にまとめる */
+function workText(work) {
+  if (work.value === null) return `work: 比較できない（${work.count} 箇所）`;
+  return `work: ${work.value} 一致（校正 ${work.count} 箇所すべて同じ値）`;
 }
 
 /** シナリオ直前の校正を 1 行ずつにまとめる */
@@ -435,7 +435,7 @@ function renderText({ scenarios, regressions, removed }, warnings, gate) {
   lines.push(`  (* = ${OPTIONS.minMs}ms 未満のため回帰判定の対象外)`);
   lines.push("");
   lines.push(`  ${calibrationText(gate.calibration)}`);
-  lines.push(`  ${checksumText(gate.checksum)}`);
+  lines.push(`  ${workText(gate.work)}`);
   for (const line of scenarioCalibrationLines(gate.scenarios)) lines.push(`  ${line}`);
   const result = verdict(gate, regressions);
   lines.push(`  ${result.heading}`);
@@ -466,7 +466,7 @@ function renderMarkdown({ scenarios, regressions }, warnings, gate) {
   lines.push(`* ${OPTIONS.minMs}ms 未満の段は回帰判定の対象外（比率が測定解像度の範囲に入るため）`);
   lines.push("");
   lines.push(`**${calibrationText(gate.calibration)}**`);
-  lines.push(gate.checksum.value === null ? `**${checksumText(gate.checksum)}**` : checksumText(gate.checksum));
+  lines.push(gate.work.value === null ? `**${workText(gate.work)}**` : workText(gate.work));
   if (gate.scenarios.entries.length > 0) {
     lines.push("**シナリオ直前の calibration:**");
     for (const entry of gate.scenarios.entries) {

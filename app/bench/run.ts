@@ -102,7 +102,7 @@ function printCalibration(calibration: Calibration, label?: string) {
   console.log(
     `${name}: ${ms(calibration.median)} ` +
       `(min=${ms(calibration.min)}, max=${ms(calibration.max)}, ${calibration.iterations} 回, ` +
-      `checksum=${calibration.checksum})`,
+      `work=${calibration.work})`,
   );
 }
 

@@ -3,13 +3,7 @@ import { measure, type Samples } from "./harness";
 /**
  * 校正ワークロード: 2 回の計測の間で「機械の速度」が変わっていないことを確かめる。
  *
- * 2026-10-02 の PR #100 で、`path_finder.ts` の「コストが負なら 0 に打ち切る」4 行だけの
- * 変更なのに、グラフ構築・キャッシュ読み込み・格子分割まで 21 段中 19 段が一様に
- * 1.02〜1.63 倍遅くなり、bench が偽の回帰として落ちた。head 側の最大値が 157.93ms と
- * 2.5 倍の外れ値だったとおり、CPU のスロットリングか近隣のジョブの混入である。
- * どちらの結果にも、その原因と分かる跡が残っていなかった。
- *
- * そこでアプリのコードに一切依存しない固定の整数演算を用意し、base と head の計測の
+ * アプリのコードに一切依存しない固定の整数演算を用意し、base と head の計測の
  * 直前に 1 回ずつ測る。使う仕事量は常に同じなので、所要時間だけが機械の速度を
  * 反映する。2 つの時間が想定の範囲を外れていれば、段が実際に遅くなったのではなく
  * 2 回の計測が別々の状態で取られた、つまり比較が成立していない、とみなせる。
@@ -85,24 +79,24 @@ function runKernel(iterations: number): number {
 
 export type Calibration = Samples & {
   /**
-   * 仕事量そのものの検算値。
+   * 仕事量そのものの仕事量の検算値。
    *
    * 同じ値なら「同じ仕事をした」ということで、この値が base と head で違うときは
    * 校正が成立していない（Node の版が違う、テーブルが壊れた等）。
    */
-  checksum: number;
+  work: number;
 };
 
 /**
  * 校正を測る。
  *
- * 引数は取らない。校正はアプリ本体の実測回数（`--iterations`）に追随させると
- * base と head で仕事量が揃わないので、CLI からは変えられない固定値にする。
+ * 引数は取らない。アプリ本体の実測回数（`--iterations`）に追随させると、
+ * base と head で仕事量が揃わないので固定値にする。
  */
 export async function measureCalibration(): Promise<Calibration> {
-  let checksum = 0;
+  let work = 0;
   const samples = await measure(resetTable, () => {
-    checksum = runKernel(ITERATIONS);
+    work = runKernel(ITERATIONS);
   }, { warmup: WARMUP, iterations: SAMPLES });
-  return { ...samples, checksum };
+  return { ...samples, work };
 }
