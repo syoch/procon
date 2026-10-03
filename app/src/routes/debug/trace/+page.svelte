@@ -8,12 +8,32 @@
     import BootCard from "./BootCard.svelte";
     import RequestCard from "./RequestCard.svelte";
     import RequestDetail from "./RequestDetail.svelte";
+    import { queryParameters } from "sveltekit-search-params";
 
     let boots = $state<BootRecord[] | Error>([]);
-    let requestsBootId = $state<string | undefined>(undefined);
     let requests = $state<RequestRecord[] | Error>([]);
-    let selectedRequest = $state<RequestRecord | undefined>(undefined);
-    let sideView = $state<"boots" | "requests">("boots");
+
+    const sideview = () => ({
+        encode: (value: "boots" | "requests") => value,
+        decode: (value: string | null) => {
+            if (value === "boots" || value === "requests") {
+                return value;
+            }
+            return "boots";
+        },
+    });
+    const optionalString = () => ({
+        encode: (value: string | null) => value ?? "",
+        decode: (value: string | null) => (value === null ? undefined : value),
+    });
+    let st = queryParameters(
+        {
+            bootId: optionalString(),
+            requestId: optionalString(),
+            sideView: sideview(),
+        },
+        {},
+    );
 
     async function fetchBoots(): Promise<BootRecord[]> {
         const res = await fetch("/api/trace/boots?s=desc");
@@ -34,8 +54,8 @@
 
     async function fetchRequests(): Promise<RequestRecord[]> {
         const res = await fetch(
-            requestsBootId
-                ? `/api/trace/requests?s=desc&b=${requestsBootId}`
+            st.bootId
+                ? `/api/trace/requests?s=desc&b=${st.bootId}`
                 : "/api/trace/requests?s=desc",
         );
         const resultObject = await res.json();
@@ -73,37 +93,34 @@
         })();
     });
 
-    $effect(() => {
-        if (requests instanceof Error) {
-            return;
-        }
-        if (requests.every((r) => r.bootId !== requestsBootId)) {
-            selectedRequest = undefined;
-        }
-    });
+    let selectedRequest = $derived(
+        requests instanceof Array && st.requestId
+            ? requests.find((r) => r.id === st.requestId)
+            : null,
+    );
 </script>
 
 <div class="container">
     <div class="sidebar">
         <div class="actions">
             <button
-                class:active={sideView === "boots"}
+                class:active={st.sideView === "boots"}
                 onclick={() => {
-                    sideView = "boots";
+                    st.sideView = "boots";
                 }}
             >
                 Boots
             </button>
             <button
-                class:active={sideView === "requests"}
+                class:active={st.sideView === "requests"}
                 onclick={() => {
-                    sideView = "requests";
+                    st.sideView = "requests";
                 }}
             >
                 Requests
             </button>
         </div>
-        <div class="boot-list" class:active={sideView === "boots"}>
+        <div class="boot-list" class:active={st.sideView === "boots"}>
             <button
                 onclick={async () => {
                     try {
@@ -123,19 +140,18 @@
                 {#each boots as boot}
                     <BootCard
                         request={boot}
-                        active={requestsBootId === boot.id}
+                        active={st.bootId === boot.id}
                         onclick={() => {
-                            requestsBootId =
-                                requestsBootId == boot.id ? undefined : boot.id;
-                            selectedRequest = undefined;
-                            sideView = "requests";
+                            st.bootId = st.bootId == boot.id ? null : boot.id;
+                            st.requestId = null;
+                            st.sideView = "requests";
                         }}
                     />
                 {/each}
             {/if}
         </div>
 
-        <div class="req-list" class:active={sideView === "requests"}>
+        <div class="req-list" class:active={st.sideView === "requests"}>
             <button
                 onclick={async () => {
                     try {
@@ -155,12 +171,10 @@
                 {#each requests as req}
                     <RequestCard
                         request={req}
-                        active={selectedRequest?.id === req.id}
+                        active={st.requestId === req.id}
                         onclick={() => {
-                            selectedRequest =
-                                selectedRequest?.id === req.id
-                                    ? undefined
-                                    : req;
+                            st.requestId =
+                                st.requestId === req.id ? null : req.id;
                         }}
                     />
                 {/each}
