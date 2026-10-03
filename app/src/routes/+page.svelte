@@ -16,6 +16,11 @@
 	import TitleScreen from "$lib/components/figma/TitleScreen.svelte";
 	import SearchingOverlay from "$lib/components/figma/SearchingOverlay.svelte";
 	import widenaviLogo from "$lib/assets/widenavi-logo.svg";
+	import straightLogo from "$lib/assets/straight-logo.svg";
+	import turnrightLogo from "$lib/assets/turnright-logo.svg";
+	import turnleftLogo from "$lib/assets/turnleft-logo.svg"
+	import startpointLogo from "$lib/assets/startpoint-logo.svg";
+	import finishpointLogo from "$lib/assets/finishpoint-logo.svg";
 	import {
 		MainAppContext,
 		type ParameterVariant,
@@ -25,6 +30,7 @@
 	import VehicleSelect from "$lib/components/figma/VehicleSelect.svelte";
 	import GreenButton from "$lib/components/figma/GreenButton.svelte";
 	import SearchField from "$lib/components/figma/SearchField.svelte";
+	
 
 	let map: L.Map | undefined = $state(undefined);
 	let error: string | null = $state(null);
@@ -37,6 +43,7 @@
 	let totalIntersections = $state<number | undefined>(undefined);
 	/** 手動・自動を問わず検索を実行済みか（$state ではない） */
 	let hasSearched = false;
+	let informationGraph=$state<App.InformationGraph>({ type: [], distance: [] });
 
 	// 移動モード (徒歩・自転車・車・バイク・大型トラック) ごとのプリセット。
 	// 表示名と重みは mode_profiles.ts を唯一の定義元とし、ここでは並べるだけにする
@@ -420,6 +427,114 @@
 </div>
 
 				{/if}
+
+			<div class="route-scroll-container">
+        <div class="text-title">経路案内</div>
+
+        <!-- 開始地点 -->
+        <div class="route-row">
+            <img src={startpointLogo} alt="" class="route-icon" />
+            <div class="route-info">
+                <div class="text-title">始点</div>
+                <div class="text-sub">{ctx.state.begin.query}</div>
+            </div>
+        </div>
+
+        {#if informationGraph && informationGraph.type.length > 0}
+            <!-- 累積用の変数とステップ分割ロジック -->
+            {@const steps = (() => {
+                const aggregated = [];
+                let accumDist = 0;
+                let accumCross = 0;
+
+                for (let i = 0; i < informationGraph.type.length; i++) {
+                    const t = informationGraph.type[i];
+                    const d = informationGraph.distance[i];
+
+                    accumDist += d;
+
+                    if (t === "straight") {
+                        accumCross++;
+                    }
+                    else if (t === "right" || t === "left") {
+                         aggregated.push({
+                            type: "straight",
+                            distance: Math.round(accumDist),
+                            cross: accumCross
+                        });
+
+                        aggregated.push({
+                            type: t,
+                            distance: 0,
+                            cross: accumCross + 1
+                        });
+
+                        accumDist = 0;
+                        accumCross = 0;
+                    } 
+                    else if (i === informationGraph.type.length - 1) {
+                        if (accumDist > 0 || accumCross > 0) {
+                            aggregated.push({
+                                type: "finish",
+                                distance: Math.round(accumDist),
+                                cross: accumCross
+                            });
+                        }
+                    }
+                }
+                return aggregated;
+            })()}
+
+            <!-- まとめたステップをループして表示 -->
+            {#each steps as step}
+                <div class="route-row">
+                    <img 
+                        src={
+                            step.type === "right" ? turnrightLogo :
+                            step.type === "left" ? turnleftLogo : straightLogo
+                        } 
+                        alt={step.type} 
+                        class="route-icon" 
+                    />
+
+                    <div class="route-info">
+                        <div class="text-title">
+                            {#if step.type === "straight"}
+                                道なり
+                            {:else if step.type === "finish"}
+                                道なり
+                            {:else if step.type === "right"}
+                                右折
+                            {:else if step.type === "left"}
+                                左折
+                            {/if}
+                        </div>
+
+                        <div class="text-sub">
+                            {#if step.type === "straight"}
+                                {step.distance}m道なり
+                            {:else if step.type === "finish"}
+                                {step.distance}m道なり
+                            {:else if step.type === "right"}
+                                {step.cross}個目の交差点を右折
+                            {:else if step.type === "left"}
+                                {step.cross}個目の交差点を左折
+                            {/if}
+                        </div>
+                    </div>
+                </div>
+            {/each}
+        {/if}
+
+        <!-- 終点 -->
+        <div class="route-row">
+            <img src={finishpointLogo} alt="終点" class="route-icon" />
+            <div class="route-info">
+                <div class="text-title">目的地</div>
+                <div class="text-sub">{ctx.state.end.query}</div>
+            </div>
+        </div>
+    </div>
 			{/if}
 			{/snippet}
 		</DetailPanel>
@@ -505,6 +620,53 @@
 		background: var(--wn-divider);
 	}
 
+	/*経路探索結果のスクロール可能なコンテナ*/
+		.route-scroll-container {
+		position: absolute;
+        top: 550px; /* 上部の出発点・終着点情報が収まる位置より下に配置 */
+        left: 10px; /* 左側の余白を調整 */
+        width: 95%;
+        height: calc(100% -550px); /* パネルの残り全体の高さに合わせる */
+        overflow-y: auto;
+        overflow-x: hidden;
+}
+
+.route-scroll-container::-webkit-scrollbar {
+    width: 6px;
+}
+.route-scroll-container::-webkit-scrollbar-thumb {
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 3px;
+}
+
+.route-row {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        padding: 12px 16px;
+        background-color: var(--background-white);
+        border-bottom: 1px solid var(  --gray);
+    }
+
+    .route-info {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+    }
+
+    .text-title {
+        font-size: 20px;
+        font-weight: 500;
+        color: var(--black);
+    }
+
+    .text-sub {
+        font-size: 16px;
+        color: var(rgba(143, 143, 143, 1));
+    }
+
+
+	/* スライダーグループのスタイル */
 	.slider-group {
         display: flex;
         flex-direction: column; /* 縦向きに並べる */
