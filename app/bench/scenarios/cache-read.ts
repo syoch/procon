@@ -63,7 +63,9 @@ export const cacheReadScenario: Scenario = {
       const originalLog = console.log;
       console.log = () => {};
       try {
-        ctx.endMeasurement();
+        // 実際のサーバと同じ引数で呼び出す。引数は記録先の DB に保存されるだけで
+        // measuredEntries の時間には影響しないので、計測対象の精度を損なわない。
+        ctx.endMeasurement(new Date(), "POST", "http://localhost/bench");
       } finally {
         console.log = originalLog;
       }
