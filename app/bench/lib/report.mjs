@@ -60,6 +60,81 @@ function isMeasurement(node) {
 }
 
 /**
+ * 測定項目 ID を持たない旧形式の結果から、測定項目を復元する。
+ *
+* 測定項目 ID を持ち始める前の bench は、`results[].stages` に段名だけを並べ、
+ * 測定条件を持っていなかった。ID を導入した直後は base がまだ旧形式の JSON を
+ * 出すので、この形式からも ID を組み立てて比較できるようにしている。
+ *
+ * 復元できるのは ID と測定値、そして次の測定条件だけ。
+ *
+ * | 旧形式から取れる | 出所 |
+ * |---|---|
+ * | `mode` | トップレベルの `mode` |
+ * | `iterations` | `stages[段].iterations`（暖機を除いた実測回数） |
+ * | `fixture` | `fixture.name` |
+ * | `node` | トップレベルの `node` |
+ *
+ * `warmup` と `fixtureNodeCount` は旧形式と同じ定義の値が残っていない。
+ * 特に `fixtureNodeCount` は旧形式の `info.fixtureNodes`（要素から数えた値）と
+ * 定義が違うので、`info.fixtureNodes` を当てはめてはならない。
+ * この 2 つは比較対象外になるが、検証できなかった Keys として呼び出し側へ伝える。
+ */
+const LEGACY_UNVERIFIABLE = ["warmup", "fixtureNodeCount"];
+
+/**
+ * 旧形式なら `ID -> { value, conditions }` と検証できなかった Keys を返す。
+ * 旧形式でなければ `null`。
+ */
+export function extractLegacyMeasurements(report) {
+  if (!isRecord(report) || !Array.isArray(report.results)) return null;
+
+  const items = new Map();
+  const fixtureName = isRecord(report.fixture) ? report.fixture.name : undefined;
+
+  for (const result of report.results) {
+    if (!isRecord(result)) continue;
+    const scenario = result.scenario;
+    if (typeof scenario !== "string" || !isRecord(result.stages)) continue;
+
+    for (const [stage, samples] of Object.entries(result.stages)) {
+      if (!isRecord(samples)) continue;
+      if (typeof samples.median !== "number" || !Number.isFinite(samples.median)) continue;
+      const id = `${scenario}/${stage}`;
+      if (items.has(id)) continue;
+
+      // 旧形式に無い項目は入れない。無い Keys を「片側だけある Keys」扱いすると
+      // 測定条件の差として扱われてしまうため
+      const conditions = {};
+      if (report.mode !== undefined) conditions.mode = report.mode;
+      if (samples.iterations !== undefined) conditions.iterations = samples.iterations;
+      if (fixtureName !== undefined) conditions.fixture = fixtureName;
+      if (report.node !== undefined) conditions.node = report.node;
+
+      items.set(id, { value: samples.median, conditions });
+    }
+  }
+
+  if (items.size === 0) return null;
+  return { items, unverifiable: LEGACY_UNVERIFIABLE };
+}
+
+/**
+ * 新しい形式と旧形式の両方から取り出す。
+ *
+ * 返るのは `ID -> { value, conditions }` の写像と、
+ * 旧形式を復元したかどうか、復元した時点で検証できなかった Keys。
+ */
+export function extractComparable(report) {
+  const items = extractMeasurements(report);
+  if (items.size > 0) return { items, legacy: false, unverifiable: [] };
+
+  const legacy = extractLegacyMeasurements(report);
+  if (legacy === null) return { items, legacy: false, unverifiable: [] };
+  return { items: legacy.items, legacy: true, unverifiable: legacy.unverifiable };
+}
+
+/**
  * 観測したデータ規模を取り出す。
  *
  * `searchGraphEdges` などが変わると段の絶対値も変わるので、比較の前提を壊している。

@@ -54,7 +54,7 @@
  */
 import { readFileSync } from "node:fs";
 
-import { extractMeasurements, extractScale } from "./lib/report.mjs";
+import { extractComparable, extractScale } from "./lib/report.mjs";
 
 const OPTIONS = {
   tolerance: 1.5,
@@ -116,14 +116,31 @@ const isRecord = (value) => typeof value === "object" && value !== null && !Arra
  * 「追加」と「削除」は測定対象が変わったことを意味するので、回帰判定には入らない。
  */
 function compareMeasurements(base, head) {
-  const baseItems = extractMeasurements(base);
-  const headItems = extractMeasurements(head);
+  const baseReport = extractComparable(base);
+  const headReport = extractComparable(head);
+  const baseItems = baseReport.items;
+  const headItems = headReport.items;
   const warnings = [];
 
   if (baseItems.size === 0 || headItems.size === 0) {
     warnings.push(
       `測定項目 ID を JSON から取り出せませんでした: base=${baseItems.size} 件 ` +
         `head=${headItems.size} 件。測定項目 ID を持つ bench の出力どうしを比較してください`,
+    );
+  }
+
+  // 旧形式から復元した側では一部の Keys を検証できない。検証できなかった Keys は
+  // 差異として扱わない（すると比較できる項目が全部「条件差異」になってしまう）が、
+  // 何を確認できなかったかは明示する。
+  const unverifiable = new Set([...baseReport.unverifiable, ...headReport.unverifiable]);
+  const notes = [];
+  if (unverifiable.size > 0) {
+    // 判定ではなく記録として残す。旧形式との比較は成立しているので、
+    // exit 2 にすると「比較できたのに落ちた」状态的本报盔甲になる
+    notes.push(
+      `base または head の測定結果が測定項目 ID を持たない旧形式のため、` +
+        `次の Keys は測定条件の一致を確認できませんでした: ` +
+        `${[...unverifiable].sort().join(" / ")}。この Keys は比較結果に含めていません`,
     );
   }
 
@@ -142,7 +159,7 @@ function compareMeasurements(base, head) {
       continue;
     }
     // 同じ ID でも測定条件が違うなら、比較できる同じ測定対象ではない
-    const difference = conditionDifference(id, before.conditions, after.conditions);
+    const difference = conditionDifference(id, before.conditions, after.conditions, unverifiable);
     if (difference !== null) {
       warnings.push(difference);
       rows.push({ id, before: before.value, after: after.value, ratio: null, skipped: true });
@@ -166,7 +183,7 @@ function compareMeasurements(base, head) {
 
   const added = rows.filter((r) => r.before === null).map((r) => r.id);
   const removed = rows.filter((r) => r.after === null).map((r) => r.id);
-  return { rows, added, removed, regressions, warnings };
+  return { rows, added, removed, regressions, warnings, notes };
 }
 
 /**
@@ -175,14 +192,20 @@ function compareMeasurements(base, head) {
  * 条件が違うと同じ ID で数値だけが違う比較になり、意味が読めなくなる。
  * 条件が変わったなら測定対象そのものが変わったので、削除 + 追加 と同じ扱いにする。
  * 判定は「比較対象から外して exit 2」なので、暗黙の緑にならない。
+ *
+ * `unverifiable` は旧形式から復元した側で記録されなかった Keys。
+ * それらは差異にせず、比較結果には含めない。
  */
-function conditionDifference(id, base, head) {
+function conditionDifference(id, base, head, unverifiable) {
   if (!isRecord(base) || !isRecord(head)) {
     return `${id}: 測定条件が取り出せません（比較対象から外します）`;
   }
   const keys = [...new Set([...Object.keys(base), ...Object.keys(head)])].sort();
   const differences = [];
   for (const key of keys) {
+    // 旧形式から復元した側では記録されなかった Keys は、差異ではなく
+    //「確認できなかった Keys」として扱う（呼び出し側が別途明示する）
+    if (unverifiable.has(key)) continue;
     if (!(key in base)) {
       differences.push(`${key}: head のみ ${head[key]}`);
       continue;
@@ -499,8 +522,9 @@ function changeText(added, removed) {
   return lines;
 }
 
-function renderText(result, warnings, gate) {
+function renderText(result, warnings, gate, notes = []) {
   const lines = [];
+  for (const note of notes) lines.push(`[!NOTE] ${note}`);
   for (const warning of warnings) lines.push(`  ! ${warning}`);
   if (warnings.length > 0) lines.push("");
   lines.push(`  ${"id".padEnd(ID_WIDTH)}${"base".padStart(10)}${"head".padStart(10)}${"ratio".padStart(9)}`);
@@ -522,9 +546,10 @@ function renderText(result, warnings, gate) {
   return lines.join("\n");
 }
 
-function renderMarkdown(result, warnings, gate) {
+function renderMarkdown(result, warnings, gate, notes = []) {
   const lines = [];
   for (const warning of warnings) lines.push(`> [!WARNING]\n> ${warning}`);
+  for (const note of notes) lines.push(`> [!NOTE]\n> ${note}`);
   lines.push("| id | base | head | ratio |");
   lines.push("|---|---:|---:|---:|");
   for (const row of result.rows) {
@@ -584,8 +609,8 @@ try {
   const warnings = [...result.warnings, ...scaleWarnings(base, head), ...gate.warnings];
   const text =
     OPTIONS.format === "markdown"
-      ? renderMarkdown(result, warnings, gate)
-      : renderText(result, warnings, gate);
+      ? renderMarkdown(result, warnings, gate, result.notes)
+      : renderText(result, warnings, gate, result.notes);
   console.log(text);
   if (warnings.length > 0) process.exitCode = 2;
   else if (result.regressions.length > 0) process.exitCode = 1;
