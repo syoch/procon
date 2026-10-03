@@ -95,6 +95,17 @@
             </button>
         </div>
         <div class="boot-list" class:active={sideView === "boots"}>
+            <button
+                onclick={async () => {
+                    try {
+                        boots = await fetchBoots();
+                    } catch (error) {
+                        boots = error as Error;
+                    }
+                }}
+            >
+                Update Boots
+            </button>
             {#if boots instanceof Error}
                 <p>Error: {boots.message}</p>
             {:else if boots.length === 0}
@@ -110,20 +121,20 @@
                     />
                 {/each}
             {/if}
-            <button
-                onclick={async () => {
-                    try {
-                        boots = await fetchBoots();
-                    } catch (error) {
-                        boots = error as Error;
-                    }
-                }}
-            >
-                Update Boots
-            </button>
         </div>
 
         <div class="req-list" class:active={sideView === "requests"}>
+            <button
+                onclick={async () => {
+                    try {
+                        requests = await fetchRequests();
+                    } catch (error) {
+                        requests = error as Error;
+                    }
+                }}
+            >
+                Update Requests
+            </button>
             {#if requests instanceof Error}
                 <p>Error: {requests.message}</p>
             {:else if requests.length === 0}
