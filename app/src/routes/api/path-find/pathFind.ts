@@ -210,9 +210,16 @@ function judgeTurnTypeWithCache(
   const angle = getVectorAngle(vIn, vOut);
   const cross = getCrossProduct2D(vIn, vOut);
 
-  if (angle > 135 || angle < 20) {
+// 1. まず直進（20度未満）を弾く
+  if (angle < 20) {
     return "straight";
+  } 
+  // 2. 次にUターン（160度以上）を弾く
+  else if (angle > 160) {
+    return "uturn";
   }
+
+  // 3. 残ったもの（20度〜160度）は外積で右左折判定
   if (cross > 0) {
     return "left";
   } else {
@@ -302,8 +309,8 @@ export function buildInformationGraph(
 
     if (step.edgeType === "TURN_JUDGE") {
       const turnType = judgeTurnTypeWithCache(vectorCache, i);
-      graphData.type.push(turnType as "straight" | "left" | "right");
-      graphData.distance.push(0);
+      graphData.type.push(turnType as "straight" | "left" | "right" | "uturn");
+      graphData.distance.push(step.dist);
     } else {
       graphData.type.push(step.edgeType as "segments");
       graphData.distance.push(step.dist);

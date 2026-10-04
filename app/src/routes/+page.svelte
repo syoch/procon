@@ -21,6 +21,7 @@
 	import turnleftLogo from "$lib/assets/turnleft-logo.svg"
 	import startpointLogo from "$lib/assets/startpoint-logo.svg";
 	import finishpointLogo from "$lib/assets/finishpoint-logo.svg";
+	import uturnLogo from "$lib/assets/uturn-logo.svg";
 	import {
 		MainAppContext,
 		type ParameterVariant,
@@ -419,7 +420,7 @@
 
                     if (t === "straight") {
                         accumCross++;
-                    }else if (t === "right" || t === "left") {
+                    }else if (t === "right" || t === "left"|| t === "uturn") {
 						 if (Math.round(accumDist) > 0) {
                          	aggregated.push({
                             	type: "straight",
@@ -464,7 +465,8 @@
                     <img 
                         src={
                             step.type === "right" ? turnrightLogo :
-                            step.type === "left" ? turnleftLogo : straightLogo
+                            step.type === "left" ? turnleftLogo : 
+							step.type === "uturn" ? uturnLogo : straightLogo
                         } 
                         alt={step.type} 
                     />
@@ -479,6 +481,8 @@
                                 右折
                             {:else if step.type === "left"}
                                 左折
+							{:else if step.type === "uturn"}
+								Uターン
                             {/if}
                         </div>
 
@@ -491,6 +495,8 @@
                                 {step.cross}個目の交差点を右折
                             {:else if step.type === "left"}
                                 {step.cross}個目の交差点を左折
+                            {:else if step.type === "uturn"}
+                                {step.cross}個目の交差点をUターン
                             {/if}
                         </div>
                     </div>
