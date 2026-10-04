@@ -60,17 +60,23 @@ mkdir -p /tmp/opencode/procon
 git worktree add -b <Type>/<Issue 番号>-<ShortDesc> /tmp/opencode/procon/wt-<Issue 番号> origin/main
 ```
 
-`git worktree add` は追跡ファイルしか作らないので、`AGENTS.md` と `.agents/` は
-**存在しません**。存在しないので `mkdir` で作ります。
-委譲する場合は `AGENTS.md` と `.agents/` をシンボリックリンクで対象へ結びます。
+`git worktree add` は追跡ファイルを作るので、`AGENTS.md` と `.agents/skills/` は入ります。
+
+無いのは `.agents/memory` だけです。
+これは git 管理対象外なので、委任するときだけシンボリックリンクで結びます。
+
+```bash
+mkdir -p .agents
+ln -sfn /home/syoch/ghq/github.com/syoch/procon/.agents/memory .agents/memory
+```
 
 ### 実装する
 
 **通常のファイル編集は `edit` ツールを使います。**
 大規模・機械的な編集だけ CLI や Python を使います。
 
-書き込み前に、対象ファイルの既存の書き方を確認します
-（_read を 1 回して、インデント・改行・コメントの粒度を合わせる）。
+書き込み前に、対象ファイルの既存の書き方を確認します。
+`read` を 1 回して、インデント・改行・コメントの粒度を合わせます。
 
 ### 委任する
 
@@ -89,6 +95,8 @@ git worktree add -b <Type>/<Issue 番号>-<ShortDesc> /tmp/opencode/procon/wt-<I
 - **監視し続けません。** 完了通知を送らせて、向こうが次の作業へ進めます
 
 方法は global skill の `session-delegation` を参照。
+プロコンでのパスと禁止事項は `issue-to-pr` に書いてあります。
+
 
 ### 検証してから push する
 

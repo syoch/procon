@@ -1,6 +1,6 @@
 ---
 name: issue-to-pr
-description: Use when turning a GitHub Issue into a merged PR in this repo: Milestone and Project ("プロコン") assignment for both Issue and PR, naming convention (Type/IssueNum-Desc), branching from origin/main, worktree isolation under /tmp/opencode/procon/wt-<Issue>, AGENTS.md/.agents symlinks for delegated sessions, handoff comment, delegation via the session-delegation skill, local CI verification, push, PR creation, and resolving review threads. Trigger keywords: Issue 作成, Milestone 設定, Project 登録, プロコン, Projects v2, Status フィールド, Issue から PR を作る, ブランチ命名規則, worktree 作成, worktree 分離, シンボリックリンク, 引き継ぎメモ, gh pr create, origin/main から分岐, PR 作成手順, CI 確認, worktree 削除, セッション委任, Resolve Conversation.
+description: Use when turning a GitHub Issue into a merged PR in this repo: Milestone and Project ("プロコン") assignment for both Issue and PR, naming convention (Type/IssueNum-Desc), branching from origin/main, worktree isolation under /tmp/opencode/procon/wt-<Issue>, sharing .agents/memory with the main worktree for delegated sessions, handoff comment, delegation via the session-delegation skill, local CI verification, push, PR creation, and resolving review threads. Trigger keywords: Issue 作成, Milestone 設定, Project 登録, プロコン, Projects v2, Status フィールド, Issue から PR を作る, ブランチ命名規則, worktree 作成, worktree 分離, シンボリックリンク, 引き継ぎメモ, gh pr create, origin/main から分岐, PR 作成手順, CI 確認, worktree 削除, セッション委任, Resolve Conversation.
 args: <Issue 番号>
 ---
 
@@ -91,35 +91,32 @@ mkdir -p /tmp/opencode/procon
 git worktree add -b <Type>/<N>-<ShortDesc> /tmp/opencode/procon/wt-<N> origin/main
 ```
 
-### worktree を自己完結させる（委任する場合は必須）
+### memory を共有する（委任する場合のみ）
 
-`git worktree add` は追跡ファイルしか作らないので、
-`AGENTS.md` と `.agents/` は**存在しない**。
+`AGENTS.md` と `.agents/skills/` は追跡対象なので、
+`git worktree add` で既に作業ツリーに入る。
+**シンボリックリンクは作らない。**
+無いのは `.agents/memory` だけ。
+これは `.git/info/exclude` で除外しているので clone されない。
 
 ```bash
 cd /tmp/opencode/procon/wt-<N>
+mkdir -p .agents
+ln -sfn /home/syoch/ghq/github.com/syoch/procon/.agents/memory .agents/memory
 ```
 
 **コピではなくシンボリックリンクにする。**
-新しいセッションが memory に書いても、メイン側と同一になる（二重管理にならない）。
+新しいセッションが `memory_save` してもメイン側と同一になる（二重管理にならない）。
 
-**リンク切れに注意する。**
-`AGENTS.md` は Issue #107 で追加したので、**その PR が merge されるまで main には無い。**
-先にこれを作ると `AGENTS.md` が壊れたリンクになる。
+コピにすると、メイン側で memory を更新しても作業ツリー側は古いままになる。
 
-```bash
-ln -sfn ../AGENTS.md AGENTS.md      # 同じブランチのファイルを見る
-ln -sfn ../.agents   .agents
-```
-
-自分の worktree に checkout されている版を見るので、
-merge 前後どちらでも壊れない。
-別の作業ツリーと共有したいときだけ絶対パスを使う。
-
-**`git status` が出るのは正しい。**
-`AGENTS.md` と `.agents/` は追跡対象なので、
-シンボリックリンクを置くと `??` か変更として出る。
+**`git status` に `?? .agents/memory` が出るのは正しい。**
+除外しているのはメイン作業ツリー側の `.git/info/exclude` なので、
+作業ツリーでは未追跡として出る。
 `git add` しなければ commit には乗らない。
+**この PR のマージ前は `AGENTS.md` が無い。**
+その作業ツリーで他の作業を始めると `AGENTS.md` が見つからないので、
+先に Issue #107 を merge する。
 
 ### Issue にコメントして引き継ぎを残す
 
@@ -309,11 +306,15 @@ python3 ~/.agents/skills/opencode/session-delegation/scripts/session_state.py \
 
 - **`git branch backup/x` は push しない。** ローカルにだけ存在する
 
-- **worktree に `AGENTS.md` と `.agents/` が無いことに気づかない。**
-  上の手順で対処する。委任する場合は必須
+- **`AGENTS.md` と `.agents/skills/` は最初から入っている。**
+  追跡対象なので `git worktree add` で入る。シンボリックリンクを作ると衝突する
 
-- **シンボリックリンクを置くと `git status` に出る。**
-  追跡対象になったためで、`git add` しなければ commit には乗らない
+- **`.agents/memory` だけは無い。** git 管理対象外なので、
+  委任するときはシンボリックリンクで結ぶ
+
+- **`?? .agents/memory` が出ても commit しない。**
+  除外しているのはメイン作業ツリー側の `.git/info/exclude` なので、
+  作業ツリーでは未追跡になる
 
 - **base が古くないか作業開始前に確認する。**
   `git merge-base --is-ancestor origin/main HEAD` が false なら rebase
