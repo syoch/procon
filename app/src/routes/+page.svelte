@@ -104,6 +104,7 @@
 			error = "終点が指定されていません";
 			return false;
 		}
+		showSliders = false;
 		error = null;
 		hasSearched = true;
 		pathResult = [];
@@ -262,6 +263,24 @@
 
 <MapViewer bind:map bind:pathResult {sharpTurns} {onClick}></MapViewer>
 
+{#snippet scoreSliders()}
+	<div class="slider-item">
+		<label>混在スコア: {slider1}<br>
+		<input type="range" min="0" max="100" bind:value={slider1} class="custom-slider" />
+		</label>
+	</div>
+	<div class="slider-item">
+		<label>視界(曲率)スコア: {slider2}<br>
+		<input type="range" min="0" max="100" bind:value={slider2} class="custom-slider" />
+		</label>
+	</div>
+	<div class="slider-item">
+		<label>幅員スコア: {slider3}<br>
+		<input type="range" min="0" max="100" bind:value={slider3} class="custom-slider" />
+		</label>
+	</div>
+{/snippet}
+
 {#if ctx.state.appState === "app"}
 	<div class="menu-button" transition:fade={{ duration: 120 }}>
 		<DetailButton onclick={() => (ctx.state.appState = "menu-detail")} />
@@ -310,28 +329,9 @@
 						/>
 					</div>
 
-		<div class="slider-container">
-
-    		<!-- スライダー（動かすと自動で sliderValue の値がリアルタイムに変わる） -->
-    		<div class="slider-group">
-    			<div class="slider-item">
-        			<label>混在スコア: {slider1}<br>
-        			<input type="range" min="0" max="100" bind:value={slider1} class="custom-slider"/>
-					</label>
-    		</div>
-    		<div class="slider-item">
-       			<label>視界(曲率)スコア: {slider2}<br>
-        		<input type="range" min="0" max="100" bind:value={slider2} class="custom-slider"/>
-				</label>
-    		</div>
-
-    		<div class="slider-item">
-        		<label>振幅スコア: {slider3}<br>
-        		<input type="range" min="0" max="100" bind:value={slider3} class="custom-slider"/>
-				</label>
-    		</div>
-		</div>
-	</div>
+						<div class="slider-group">
+	{@render scoreSliders()}
+					</div>
 
 				{:else}
 					<span
@@ -377,65 +377,27 @@
 					</div>
 					
 
-    <!-- 既存の車種選択と検索ボタンがあるエリア -->
-<div
-    style="position: absolute; top: 454.5px; display: flex; flex-direction: column; align-items: flex-start; gap: 10px;"
-    transition:fade={{ duration: 140 }}
->
-    <div style="display: flex; align-items: center;">
-        <div style="flex: 0 0 44px;"></div>
-        <div transition:fade={{ duration: 140 }}>
-            <VehicleSelect />
-        </div>
-        <div style="flex: 0 0 25px;"></div>
-        <GreenButton
-            label="検索"
-            width={60}
-            onclick={startSearch}
-        />
-    </div>
+ 
 	
 
-    <!-- ★ 車種選択のすぐ下に置いた「スライダー表示/非表示」を切り替えるボタン -->
-    <div style="margin-left: 44px;">
-        <button 
-            type="button" 
-            onclick={() => showSliders = !showSliders}
-            style="background: #f0f0f0; border: 1px solid #ccc; padding: 4px 10px; border-radius: 4px; cursor: pointer; font-size: 12px;"
-        >
-            {showSliders ? "▲ 詳細設定を閉じる" : "▼ スコア詳細設定を開く"}
-        </button>
-    </div>
+<div style="position: absolute; left: 50px; top: 500px;">
+	<button type="button" class="slider-toggle" onclick={() => (showSliders = !showSliders)}>
+		{showSliders ? "▲ スコア調整を閉じる" : "▼ スコアを調整する"}
+	</button>
 </div>
 
-<!-- ★ ボタンが押されて showSliders が true のときだけ表示されるスライダーグループ -->
 {#if showSliders}
-<div class="slider-group" style="position: absolute; top: 545px; background: white; padding: 10px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
-    <div class="slider-item">
-        <label>混在スコア: {slider1}<br>
-        <input type="range" min="0" max="100" bind:value={slider1} class="custom-slider"/>
-        </label>
-    </div>
-    <div class="slider-item">
-        <label>視界(曲率)スコア: {slider2}<br>
-        <input type="range" min="0" max="100" bind:value={slider2} class="custom-slider"/>
-        </label>
-    </div>
-    <div class="slider-item">
-        <label>振幅スコア: {slider3}<br>
-        <input type="range" min="0" max="100" bind:value={slider3} class="custom-slider"/>
-        </label>
-    </div>
-</div>
-
-				{/if}
+	<div class="slider-group slider-popover">
+		{@render scoreSliders()}
+	</div>
+{/if}
 
 			<div class="route-scroll-container">
         <div class="text-title">経路案内</div>
 
         <!-- 開始地点 -->
         <div class="route-row">
-            <img src={startpointLogo} alt="" class="route-icon" />
+            <img src={startpointLogo} alt="" />
             <div class="route-info">
                 <div class="text-title">始点</div>
                 <div class="text-sub">{ctx.state.begin.query}</div>
@@ -457,35 +419,44 @@
 
                     if (t === "straight") {
                         accumCross++;
-                    }
-                    else if (t === "right" || t === "left") {
-                         aggregated.push({
-                            type: "straight",
-                            distance: Math.round(accumDist),
-                            cross: accumCross
-                        });
+                    }else if (t === "right" || t === "left") {
+						 if (Math.round(accumDist) > 0) {
+                         	aggregated.push({
+                            	type: "straight",
+                            	distance: Math.round(accumDist),
+                            	cross: accumCross
+                        	});
 
-                        aggregated.push({
-                            type: t,
-                            distance: 0,
-                            cross: accumCross + 1
-                        });
+                        	aggregated.push({
+                            	type: t,
+                        		distance: 0,
+                            	cross: accumCross + 1
+                        	});
 
-                        accumDist = 0;
-                        accumCross = 0;
-                    } 
-                    else if (i === informationGraph.type.length - 1) {
+                        	accumDist = 0;
+                        	accumCross = 0;
+						
+                    	} else if (Math.round(accumDist) === 0) {//0mだったとき
+        						aggregated.push({ 
+								type: t,
+								distance: 0,
+								cross: accumCross+1
+								});
+							accumDist = 0;
+                        	accumCross = 0;
+    					}
+					}else if (i === informationGraph.type.length - 1) {
                         if (accumDist > 0 || accumCross > 0) {
                             aggregated.push({
-                                type: "finish",
-                                distance: Math.round(accumDist),
-                                cross: accumCross
-                            });
-                        }
+                            	type: "finish",
+                            	distance: Math.round(accumDist),
+                            	cross: accumCross
+                        	});
+                    	}
                     }
-                }
-                return aggregated;
-            })()}
+                }	
+            	return aggregated;
+				})()}
 
             <!-- まとめたステップをループして表示 -->
             {#each steps as step}
@@ -496,7 +467,6 @@
                             step.type === "left" ? turnleftLogo : straightLogo
                         } 
                         alt={step.type} 
-                        class="route-icon" 
                     />
 
                     <div class="route-info">
@@ -530,7 +500,7 @@
 
         <!-- 終点 -->
         <div class="route-row">
-            <img src={finishpointLogo} alt="終点" class="route-icon" />
+            <img src={finishpointLogo} alt="終点" />
             <div class="route-info">
                 <div class="text-title">目的地</div>
                 <div class="text-sub">{ctx.state.end.query}</div>
@@ -646,8 +616,8 @@
         align-items: center;
         gap: 16px;
         padding: 12px 16px;
-        background-color: var(--background-white);
-        border-bottom: 1px solid var(  --gray);
+        background-color: var(--wn-white);
+        border-bottom: 1px solid var(--wn-spinner-gray);
     }
 
     .route-info {
@@ -659,12 +629,12 @@
     .text-title {
         font-size: 20px;
         font-weight: 500;
-        color: var(--black);
+        color: var(--wn-ink);
     }
 
     .text-sub {
         font-size: 16px;
-        color: var(rgba(143, 143, 143, 1));
+        color: var(--wn-spinner-gray);
     }
 
 
@@ -690,5 +660,19 @@
         accent-color: #2f7731; /* 緑色にする例（好きなカラーコードや色名） */
 		width: 250px;
     }
+	.slider-popover {
+		top: 535px;                      /* 開閉ボタン (500px) のすぐ下 */
+		max-height: calc(100% - 550px);  /* 低い画面では、はみ出さずスクロールにする */
+		overflow-y: auto;
+		box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+	}
+	.slider-toggle {
+		background: #f0f0f0;
+		border: 1px solid #ccc;
+		padding: 4px 10px;
+		border-radius: 4px;
+		cursor: pointer;
+		font-size: 12px;
+	}
 
 </style>
