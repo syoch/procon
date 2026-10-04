@@ -14,7 +14,7 @@ Issue  →  PR  →  worktree 分離  →  セッション委任  →  Resolve C
 どれかを飛ばすと、後工程で取り返しがつかなくなる。
 （例: worktree 分離を飛ばすと、委任したセッションが自分の作業ツリーを壊す）
 
-セッション委任の做法は global skill の `session-delegation` を参照。
+セッション委任の方法は global skill の `session-delegation` を参照。
 インラインコメントと Resolve Conversation は `gh-pr-inline-review` を参照。
 
 ## 前提知識
@@ -83,18 +83,6 @@ gh api graphql -f query="mutation { addProjectV2ItemById(input: {projectId: \"$P
 Status の設定は GraphQL で行う。
 使う前に `gh project field-list 2 --owner syoch` で実際の ID を確認する。
 
-#### PR も Project に登録する
-
-**Issue だけだと PR がどこまで進んだかを確認できない。**
-PR も登録し、Issue と PR を行き来できるようにする。
-
-```bash
-PR_NODE=$(gh api graphql -f query='query { repository(owner:"syoch", name:"procon") { pullRequest(number:<N>) { id } } }' \
-  --jq '.data.repository.pullRequest.id')
-gh api graphql -f query="mutation { addProjectV2ItemById(input: {projectId: \"$PROJECT_ID\", contentId: \"$PR_NODE\"}) { item { id } } }" \
-  --jq '.data.addProjectV2ItemById.item.id'
-```
-
 ### ブランチを切って worktree を作る
 
 ```bash
@@ -110,22 +98,27 @@ git worktree add -b <Type>/<N>-<ShortDesc> /tmp/opencode/procon/wt-<N> origin/ma
 
 ```bash
 cd /tmp/opencode/procon/wt-<N>
-REPO=/home/syoch/ghq/github.com/syoch/procon
-ln -sfn "$REPO/AGENTS.md" AGENTS.md
-ln -sfn "$REPO/.agents"   .agents
 ```
 
 **コピではなくシンボリックリンクにする。**
 新しいセッションが memory に書いても、メイン側と同一になる（二重管理にならない）。
 
-**ただし `AGENTS.md` と `.agents/skills/` は追跡対象になっている。**
-シンボリックリンクを置くと git から見ると「symlink から実ファイルに変わった」扱いになる。
+**リンク切れに注意する。**
+`AGENTS.md` は Issue #107 で追加したので、**その PR が merge されるまで main には無い。**
+先にこれを作ると `AGENTS.md` が壊れたリンクになる。
 
 ```bash
-git status --porcelain   # AGENTS.md と .agents/ が出るのが正しい
+ln -sfn ../AGENTS.md AGENTS.md      # 同じブランチのファイルを見る
+ln -sfn ../.agents   .agents
 ```
 
-出ていることを確認して、**それのままにしてよい。**
+自分の worktree に checkout されている版を見るので、
+merge 前後どちらでも壊れない。
+別の作業ツリーと共有したいときだけ絶対パスを使う。
+
+**`git status` が出るのは正しい。**
+`AGENTS.md` と `.agents/` は追跡対象なので、
+シンボリックリンクを置くと `??` か変更として出る。
 `git add` しなければ commit には乗らない。
 
 ### Issue にコメントして引き継ぎを残す
@@ -141,7 +134,7 @@ Issue が「何をするか」だけだと、新しいセッションは合意�
 
 ### 実装する（worktree 内で）
 
-編集の做法は [`AGENTS.md`](../../../AGENTS.md) にまとめてある。
+編集の方法は [`AGENTS.md`](../../../AGENTS.md) にまとめてある。
 
 ### 検証して commit する
 
@@ -209,7 +202,7 @@ mutation($id: ID!) { resolveReviewThread(input: { threadId: $id }) { thread { id
 1 セッション 1 作業を原則にする。
 自分でループを全て抱えるとコンテキストが潰れる。
 
-做法の詳細は global skill `session-delegation` を参照。
+方法の詳細は global skill `session-delegation` を参照。
 このリポジトリでの用法だけ以下に書く。
 
 ```bash
@@ -286,7 +279,7 @@ python3 ~/.agents/skills/opencode/session-delegation/scripts/session_state.py \
 
 - CI が全て green（意図的に赤にした場合はその理由を本文に残す）
 
-- Issue と PR の両方が Project に登録されている
+- Issue が Project に登録されている
 
 - Issue に実装メモが残っている（セッションを跨いだ場合）
 
@@ -297,7 +290,7 @@ python3 ~/.agents/skills/opencode/session-delegation/scripts/session_state.py \
 
 global skill は名前だけで参照する（実体は `~/.agents/skills/<category>/<name>/`）。
 
-- セッション委任の做法は `session-delegation` を参照
+- セッション委任の方法は `session-delegation` を参照
 - インラインコメントと Resolve Conversation は `gh-pr-inline-review` を参照
 - stacked PR の base 変更・吸収判断は `stacked-pr-rebase` を参照
 - 小さな修正を別ブランチで作る場合は `worktree-fix-merge-cycle` を参照

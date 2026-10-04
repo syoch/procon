@@ -20,7 +20,7 @@ global skill（`~/.agents/skills/`）も状況に応じて参照する。
 
 | skill | 使う場面 |
 |---|---|
-| `session-delegation` | 作業を別セッションに委任するとき。依頼スクリプトと稼働確認の做法 |
+| `session-delegation` | 作業を別セッションに委任するとき。依頼スクリプトと稼働確認の方法 |
 | `gh-pr-inline-review` | インラインコメントの投稿と Resolve Conversation |
 | `session-archive-workflow` | セッションのアーカイブと削除 |
 | `worktree-fix-merge-cycle` | 小さな修正を別ブランチで作る |
@@ -44,7 +44,7 @@ global skill（`~/.agents/skills/`）も状況に応じて参照する。
 
 `gh issue create` で Issue を作り、Milestone と Project を設定してからコードを書き始めます。
 
-Project「プロコン」（number 2、ID `PVT_kwHOAu9HaM4BdpD9`）に **Issue と PR の両方**を登録します。
+Project「プロコン」（number 2、ID `PVT_kwHOAu9HaM4BdpD9`）に **Issue** を登録します。
 
 具体的な手順とフィールド ID は
 [`issue-to-pr`](./.agents/skills/issue-to-pr/) にまとめてあります。
@@ -88,7 +88,7 @@ git worktree add -b <Type>/<Issue 番号>-<ShortDesc> /tmp/opencode/procon/wt-<I
 - セッション ID はディレクトリで絞り込む: `GET /session?directory=<worktree>`
 - **監視し続けません。** 完了通知を送らせて、向こうが次の作業へ進めます
 
-做法は global skill の `session-delegation` を参照。
+方法は global skill の `session-delegation` を参照。
 
 ### 検証してから push する
 
