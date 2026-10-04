@@ -1,6 +1,6 @@
 import { SplitOSMData } from "../../src/routes/api/osm/osm-data";
 import { loadFixture } from "../lib/data";
-import { clone, stageEntries, StageRecorder } from "../lib/harness";
+import { clone, StageRecorder } from "../lib/harness";
 import type { Scenario, ScenarioResult } from "./types";
 
 /**
@@ -12,11 +12,10 @@ import type { Scenario, ScenarioResult } from "./types";
  * 出力の重複やセル取りこぼしは、このシナリオでは検出できない。
  * 正しさの検証は `app/tests/osm-cache/split-osm-data.test.ts` の責務。
  */
-export const splitScenario: Scenario = {
+export const splitScenario: Scenario<"split"> = {
   name: "split",
   description: "SplitOSMData 単体（キャッシュ保存時に 1 回だけ走る）",
-  defaultIterations: 30,
-  async run({ iterations, warmup }): Promise<ScenarioResult> {
+  async run({ iterations, warmup }): Promise<ScenarioResult<"split">> {
     const fixture = loadFixture();
     const recorder = new StageRecorder("split", { warmup, iterations });
     await recorder.measure(
@@ -31,7 +30,7 @@ export const splitScenario: Scenario = {
     return {
       scenario: "split",
       stages,
-      total: stageEntries(stages).reduce((sum, [, s]) => sum + s.median, 0),
+      total: stages.SplitOSMData.median,
       info: {
         elements: fixture.elements.length,
         nodes: fixture.elements.filter((e) => e.type === "node").length,

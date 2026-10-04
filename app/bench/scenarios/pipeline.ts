@@ -28,11 +28,10 @@ import type { Scenario, ScenarioResult } from "./types";
  * 本番では `MAX_GSI_PASSES` 回グラフを作り直すので、グラフ構築と探索の段は
  * 1 パスあたりの値であり、実際には最大その回数倍になる。
  */
-export const pipelineScenario: Scenario = {
+export const pipelineScenario: Scenario<"pipeline"> = {
   name: "pipeline",
   description: "1 回の経路探索（キャッシュ済み）にかかる CPU を段ごとに測る",
-  defaultIterations: 20,
-  run({ mode, iterations, warmup }): ScenarioResult {
+  run({ mode, iterations, warmup }): ScenarioResult<"pipeline"> {
     const profile = MODE_PROFILES[mode as ModeId];
     const parameters = profile.defaultParameters;
     const fixture = loadFixture();
@@ -49,8 +48,9 @@ export const pipelineScenario: Scenario = {
     let info: Record<string, string | number | boolean> = {};
 
     for (let i = 0; i < iterations + warmup; i++) {
+      // clone は測定対象ではない。計測の開始位置だけ先へ進めてから測り始める
       const data = clone(fixture);
-      recorder.mark("__start__");
+      recorder.reset();
 
       const divided = divideBoundary(boundary);
       recorder.mark("divideBoundary");
@@ -100,18 +100,19 @@ export const pipelineScenario: Scenario = {
       });
       recorder.mark("pathFind");
 
-      let sharpTurnCount = 0;
-      if (profile.sharpTurnMinRadius !== undefined && path.length > 0) {
-        const junctions = collectRoadJunctions(osmData);
-        recorder.mark("collectRoadJunctions");
+      // 段はモードによらず常に測る。急カーブを検出しなくても段の測定値は意味を持つ
+      const junctions = collectRoadJunctions(osmData);
+      recorder.mark("collectRoadJunctions");
 
-        sharpTurnCount = detectSharpTurnsOnPath(searchGraph, path, beginNode, {
-          minRadius: profile.sharpTurnMinRadius,
-          junctions,
-          bounds: boundary,
-        }).length;
-        recorder.mark("detectSharpTurnsOnPath");
-      }
+      const sharpTurnCount =
+        profile.sharpTurnMinRadius === undefined || path.length === 0
+          ? 0
+          : detectSharpTurnsOnPath(searchGraph, path, beginNode, {
+              minRadius: profile.sharpTurnMinRadius,
+              junctions,
+              bounds: boundary,
+            }).length;
+      recorder.mark("detectSharpTurnsOnPath");
 
       const segments = path.flatMap((edgeId) =>
         "segments" in searchGraph.edges[edgeId] ? searchGraph.edges[edgeId].segments : [],
@@ -137,8 +138,6 @@ export const pipelineScenario: Scenario = {
     }
 
     const stages = recorder.result();
-    // `__start__` は clone() の準備時間で、比較の対象にしない
-    delete stages["pipeline/__start__"];
     return {
       scenario: "pipeline",
       stages,

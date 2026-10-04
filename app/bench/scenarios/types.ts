@@ -1,4 +1,4 @@
-import type { ScenarioName, StageId } from "../ids";
+import type { ScenarioName, StageName } from "../ids";
 import type { Samples } from "../lib/harness";
 
 export type ScenarioContext = {
@@ -10,19 +10,24 @@ export type ScenarioContext = {
   warmup: number;
 };
 
-export type ScenarioResult = {
-  scenario: ScenarioName;
-  /** 段ごとの実測値。キーは測定項目 ID */
-  stages: Partial<Record<StageId, Samples>>;
+export type ScenarioResult<S extends ScenarioName = ScenarioName> = {
+  scenario: S;
+  /** 段ごとの実測値。キーは測定項目 ID の `{シナリオ}/{段}` の `{段}` 側 */
+  stages: Record<StageName<S>, Samples>;
   /** 各段の中央値を足したもの [ms] */
   total: number;
   /** シナリオごとの補足情報（データ規模・グラフ規模など） */
   info?: Record<string, string | number | boolean>;
 };
 
-export type Scenario = {
-  name: ScenarioName;
+export type Scenario<S extends ScenarioName = ScenarioName> = {
+  name: S;
   description: string;
-  defaultIterations: number;
-  run(context: ScenarioContext): ScenarioResult | Promise<ScenarioResult>;
+  run(context: ScenarioContext): ScenarioResult<S> | Promise<ScenarioResult<S>>;
 };
+
+/** 3 つのシナリオのどれでも受け取れるシナリオ。run.ts はこれの配列に並べる */
+export type AnyScenario = { [S in ScenarioName]: Scenario<S> }[ScenarioName];
+
+/** 3 つのシナリオのどれでも受け取れる結果。run.ts はこれの配列に貯める */
+export type AnyScenarioResult = { [S in ScenarioName]: ScenarioResult<S> }[ScenarioName];

@@ -16,12 +16,17 @@
 ```bash
 cd app
 
-pnpm bench                          # 全シナリオを既定回数で実行
-pnpm bench -- --scenario pipeline   # シナリオを 1 つだけ
-pnpm bench -- --iterations 30       # 実測回数を増やす（既定 20）
-pnpm bench -- --mode bicycle        # 移動モードを変える
-pnpm bench -- --json /tmp/out.json  # 結果を JSON で保存（比較スクリプトが読む）
-pnpm bench -- --help
+# 実測回数と暖機回数は必須。CI と同じ値を渡すと CI の結果を再現できる
+export OSM_CACHE_DIR=/tmp/procon-osm-cache
+node bench/build.mjs                                   # 先にバンドルする
+node bench/.build/fetch-fixture.mjs                    # 長岡市中心の実データを取りに行く（2 秒程度）
+node bench/.build/bench.mjs --iterations 20 --warmup 5 # 全シナリオを測る
+node bench/.build/bench.mjs --iterations 20 --warmup 5 --scenario pipeline
+node bench/.build/bench.mjs --iterations 20 --warmup 5 --mode bicycle
+node bench/.build/bench.mjs --iterations 20 --warmup 5 --json /tmp/out.json --quiet
+node bench/.build/bench.mjs --help
+
+pnpm bench -- --iterations 20 --warmup 5   # バンドルと実行をまとめて行う
 
 # 2 つの結果を比べる（CI が内部で実行しているもの）
 node bench/compare.mjs --base base.json --head head.json [--tolerance 1.5] [--format markdown]
@@ -32,12 +37,16 @@ node bench/compare.mjs --base base.json --head head.json --report-on-invalid
 
 # 同じコードを N 回走らせて、測定項目と校正のばらつきを採取する
 node bench/build.mjs   # 先にバンドルする
-node bench/scripts/measure-noise.mjs --runs 9
+node bench/scripts/measure-noise.mjs --iterations 20 --warmup 5 --runs 9
 ```
 
-`pnpm bench` は `bench/build.mjs` で esbuild バンドルしてから node で実行する。
-アプリと同じ TypeScript ソースを `$lib` などのエイリアス付きで import する必要があるため、
-Vite / SvelteKit は通さない。
+`pnpm bench` と `node bench/.build/bench.mjs` は `bench/build.mjs` で esbuild バンドルしてから
+node で実行する。アプリと同じ TypeScript ソースを `$lib` などのエイリアス付きで import する
+必要があるため、Vite / SvelteKit は通さない。
+
+実測回数と暖機回数には既定値が無いので、測るたびに指定する。
+値が決まっているのは [`deploy.yml`](../../.github/workflows/deploy.yml) の
+`BENCH_ITERATIONS` / `BENCH_WARMUP` の 2 つだけで、base と head に同じ値を渡す。
 
 ## シナリオ
 
@@ -84,22 +93,27 @@ CI でもこの保証が効く。
 JSON を作る前に落とす。
 本番側に計測が追加されたら、bench 側で ID を足すまで落ちる。
 
-### 測定条件を変えるなら ID を変える
+### ID に入れるもの
 
-ID は「何を、どの条件で測ったか」の識別子である。
+ID は `{シナリオ}/{段}` の 1 つだけで、**上流から渡せず、リビジョンによって変動しうる値**だけを
+入れる。
 
-- ID をリネームすると **削除 + 追加** になり、比較されない
-- 同じ ID で測定条件（`iterations` / `warmup` / `fixture` / `fixtureNodeCount` / `mode` / `node`）が
-  違う場合、比較対象から外して exit 2 にする
+| 値 | 扱い |
+|---|---|
+| `{シナリオ}/{段}` | ID の唯一の成分 |
+| `mode` | `--mode` で渡す。CI は全シナリオ `car` 固定 |
+| `iterations` / `warmup` | CLI で渡す。CI は 1 箇所の値を base と head に渡す |
+| `node` | `node-version: 26` で CI が固定 |
+| データ規模（ノード数・辺数・経路長） | 同じ bbox の OSM キャッシュが保証する |
 
-「同じ測定対象だが条件が違う」比較は、同じ ID で数値だけが違う比較になり意味が読めなくなる。
-したがって条件が変わったなら ID を変える。
+したがって ID が完全一致する項目どうしは同じ測定対象を指し、比べるのは `median` の比だけになる。
+ID をリネームすると **削除 + 追加** になり、比較されない。
 
 ## 出力の読み方
 
 - **中央値**を採用する。共有ランナー（GitHub Actions など）の CPU は一定ではないので、
   最小値や 1 回だけの値では判断できない。
-- 必ず**暖機**（既定 5 回）している。暖機を入れないと JIT の最適化前の回が中央値に混ざる。
+- 必ず**暖機**している（回数は `--warmup` で渡す）。暖機を入れないと JIT の最適化前の回が中央値に混ざる。
 - `min` と `max` の差が大きい段は、まだ最適化されていないか GC の影響を受ける。
   そのときは `node --cpu-prof` で hot 関数を特定する。
 - 計測中の console 出力は要約される。`transientSplit` はフィクスチャ内の長さゼロの
@@ -129,9 +143,7 @@ ID は「何を、どの条件で測ったか」の識別子である。
 2. `base` を計測して `bench-base.json`、`head` を計測して `bench-head.json`
 3. `compare.mjs` で測定項目 ID ごとに比較。許容倍率（既定 1.5 倍）を超えた項目があれば exit 1
 
-`base` は**自分の bench で自分の `app/src` をビルドする**ので、head の bench を base に
-コピーしない。コピーすると bench が import する `../../src/...` のパスが base 側に持ち越され、
-ソースを移動しただけの PR で base のビルドが失敗する。
+`base` は**自分の bench で自分の `app/src` をビルドする**。
 
 **ハーネスの同一性は求めない。** 比較は測定項目 ID 単位で行うので、
 base の bench が head の bench と違っても同じ ID の測定項目同士は比較できる。
@@ -145,12 +157,24 @@ App@HEAD   <-> bench/Measure@HEAD   ->  bench 結果 ---+
 これで `app/src` のモジュール移動が自由になる。移動すると bench の import パスも追随して
 bench の内容が変わるが、測定項目が同じなら比較はそのまま成立する。
 
-比較の前提が崩れている場合は exit 2 で区別する。測定項目 ID を取り出せない、
-測定条件が両側で揃わない、`searchGraphEdges` などデータ規模が変わっている場合がこれに当たる。
-このときは「性能が悪くなった」ではなく「比較できない」として扱う。
+### ジョブの結論は 3 状態
 
-`base` のビルドが失敗するケース（base（main）側の依存関係が壊れている等）は失敗として報告する
-（`base の計測失敗を報告する` ステップ）。
+`compare.mjs` の終了コードだけで決まる。
+
+| 終了コード | ジョブ | 注記 |
+|---|---|---|
+| 0（回帰なし） | 緑 | — |
+| 1（回帰あり） | 赤 | `::error::` |
+| 1（契約違反） | 赤 | `::error::`。結果 JSON がスキーマを守らない |
+| 2（比較不成立） | 緑 | `::warning::`。理由を job summary の先頭に出す |
+
+比較不成立は「校正（機械の速度）が外れた」「測定項目 ID が一致しない」「結果 JSON の版が違う」で、
+いずれも性能の悪化を意味しない。
+`base` に bench が無いときと `base` の計測が失敗したときも、比較不成立と同じく緑 + 警告で、
+理由を job summary の先頭に出す。
+判定は 1 ジョブの中で完結させる。
+ジョブの `if` で skipped にすると、計測を始める前に条件判断が要るため、
+「計測したうえで比較できなかった」状態を 1 つのジョブでは表せない。
 
 ### 追加と削除
 
@@ -160,27 +184,27 @@ base に無い ID は「追加」、head に無い ID は「削除」として `
 追加は「測り始めた」、削除は「もう測っていない」（条件が変わったので ID を変えた）ことを表す。
 どちらの ID も一致する項目は通常どおり比率で比較する。
 
-### 共有するのは 3 つだけ
+### 結果 JSON のスキーマ
 
-比較@HEAD は base の版が作った JSON を読むので、base の bench が変わっていても
-その構造は base の版次第である。したがって**構造を共有すると drift が再発する**ため、
-共有する契約は次の 3 つだけに絞る。
+`lib/report.ts` が型とランタイム検証を持っている。作る側（`run.ts`）と
+取り出す側（`compare.mjs`）が同じ型を使う。
 
-| 共有するもの | 形式 |
+| キー | 中身 |
 |---|---|
-| 測定項目 ID | `{シナリオ}/{段}` |
-| 測定値 | `median`（中央値、ms） |
-| 測定条件 | `mode` / `iterations` / `warmup` / `fixture` / `fixtureNodeCount` / `node` |
+| `schemaVersion` | 結果 JSON の版。今は `1` |
+| `measurements` | 測定項目 ID -> 測定値（`median` / `min` / `max` / `iterations` / `total`） |
+| `calibration` | 開始時の校正（測定値 + 仕事量の検算値 `work`） |
+| `scenarioCalibration` | シナリオ名 -> そのシナリオを走らせる直前の校正 |
+| `results` | シナリオごとの補足（データ規模・合計時間）。比較には使わない |
 
-共有しないもの:
+測定項目 ID は既知の定数集合（`bench/ids.ts`）なので、JSON の構造は固定する。
+`measurements` の各キーがそのまま測定項目 ID になる。
+ID の集合が base と head で違う場合は「追加」「削除」として `compare.mjs` が明示する。
 
-- `measurements` がどの階層で持つしているか、`total` があるかどうかといった**構造**
-- シナリオの実装、`StageRecorder` などの計測インフラ
-- JSON のその他のキー
+検証に失敗したときの扱いは 2 通りに分かれる。
 
-そのため `lib/report.mjs` は JSON の構造を固定せず再帰的に走査して
-「ID を持つオブジェクトで `median` が数値のもの」を探す。
-base 側の JSON が別の階層で別のキーを持っていても、同じ ID の測定項目は比較できる。
+- `schemaVersion` が違う = 測定項目 ID を持つ出力ではない。比較不成立として exit 2
+- 版が同じで構造が契約を守らない = 契約違反。exit 1（緑にしない）
 
 校正（`calibration` / `scenarioCalibration`）は測定項目 ID を持たない。
 アプリに依存しない固定仕事量の 1 項工作なので、ID の比較とは別の判定になる。
@@ -281,9 +305,9 @@ CI はこのフラグを付けるので、失敗した PR でも「本当に遅�
 ```bash
 cd app
 node bench/build.mjs
-node bench/scripts/measure-noise.mjs --runs 9          # 9 回分のばらつきを採取する
-node bench/scripts/measure-noise.mjs --scenario split --runs 5   # 速い組み合わせで試す
-node bench/scripts/measure-noise.mjs --runs 9 --json /tmp/noise.json  # 生データも保存
+node bench/scripts/measure-noise.mjs --iterations 20 --warmup 5 --runs 9   # 9 回分のばらつきを採取する
+node bench/scripts/measure-noise.mjs --iterations 20 --warmup 5 --scenario split --runs 5
+node bench/scripts/measure-noise.mjs --iterations 20 --warmup 5 --runs 9 --json /tmp/noise.json
 ```
 
 出るのは「先頭回に対する比」「連続する回どうしの比」「採取中のどの 2 回でも選んだときの
@@ -318,68 +342,71 @@ node bench/scripts/measure-noise.mjs --runs 9 --json /tmp/noise.json  # 生デ�
 `*` が付かない測定項目だけが判定対象。
 表を読むときはこの点に注意。
 
-### 手元で再現する
+### 手元で 2 回測って比べる
+
+CI と同じことを手元で再現する。
+`base` は自分の bench で自分の `app/src` をビルドする。
 
 ```bash
 # 変更前のコミットを一時ディレクトリに切り出して、そこに対して計測する
 git worktree add /tmp/base HEAD~1
 
+export OSM_CACHE_DIR=/tmp/procon-osm-cache
+
 # head を測る
 cd app
 node bench/build.mjs
-node bench/.build/bench.mjs --quiet --json /tmp/head.json
+node bench/.build/bench.mjs --iterations 20 --warmup 5 --quiet --json /tmp/head.json
 
-# base を測る（base は自分の bench で自分の src をビルドする）
+# base を測る
 cd /tmp/base/app
 node bench/build.mjs
-node bench/.build/bench.mjs --quiet --json /tmp/base.json
+node bench/.build/bench.mjs --iterations 20 --warmup 5 --quiet --json /tmp/base.json
 
 # 比較する（head の compare.mjs が両方の JSON を測定項目 ID で突き合わせる）
 cd -
 node app/bench/compare.mjs --base /tmp/base.json --head /tmp/head.json --format markdown
 ```
 
-base と head の bench が違っても比較は成立する。追加・削除された ID だけが比較から外れ、
-共通する ID の測定項目はそのまま比率が出る。
-
 ## フィクスチャ
 
-`fixtures/nagaoka-central.json.gz` は長岡市中心の実データ（Overpass API から 2026-10 取得）。
-生データ 1.5MB を **gzip で 244KB** に圧縮し、1 ファイルにまとめている。
-中身はセルファイル 8 枚ぶんの実データで、`fs-cache-manager` のファイル名形式
-（`{minLat}-{minLng}-{maxLat}-{maxLng}.json`）のまま。`cache-read` シナリオは
-このセルを実際に `readCache` するため、**ファイル名と中身の形式を変えると壊れる**。
+フィクスチャは**本番の OSM キャッシュと同じディレクトリ**を直接読む。
+`OSM_CACHE_DIR` にセルファイル一式が入っていれば、それがフィクスチャになる。
 
-gzip にしているのは、タグを削るより圧縮の方が効くため。
-タグを除いても 1239KB とほとんど縮まない。ノードの緯度経度と way のノード ID 列が
-本体の大部分を占めている。
-
-### 差し替え
-
-`BENCH_FIXTURE` 環境変数で場所を指定できる。`.json.gz` 内の構造は
-`{ meta: {...}, cells: { "37.421875-138.84375-....json": { elements: [...] } } }`。
-
-```bash
-BENCH_FIXTURE=/path/to/other.json.gz pnpm bench
+```
+OSM_CACHE_DIR/
+├── meta.json                       # 領域・セル数・取得日時
+└── {minLat}-{minLng}-{maxLat}-{maxLng}.json
 ```
 
-### `actions/cache` で git に入れない代替
+セルファイル名は `fs-cache-manager` の `encodeFilename` と同じ形式にする。
+`cache-read` シナリオはこのセルを実際に `readCache` するため、
+ファイル名と中身の形式を変えると壊れる。
 
-`actions/cache` に OSM キャッシュを保存し、`BENCH_FIXTURE` で復元先のパスを渡せば、
-git にデータを持たずに済む。`deploy.yml` は `BENCH_FIXTURE` を
-`app/bench/fixtures/nagaoka-central.json.gz` に固定しているだけなので差し替えられる。
+### 取得する
 
-ただし**回帰ゲートの基準線としては推奨しない**。理由は 2 つ。
+`scripts/fetch-fixture.ts` が `requireOSMData` を通すので、
+セルの分解・問い合わせ・保存はすべて本番と同じ経路になる。
+`meta.json` と全セルが揃っていれば何もせず終わる（no-op）。
 
-1. **基準線が意味を失う。** キャッシュが空の時（初回、あるいは 7 日以上
-   アクセスがないと GitHub が退避させる）に Overpass から取り直すと、
-   その時点の OSM データになる。実データが僅かに変わるだけで全部の測定項目がずれるので、
-   ベンチの厚みと無関係な差を区別できなくなる。
-2. **PR の合流に外部依存が混ざる。** Overpass が遅くなったり落ちていただけで
-   bench ジョブが落ちる。回帰検出という目的自体が成立しなくなる。
+```bash
+cd app
+node bench/build.mjs
+OSM_CACHE_DIR=/tmp/procon-osm-cache node bench/.build/fetch-fixture.mjs
+```
 
-どちらも 244KB のファイルを 1 つ置けば解決する話なので、決定性を優先して git 管理を採った。
-0 バイトにしたい場合はキャッシュ方式に変更できるが、上記 2 点を許容できることが前提になる。
+取得する領域は長岡市中心（bbox はセル境界にスナップした固定値）で、セルは 8 個。
+`OVERPASS_ENDPOINT` を指定すると公開 Overpass 以外を使える。
+
+### CI での扱い
+
+`deploy.yml` は `actions/cache` で `OSM_CACHE_DIR` を復元してから `fetch-fixture.mjs` を実行し、
+キャッシュがヒットしなかったときだけ保存する。
+キャッシュ key は固定なので、取得した OSM データはそのまま使い回される。
+`base` と `head` は同じ復元キャッシュを見るので、比較する 2 つの計測は同一のグラフになる。
+
+キャッシュが退避されて取り直すときだけ、その時点の OSM データになって全測定項目がずれる。
+それはグラフが変わった差なので、検出できる差のうちの 1 つとして扱う。
 
 ## ディレクトリ
 
@@ -391,19 +418,18 @@ bench/
 ├── env-stub.ts                    # $env/dynamic/private の差し替え
 ├── ids.ts                         # 測定項目 ID のレジストリ（全 ID を 1 箇所に列挙する）
 ├── run.ts                         # エントリ。引数解析・出力・回帰チェック
-├── fixtures/
-│   └── nagaoka-central.json.gz    # 長岡市中心の実データ（gzip、244KB）
 ├── lib/
 │   ├── data.ts                    # フィクスチャ読み込み・始点終点の決定
 │   ├── harness.ts                 # 暖機・反復・中央値集計と StageRecorder
 │   ├── reference.ts               # 校正（固定仕事量の整数演算）
-│   └── report.mjs                 # 結果 JSON から測定項目を取り出す（比較側共通の部品）
+│   └── report.ts                  # 結果 JSON のスキーマ（型と検証）
 ├── scenarios/
 │   ├── types.ts                   # Scenario と ScenarioResult の型
 │   ├── pipeline.ts                # 1 検索の CPU 内訳
 │   ├── split.ts                   # SplitOSMData 単体
 │   └── cache-read.ts              # requireOSMData（キャッシュ全ヒット）
 └── scripts/
+    ├── fetch-fixture.ts           # OSM_CACHE_DIR にフィクスチャを用意する
     └── measure-noise.mjs          # 同じコードを N 回測ってばらつきを採取する
 ```
 

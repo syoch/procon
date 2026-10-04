@@ -1,66 +1,65 @@
-import { gunzipSync } from "node:zlib";
-import { readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { readFileSync, readdirSync } from "node:fs";
+import { join } from "node:path";
 
 import { mergeOSMData } from "../../src/routes/api/osm/osm-data";
 import { divideBoundary, type Boundary } from "../../src/routes/api/osm/boundary";
 import { clone } from "./harness";
 
-const HERE = dirname(fileURLToPath(import.meta.url));
-
 /**
- * フィクスチャの置き場所は環境変数で差し替えられる。
+ * フィクスチャは本番の OSM キャッシュと同じディレクトリを直接読む。
  *
- * CI で `actions/cache` から復元した OSM キャッシュ（`readCache` が読める
- * `{minLat}-{minLng}-{maxLat}-{maxLng}.json` 形式）を指定すれば、
- * git にデータを持たせずに済む。
+ * `scripts/fetch-fixture.ts` が `OSM_CACHE_DIR` に書き込むので、セルファイル名も
+ * `fs-cache-manager` の `{minLat}-{minLng}-{maxLat}-{maxLng}.json` と同じ形式になる。
+ * `cache-read` シナリオはこのセルを実際に `readCache` する。
  */
-const FIXTURE_PATH =
-  process.env.BENCH_FIXTURE ?? join(HERE, "..", "fixtures", "nagaoka-central.json.gz");
+function cacheDir(): string {
+  const dir = process.env.OSM_CACHE_DIR;
+  if (dir === undefined || dir === "") {
+    throw new Error(
+      "OSM_CACHE_DIR 環境変数が設定されていません（bench/scripts/fetch-fixture.ts で取得します）",
+    );
+  }
+  return dir;
+}
+
+/** `fs-cache-manager` のセルファイル名。`meta.json` や一時ファイルは対象にする */
+const CELL_FILE_PATTERN = /^(-?\d+(?:\.\d+)?-){3}-?\d+(?:\.\d+)?\.json$/;
 
 export type FixtureMeta = {
+  /** 領域名 */
   name: string;
-  description: string;
-  source: string;
+  /** 取得した日時 */
   capturedAt: string;
+  /** セルファイルの数 */
   cellCount: number;
+  /** 全セルのノード数 */
   nodeCount: number;
+  /** 全セルの way 数 */
   wayCount: number;
-  bbox: { minLat: number; minLng: number; maxLat: number; maxLng: number };
+  /** 取得した領域 */
+  bbox: Boundary;
 };
 
-/** セルファイル名 -> そのセルの OSMData */
-export type Fixture = {
-  meta: FixtureMeta;
-  cells: Record<string, App.OSMData>;
-};
+let cached: FixtureMeta | undefined;
 
-let cached: Fixture | undefined;
-
-export function loadFixtureArchive(): Fixture {
-  if (cached !== undefined) return cached;
-  const raw = gunzipSync(readFileSync(FIXTURE_PATH));
-  const parsed = JSON.parse(raw.toString("utf-8")) as Fixture;
-  if (parsed.meta === undefined || parsed.cells === undefined) {
-    throw new Error(`フィクスチャの形式が不正です: ${FIXTURE_PATH}`);
-  }
-  cached = parsed;
-  return parsed;
-}
-
+/** `meta.json` を読む */
 export function readFixtureMeta(): FixtureMeta {
-  return loadFixtureArchive().meta;
+  if (cached !== undefined) return cached;
+  const path = join(cacheDir(), "meta.json");
+  const meta = JSON.parse(readFileSync(path, "utf-8")) as FixtureMeta;
+  cached = meta;
+  return meta;
 }
 
-/** `readCache` が読めるファイル名（昇順） */
+/** `readCache` が読めるセルファイル名（昇順） */
 export function listFixtureCells(): string[] {
-  return Object.keys(loadFixtureArchive().cells).sort();
+  return readdirSync(cacheDir())
+    .filter((file) => CELL_FILE_PATTERN.test(file))
+    .sort();
 }
 
 export function readFixtureCell(fileName: string): App.OSMData {
-  const cell = loadFixtureArchive().cells[fileName];
-  if (cell === undefined) throw new Error(`フィクスチャにセルがありません: ${fileName}`);
+  const cell = JSON.parse(readFileSync(join(cacheDir(), fileName), "utf-8")) as App.OSMData;
   return cell;
 }
 

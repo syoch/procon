@@ -7,7 +7,7 @@
  * この数字を根拠に決めたものなので、数字の根拠そのものを出し直せるようにしておく。
  *
  * 使い方:
- *   node bench/scripts/measure-noise.mjs [--runs 7] [--iterations 20] [--scenario pipeline]
+ *   node bench/scripts/measure-noise.mjs --iterations 20 --warmup 5 [--runs 7] [--scenario pipeline]
  *   node bench/scripts/measure-noise.mjs --json /tmp/noise.json
  *
  * 先に `node bench/build.mjs` を実行しておく必要がある（バンドル済みの成果物を使う）。
@@ -21,7 +21,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { extractMeasurements } from "../lib/report.mjs";
+import { parseBenchReport } from "../lib/report.ts";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const BENCH_DIR = join(HERE, "..");
@@ -30,7 +30,8 @@ const BUNDLE = join(BENCH_DIR, ".build", "bench.mjs");
 
 const OPTIONS = {
   runs: 7,
-  iterations: undefined,
+  iterations: NaN,
+  warmup: NaN,
   scenario: undefined,
   minMs: 0.5,
   tolerance: 1.5,
@@ -48,6 +49,7 @@ function parseArgs(argv) {
     const value = argv[++i];
     if (key === "--runs") OPTIONS.runs = Number(value);
     else if (key === "--iterations") OPTIONS.iterations = Number(value);
+    else if (key === "--warmup") OPTIONS.warmup = Number(value);
     else if (key === "--scenario") OPTIONS.scenario = value;
     else if (key === "--min-ms") OPTIONS.minMs = Number(value);
     else if (key === "--tolerance") OPTIONS.tolerance = Number(value);
@@ -56,13 +58,20 @@ function parseArgs(argv) {
     else throw new Error(`不明な引数: ${key}`);
   }
   if (!(OPTIONS.runs >= 2)) throw new Error(`--runs は 2 以上にしてください: ${OPTIONS.runs}`);
+  for (const name of ["iterations", "warmup"]) {
+    const value = OPTIONS[name];
+    if (!(Number.isInteger(value) && value >= 0)) {
+      throw new Error(`--${name} は 0 以上の整数で指定してください（必須の引数です）`);
+    }
+  }
 }
 
 function printUsage() {
   console.log(`使い方: node bench/scripts/measure-noise.mjs [オプション]
 
+  --iterations <n>            bench 側の実測回数 (必須)
+  --warmup <n>                bench 側の暖機回数 (必須)
   --runs <n>                  走らせる回数 (既定 7。1 回 8 秒程度)
-  --iterations <n>            bench 側の実測回数 (既定は各シナリオの既定値)
   --scenario <name>           シナリオを 1 つだけ測る (pipeline / split / cache-read)
   --tolerance <x>             段の許容倍率 (既定 1.5。compare.mjs と同じ)
   --calibration-tolerance <t> 校正の許容 (既定 0.10。compare.mjs と同じ)
@@ -77,26 +86,30 @@ const ms = (value) => `${value.toFixed(2)}ms`;
 const x2 = (value) => `${value.toFixed(2)}x`;
 
 /** 校正 1 件の測定値（開始時の校正と、シナリオ直前の校正を同じ形にする） */
-function calibrationSamples(report) {
-  const samples = [{ key: "calibration（開始時）", value: report.calibration?.median }];
-  for (const [name, calibration] of Object.entries(report.scenarioCalibration ?? {})) {
-    samples.push({ key: `calibration（${name} の直前）`, value: calibration?.median });
+function calibrationSamples(parsed) {
+  const samples = [{ key: "calibration（開始時）", value: parsed.calibration.median }];
+  for (const [name, calibration] of Object.entries(parsed.scenarioCalibration)) {
+    samples.push({ key: `calibration（${name} の直前）`, value: calibration.median });
   }
   return samples;
 }
 
 /** 段の測定値を測定項目 ID で集める（bench/compare.mjs と同じ取り出し方を使う） */
-function stageSamples(report) {
-  const samples = [];
-  for (const [id, item] of extractMeasurements(report)) {
-    samples.push({ key: id, value: item.value });
-  }
-  return samples;
+function stageSamples(parsed) {
+  return Object.entries(parsed.measurements).map(([id, item]) => ({ key: id, value: item.median }));
 }
 
 function runBench(outputPath) {
-  const args = [BUNDLE, "--quiet", "--json", outputPath];
-  if (OPTIONS.iterations !== undefined) args.push("--iterations", String(OPTIONS.iterations));
+  const args = [
+    BUNDLE,
+    "--quiet",
+    "--json",
+    outputPath,
+    "--iterations",
+    String(OPTIONS.iterations),
+    "--warmup",
+    String(OPTIONS.warmup),
+  ];
   if (OPTIONS.scenario !== undefined) args.push("--scenario", OPTIONS.scenario);
   const started = Date.now();
   const result = spawnSync(process.execPath, args, {
@@ -159,15 +172,17 @@ function main() {
     for (let i = 0; i < OPTIONS.runs; i++) {
       const outputPath = join(workDir, `bench-${i}.json`);
       const { report, elapsedMs } = runBench(outputPath);
-      nodes.push(report.node);
+      // 結果 JSON の取り出しは compare.mjs と同じ検証を通す
+      const parsed = parseBenchReport(report);
+      nodes.push(process.version);
       elapsed.push(elapsedMs);
-      for (const { key, value } of calibrationSamples(report)) {
+      for (const { key, value } of calibrationSamples(parsed)) {
         if (!Number.isFinite(value)) throw new Error(`校正の測定値が不正です: ${key}`);
         const list = calibration.get(key) ?? [];
         list.push(value);
         calibration.set(key, list);
       }
-      for (const { key, value } of stageSamples(report)) {
+      for (const { key, value } of stageSamples(parsed)) {
         const list = stages.get(key) ?? [];
         list.push(value);
         stages.set(key, list);

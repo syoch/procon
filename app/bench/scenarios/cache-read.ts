@@ -6,7 +6,7 @@ import { requireOSMData } from "../../src/routes/api/osm/index";
 import { cacheManager } from "../../src/routes/api/osm/fs-cache-manager";
 import { RequestContext } from "../../src/lib/tracing/requestContext";
 import { divideBoundary } from "../../src/routes/api/osm/boundary";
-import { toStageId, type StageId } from "../ids";
+import { toStageName, type StageName } from "../ids";
 import { fixtureBoundary, listFixtureCells, readFixtureCell } from "../lib/data";
 import { StageRecorder } from "../lib/harness";
 import type { Scenario, ScenarioResult } from "./types";
@@ -21,11 +21,10 @@ import type { Scenario, ScenarioResult } from "./types";
  * `cacheManager` は import 時に `OSM_CACHE_DIR` を読むので、このシナリオでは
  * プロセス環境ではなく `env` を差し替えてから readCache する。
  */
-export const cacheReadScenario: Scenario = {
+export const cacheReadScenario: Scenario<"cache-read"> = {
   name: "cache-read",
   description: "ファイルキャッシュが全ヒットした状態での requireOSMData（キャッシュ読取側）",
-  defaultIterations: 15,
-  async run({ iterations, warmup }): Promise<ScenarioResult> {
+  async run({ iterations, warmup }): Promise<ScenarioResult<"cache-read">> {
     const boundary = fixtureBoundary();
     const cellCount = divideBoundary(boundary).length;
 
@@ -44,8 +43,8 @@ export const cacheReadScenario: Scenario = {
     };
 
     // RequestContext の計測名は実行時に文字列で届く。レジストリに無い名前は
-    // toStageId が落とすので、本番側に計測が増えたら bench 側で明示する必要がある。
-    const contextSamples = new Map<StageId, number[]>();
+    // toStageName が落とすので、本番側に計測が増えたら bench 側で明示する必要がある。
+    const contextSamples = new Map<StageName<"cache-read">, number[]>();
     let elementCount = 0;
 
     const recorder = new StageRecorder("cache-read", { warmup, iterations });
@@ -54,17 +53,15 @@ export const cacheReadScenario: Scenario = {
       const data = await requireOSMData(ctx, boundary, cacheManager, notExpectedToFetch);
       // endMeasurement は measuredEntries を空にするので、先に読む
       for (const entry of ctx.measuredEntries) {
-        const id = toStageId("cache-read", `RequestContext.${entry.name}`);
-        const samples = contextSamples.get(id);
-        if (samples === undefined) contextSamples.set(id, [entry.endTime - entry.startTime]);
+        const stage = toStageName("cache-read", `RequestContext.${entry.name}`);
+        const samples = contextSamples.get(stage);
+        if (samples === undefined) contextSamples.set(stage, [entry.endTime - entry.startTime]);
         else samples.push(entry.endTime - entry.startTime);
       }
       // console への出力は 1 回 10ms 程度かかるので、計測中には出さない
       const originalLog = console.log;
       console.log = () => {};
       try {
-        // 実際のサーバと同じ引数で呼び出す。引数は記録先の DB に保存されるだけで
-        // measuredEntries の時間には影響しないので、計測対象の精度を損なわない。
         ctx.endMeasurement(new Date(), "POST", "http://localhost/bench");
       } finally {
         console.log = originalLog;
@@ -81,9 +78,9 @@ export const cacheReadScenario: Scenario = {
     else process.env.OSM_CACHE_DIR = previousCacheDir;
     rmSync(cacheDir, { recursive: true, force: true });
 
-    for (const [id, samples] of contextSamples) {
+    for (const [stage, samples] of contextSamples) {
       // 暖機ぶんは result() が落とすので、生の列をそのまま積む
-      recorder.record(id, samples);
+      recorder.record(stage, samples);
     }
 
     const stages = recorder.result();
@@ -91,7 +88,7 @@ export const cacheReadScenario: Scenario = {
       scenario: "cache-read",
       stages,
       // 内訳は requireOSMData に含まれるので、足し合わせない
-      total: stages["cache-read/requireOSMData"]?.median ?? 0,
+      total: stages.requireOSMData.median,
       info: { cellCount, elementCount, mode: "cache-hit" },
     };
   },

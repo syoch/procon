@@ -17,13 +17,11 @@ import { build } from "esbuild";
 const HERE = dirname(fileURLToPath(import.meta.url));
 const APP_DIR = join(HERE, "..");
 const OUT_DIR = join(HERE, ".build");
-const OUT_FILE = join(OUT_DIR, "bench.mjs");
 
 await mkdirSync(OUT_DIR, { recursive: true });
 
-await build({
-  entryPoints: [join(HERE, "run.ts")],
-  outfile: OUT_FILE,
+/** アプリと同じ TypeScript ソースを 1 ファイルにまとめる */
+const common = {
   bundle: true,
   platform: "node",
   format: "esm",
@@ -47,6 +45,15 @@ await build({
       "const require = __createRequire(import.meta.url);",
     ].join("\n"),
   },
-});
+};
 
-console.log(`built ${OUT_FILE}`);
+// フィクスチャ取得もアプリの OSM キャッシュ層を import するので同じ設定でバンドルする
+const ENTRY_POINTS = [
+  { entry: join(HERE, "run.ts"), out: join(OUT_DIR, "bench.mjs") },
+  { entry: join(HERE, "scripts", "fetch-fixture.ts"), out: join(OUT_DIR, "fetch-fixture.mjs") },
+];
+
+for (const { entry, out } of ENTRY_POINTS) {
+  await build({ ...common, entryPoints: [entry], outfile: out });
+  console.log(`built ${out}`);
+}

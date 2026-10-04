@@ -12,10 +12,10 @@
  * 同じ ID の測定項目同士は比較できる。app/src のモジュールを移動しただけの PR でも
  * 比較が成立する。
  *
+ * ID は `{シナリオ}/{段}` の 1 つだけを持ち、測定条件は ID に入れない。
+ * したがって同じ ID の測定項目どうしは常に同じ対象を指し、比べるのは `median` の比だけになる。
  * ID が両方になければ「追加」（head だけ）または「削除」（base だけ）として扱う。
  * どちらも「測定対象が変わった」ことを意味するので、回帰判定には入らないが表示する。
- * 同じ ID で測定条件（iterations / warmup / fixture / mode / node）が違う場合も、
- * 別の測定対象とみなして比較せず exit 2 にする。
  *
  * なぜ base と head を 2 回測るか:
  * 記録用の基準ファイルをリポジトリに持つと、CPU も Node も違うランナーで
@@ -44,17 +44,21 @@
  *
  * exit code:
  *   0  許容倍率以内（改善も含む）
- *   1  許容倍率を超えた測定項目がある（回帰）
- *   2  比較そのものが成立しない（測定項目を取り出せない / 測定条件が違う / 校正が外れている / 入力が不正）
+ *   1  許容倍率を超えた測定項目がある（回帰）／結果 JSON が契約を守っていない
+ *   2  比較そのものが成立しない（測定項目 ID が一致しない / 校正が外れている / 版が違う）
  *
  * 校正が通らないと回帰レポートごと出ないので、本物の回帰も一緒に隠れてしまう。
  * `--report-on-invalid` を付けると exit 2 を保ったまま「参考値（機械の状態が
  * 信用できない）」として回帰のリストを出す。比較できないことと、本当に遅くなったこと
  * を同時に読みたいためで、判定の結論（exit code）は変えない。
+ *
+ * 結果 JSON の構造は `lib/report.ts` が型と検証を持っている。
+ * 版が違う JSON には測定項目 ID が入っていないので exit 2、版が同じで構造が
+ * 契約を守っていないときは exit 1（契約違反は緑にしない）になる。
  */
 import { readFileSync } from "node:fs";
 
-import { extractMeasurements, extractScale } from "./lib/report.mjs";
+import { parseBenchReport, SchemaViolationError, UnsupportedSchemaError } from "./lib/report.ts";
 
 const OPTIONS = {
   tolerance: 1.5,
@@ -92,12 +96,26 @@ function parseArgs(argv) {
   }
 }
 
+/** 結果 JSON を読み込んで検証する。版の違う JSON は比較不成立として扱う */
 function load(path) {
   const parsed = JSON.parse(readFileSync(path, "utf-8"));
-  if (typeof parsed !== "object" || parsed === null) {
-    throw new Error(`${path}: JSON の読み出しに失敗しました`);
+  try {
+    return parseBenchReport(parsed);
+  } catch (error) {
+    if (error instanceof UnsupportedSchemaError || error instanceof SchemaViolationError) {
+      throw new BenchInputError(`${path}: ${error.message}`, error instanceof SchemaViolationError);
+    }
+    throw error;
   }
-  return parsed;
+}
+
+/** 入力 JSON が契約を守らなかったことを表す。契約違反だけ exit 1 にする */
+class BenchInputError extends Error {
+  constructor(message, violation) {
+    super(message);
+    this.name = "BenchInputError";
+    this.violation = violation;
+  }
 }
 
 const ms = (value) => (Number.isNaN(value) || value === undefined ? "-" : `${value.toFixed(2)}ms`);
@@ -112,49 +130,44 @@ const isRecord = (value) => typeof value === "object" && value !== null && !Arra
 /**
  * 測定項目を ID 単位で突き合わせる。
  *
- * `rows` は追加・削除・条件差異も含めて全 ID を含む。
+ * `rows` は追加と削除も含めて全 ID を含む。
  * 「追加」と「削除」は測定対象が変わったことを意味するので、回帰判定には入らない。
  */
 function compareMeasurements(base, head) {
-  const baseItems = extractMeasurements(base);
-  const headItems = extractMeasurements(head);
+  const baseItems = base.measurements;
+  const headItems = head.measurements;
   const warnings = [];
-
-  if (baseItems.size === 0 || headItems.size === 0) {
-    warnings.push(
-      `測定項目 ID を JSON から取り出せませんでした: base=${baseItems.size} 件 ` +
-        `head=${headItems.size} 件。測定項目 ID を持つ bench の出力どうしを比較してください`,
-    );
-  }
 
   const rows = [];
   const regressions = [];
-  const ids = [...new Set([...baseItems.keys(), ...headItems.keys()])].sort();
+  const ids = [...new Set([...Object.keys(baseItems), ...Object.keys(headItems)])].sort();
+  // 両側に同じ ID が 1 つも無ければ比率の比較というものが成り立たない
+  const common = ids.filter((id) => baseItems[id] !== undefined && headItems[id] !== undefined);
+  if (common.length === 0) {
+    warnings.push(
+      `測定項目 ID が一致しません: base=${Object.keys(baseItems).length} 件 ` +
+        `head=${Object.keys(headItems).length} 件、共通 0 件。` +
+        "測定項目 ID を持つ bench の出力どうしを比較してください",
+    );
+  }
   for (const id of ids) {
-    const before = baseItems.get(id);
-    const after = headItems.get(id);
+    const before = baseItems[id];
+    const after = headItems[id];
     if (before === undefined) {
-      rows.push({ id, before: null, after: after.value, ratio: null });
+      rows.push({ id, before: null, after: after.median, ratio: null });
       continue;
     }
     if (after === undefined) {
-      rows.push({ id, before: before.value, after: null, ratio: null });
+      rows.push({ id, before: before.median, after: null, ratio: null });
       continue;
     }
-    // 同じ ID でも測定条件が違うなら、比較できる同じ測定対象ではない
-    const difference = conditionDifference(id, before.conditions, after.conditions);
-    if (difference !== null) {
-      warnings.push(difference);
-      rows.push({ id, before: before.value, after: after.value, ratio: null, skipped: true });
-      continue;
-    }
-    const ratio = before.value > 0 ? after.value / before.value : null;
+    const ratio = before.median > 0 ? after.median / before.median : null;
     // 絶対時間がノイズ床を下回る項目は比率が意味を持たない（0.02ms が 0.04ms になっても
     // 測定解像度の話で、性能の問題ではない）ので、回帰判定の対象から外す
-    const gated = ratio !== null && before.value >= OPTIONS.minMs;
-    rows.push({ id, before: before.value, after: after.value, ratio, gated });
+    const gated = ratio !== null && before.median >= OPTIONS.minMs;
+    rows.push({ id, before: before.median, after: after.median, ratio, gated });
     if (gated && ratio > OPTIONS.tolerance) {
-      regressions.push({ id, before: before.value, after: after.value, ratio });
+      regressions.push({ id, before: before.median, after: after.median, ratio });
     }
   }
   // ratio の大きい順に見せる。追加と削除は最後にまとめる
@@ -167,39 +180,6 @@ function compareMeasurements(base, head) {
   const added = rows.filter((r) => r.before === null).map((r) => r.id);
   const removed = rows.filter((r) => r.after === null).map((r) => r.id);
   return { rows, added, removed, regressions, warnings };
-}
-
-/**
- * 同じ ID の測定項目の「測定条件」を比べる。
- *
- * 条件が違うと同じ ID で数値だけが違う比較になり、意味が読めなくなる。
- * 条件が変わったなら測定対象そのものが変わったので、削除 + 追加 と同じ扱いにする。
- * 判定は「比較対象から外して exit 2」なので、暗黙の緑にならない。
- */
-function conditionDifference(id, base, head) {
-  if (!isRecord(base) || !isRecord(head)) {
-    return `${id}: 測定条件が取り出せません（比較対象から外します）`;
-  }
-  const keys = [...new Set([...Object.keys(base), ...Object.keys(head)])].sort();
-  const differences = [];
-  for (const key of keys) {
-    if (!(key in base)) {
-      differences.push(`${key}: head のみ ${head[key]}`);
-      continue;
-    }
-    if (!(key in head)) {
-      differences.push(`${key}: base のみ ${base[key]}`);
-      continue;
-    }
-    if (base[key] !== head[key]) {
-      differences.push(`${key}: base=${base[key]} head=${head[key]}`);
-    }
-  }
-  if (differences.length === 0) return null;
-  return (
-    `${id}: 測定条件が両方で揃っていないため、この項目は比較しません（削除 + 追加 として扱います）: ` +
-    differences.join(" / ")
-  );
 }
 
 /**
@@ -245,17 +225,6 @@ function checkCalibration(base, head) {
   };
 }
 
-/**
- * 校正の仕事量の検算値（`work`）の一致を見る。
- *
- * 校正は同じ仕事量を整数演算で回すだけなので、同じ Node で走らせれば必ず同じ値を返す。
- * つまり `median` が何倍であっても `work` は一致する。両者は別の失敗を見る:
- * `median` のずれは「機械の速さ」が変わったことを、`work` の不一致は
- * 「同じ仕事をした」保証が壊れたことを示す。Node の版や bench の版が違えば
- * 整数演算が別の最適化を受けて別の値になるので、このときは時間で見ても意味がない。
- * 判定の順序に意味はないので、両者は独立に判定する。
- */
-
 /** 校正レポートから `work` を全部抜き出す（どこで測ったかを一緒に持つ） */
 function collectWorks(report) {
   const entries = [];
@@ -274,6 +243,16 @@ function formatWorks(entries) {
   return entries.map((e) => `${e.where} ${e.value}`).join(" / ");
 }
 
+/**
+ * 校正の仕事量の検算値（`work`）の一致を見る。
+ *
+ * 校正は同じ仕事量を整数演算で回すだけなので、同じ Node で走らせれば必ず同じ値を返す。
+ * つまり `median` が何倍であっても `work` は一致する。両者は別の失敗を見る:
+ * `median` のずれは「機械の速さ」が変わったことを、`work` の不一致は
+ * 「同じ仕事をした」保証が壊れたことを示す。Node の版や bench の版が違えば
+ * 整数演算が別の最適化を受けて別の値になるので、このときは時間で見ても意味がない。
+ * 判定の順序に意味はないので、両者は独立に判定する。
+ */
 function checkWork(base, head) {
   const before = collectWorks(base);
   const after = collectWorks(head);
@@ -381,26 +360,6 @@ function checkMachine(base, head, comparedScenarios) {
   return { calibration, work, scenarios, warnings, ok: warnings.length === 0 };
 }
 
-/**
- * 観測したデータ規模が両側で揃っているかを見る。
- *
- * グラフ規模が変わると項目の絶対値も変わるので、比較そのものが別ものになる。
- * 契約には含めない診断なので、既知のキーが両側に出たときだけ警告する。
- */
-function scaleWarnings(base, head) {
-  const warnings = [];
-  const baseScale = extractScale(base);
-  const headScale = extractScale(head);
-  for (const [key, before] of baseScale) {
-    if (!headScale.has(key)) continue;
-    const after = headScale.get(key);
-    if (before !== after) {
-      warnings.push(`${key}: base=${before} head=${after}（データ規模が変化）`);
-    }
-  }
-  return warnings;
-}
-
 /** 校正の結果を 1 行にまとめる */
 function calibrationText(calibration) {
   if (calibration.ratio === null) {
@@ -437,18 +396,17 @@ function scenarioCalibrationLines(scenarios) {
 /**
  * 回帰の判定（または参考値）の見出しと明細を組み立てる。
  *
- * 機械の判定が通らなかったときは既定では回帰の判定を出さない（校正ゲート）。
+ * 比較が成立しなかったときは既定では回帰の判定を出さない（校正ゲートと ID の一致）。
  * `--report-on-invalid` を付けると、exit 2 を保ったまま「参考値（機械の状態が
  * 信用できない）」として回帰のリストを出す。変わるのは表示だけで、
  * 「比較が成立しない」という結論は変わらない。
  */
-function verdict(gate, regressions) {
-  const invalid = !gate.ok;
+function verdict(invalid, regressions) {
   const reference = invalid && OPTIONS.reportOnInvalid;
   if (invalid && !reference) {
     return {
       heading:
-        "校正が成立しないため、回帰の判定は出していません" +
+        "比較が成立しないため、回帰の判定は出していません" +
         "（--report-on-invalid を付けると参考値として出ます）",
       items: [],
     };
@@ -472,7 +430,7 @@ function verdict(gate, regressions) {
 /** ID は `{シナリオ}/{段}` なので 40 桁で揃える */
 const ID_WIDTH = 40;
 
-/** 1 行の測定項目を表示する。追加・削除・条件差異はここで出す */
+/** 1 行の測定項目を表示する。追加・削除はここで出す */
 function rowText(row) {
   if (row.before === null) {
     return `  ${row.id.padEnd(ID_WIDTH)}${"(追加)".padStart(10)}${ms(row.after).padStart(10)}${"-".padStart(9)}`;
@@ -481,7 +439,7 @@ function rowText(row) {
     return `  ${row.id.padEnd(ID_WIDTH)}${ms(row.before).padStart(10)}${"(削除)".padStart(10)}${"-".padStart(9)}`;
   }
   // 判定対象外の項目には目印を付ける
-  const mark = row.skipped === true ? " !" : row.gated === false ? " *" : "";
+  const mark = row.gated === false ? " *" : "";
   return (
     `  ${(row.id + mark).padEnd(ID_WIDTH)}${ms(row.before).padStart(10)}` +
     `${ms(row.after).padStart(10)}${ratioText(row.ratio).padStart(9)}`
@@ -499,14 +457,13 @@ function changeText(added, removed) {
   return lines;
 }
 
-function renderText(result, warnings, gate) {
+function renderText(result, gate, warnings) {
   const lines = [];
   for (const warning of warnings) lines.push(`  ! ${warning}`);
   if (warnings.length > 0) lines.push("");
   lines.push(`  ${"id".padEnd(ID_WIDTH)}${"base".padStart(10)}${"head".padStart(10)}${"ratio".padStart(9)}`);
   for (const row of result.rows) lines.push(rowText(row));
   lines.push("");
-  lines.push(`  (! = 測定条件が両側で揃わず比較していない項目)`);
   lines.push(`  (* = ${OPTIONS.minMs}ms 未満のため回帰判定の対象外)`);
   lines.push("");
   for (const line of changeText(result.added, result.removed)) lines.push(line);
@@ -514,7 +471,7 @@ function renderText(result, warnings, gate) {
   lines.push(`  ${calibrationText(gate.calibration)}`);
   lines.push(`  ${workText(gate.work)}`);
   for (const line of scenarioCalibrationLines(gate.scenarios)) lines.push(`  ${line}`);
-  const result_ = verdict(gate, result.regressions);
+  const result_ = verdict(gate.ok === false || warnings.length > 0, result.regressions);
   lines.push(`  ${result_.heading}`);
   for (const r of result_.items) {
     lines.push(`  ${r.id}: ${ms(r.before)} -> ${ms(r.after)} (${r.ratio.toFixed(2)}x)`);
@@ -522,9 +479,8 @@ function renderText(result, warnings, gate) {
   return lines.join("\n");
 }
 
-function renderMarkdown(result, warnings, gate) {
+function renderMarkdown(result, gate, warnings) {
   const lines = [];
-  for (const warning of warnings) lines.push(`> [!WARNING]\n> ${warning}`);
   lines.push("| id | base | head | ratio |");
   lines.push("|---|---:|---:|---:|");
   for (const row of result.rows) {
@@ -536,7 +492,7 @@ function renderMarkdown(result, warnings, gate) {
       lines.push(`| \`${row.id}\` | ${ms(row.before)} | (削除) | - |`);
       continue;
     }
-    const mark = row.skipped === true ? " !" : row.gated === false ? " *" : "";
+    const mark = row.gated === false ? " *" : "";
     lines.push(`| \`${row.id}${mark}\` | ${ms(row.before)} | ${ms(row.after)} | ${ratioText(row.ratio)} |`);
   }
   lines.push("");
@@ -547,7 +503,7 @@ function renderMarkdown(result, warnings, gate) {
   if (result.added.length > 0) lines.push(`- 追加（head だけ）: ${result.added.map((id) => `\`${id}\``).join(", ")}`);
   if (result.removed.length > 0) lines.push(`- 削除（base だけ）: ${result.removed.map((id) => `\`${id}\``).join(", ")}`);
   lines.push("");
-  lines.push(`! 測定条件が両側で揃わず比較していない項目 / * ${OPTIONS.minMs}ms 未満の項目は回帰判定の対象外`);
+  lines.push(`* ${OPTIONS.minMs}ms 未満の項目は回帰判定の対象外`);
   lines.push("");
   lines.push(`**${calibrationText(gate.calibration)}**`);
   lines.push(gate.work.value === null ? `**${workText(gate.work)}**` : workText(gate.work));
@@ -560,12 +516,22 @@ function renderMarkdown(result, warnings, gate) {
       );
     }
   }
-  const result_ = verdict(gate, result.regressions);
+  const result_ = verdict(gate.ok === false || warnings.length > 0, result.regressions);
   lines.push(`**${result_.heading}**`);
   for (const r of result_.items) {
     lines.push(`- \`${r.id}\`: ${ms(r.before)} → ${ms(r.after)} (${r.ratio.toFixed(2)}x)`);
   }
   return lines.join("\n");
+}
+
+/**
+ * 比較不成立の理由要先頭に置くので、警告行を別に組み立てる。
+ *
+ * exit 2 のときは job summary の最初にあるので、表より先に結論が来る。
+ */
+function renderWarnings(warnings) {
+  if (warnings.length === 0) return [];
+  return ["> [!WARNING]", ...warnings.map((w) => `> ${w}`)];
 }
 
 try {
@@ -576,20 +542,27 @@ try {
   // 比較した項目のあるシナリオだけ、シナリオ直前の校正を突き合わせる
   const comparedScenarios = new Set(
     result.rows
-      .filter((row) => row.before !== null && row.after !== null && row.skipped !== true)
+      .filter((row) => row.before !== null && row.after !== null)
       .map((row) => row.id.slice(0, row.id.indexOf("/"))),
   );
   const gate = checkMachine(base, head, comparedScenarios);
-  // 校正の不備も「比較が成立しない」側に載せる。exit 2 はこの配列が空かどうかで決まる
-  const warnings = [...result.warnings, ...scaleWarnings(base, head), ...gate.warnings];
+  // 測定項目側の不備も「比較が成立しない」側に載せる。exit 2 は警告が 1 つでもあるかどうかで決まる
+  const warnings = [...result.warnings, ...gate.warnings];
   const text =
     OPTIONS.format === "markdown"
-      ? renderMarkdown(result, warnings, gate)
-      : renderText(result, warnings, gate);
+      ? [...renderWarnings(warnings), renderMarkdown(result, gate, warnings)].join("\n\n")
+      : renderText(result, gate, warnings);
   console.log(text);
   if (warnings.length > 0) process.exitCode = 2;
   else if (result.regressions.length > 0) process.exitCode = 1;
 } catch (error) {
-  console.error(`bench の比較に失敗しました: ${error.message}`);
-  process.exit(2);
+  const violation = error instanceof BenchInputError && error.violation;
+  console.error(
+    violation
+      ? `bench の結果が契約を守っていません: ${error.message}`
+      : `bench の比較に失敗しました: ${error instanceof Error ? error.message : String(error)}`,
+  );
+  // 版が違えば比較というものが成り立たない（exit 2）。
+  // 版が同じで構造が壊れていれば契約違反なので赤にする（exit 1）
+  process.exit(violation ? 1 : 2);
 }
