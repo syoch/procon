@@ -1,67 +1,91 @@
-import { gunzipSync } from "node:zlib";
-import { readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { readFileSync, readdirSync, statSync } from "node:fs";
+import { join } from "node:path";
 
 import { mergeOSMData } from "../../src/routes/api/osm/osm-data";
 import { divideBoundary, type Boundary } from "../../src/routes/api/osm/boundary";
 import { clone } from "./harness";
 
-const HERE = dirname(fileURLToPath(import.meta.url));
-
 /**
- * フィクスチャの置き場所は環境変数で差し替えられる。
+ * フィクスチャは本番の OSM キャッシュと同じディレクトリを直接読む。
  *
- * CI で `actions/cache` から復元した OSM キャッシュ（`readCache` が読める
- * `{minLat}-{minLng}-{maxLat}-{maxLng}.json` 形式）を指定すれば、
- * git にデータを持たせずに済む。
+ * `scripts/fetch-fixture.ts` が `OSM_CACHE_DIR` に書き込むので、セルファイル名も
+ * `fs-cache-manager` の `{minLat}-{minLng}-{maxLat}-{maxLng}.json` と同じ形式になる。
+ * `cache-read` シナリオはこのセルを実際に `readCache` する。
  */
-const FIXTURE_PATH =
-  process.env.BENCH_FIXTURE ?? join(HERE, "..", "fixtures", "nagaoka-central.json.gz");
-
-export type FixtureMeta = {
-  name: string;
-  description: string;
-  source: string;
-  capturedAt: string;
-  cellCount: number;
-  nodeCount: number;
-  wayCount: number;
-  bbox: { minLat: number; minLng: number; maxLat: number; maxLng: number };
-};
-
-/** セルファイル名 -> そのセルの OSMData */
-export type Fixture = {
-  meta: FixtureMeta;
-  cells: Record<string, App.OSMData>;
-};
-
-let cached: Fixture | undefined;
-
-export function loadFixtureArchive(): Fixture {
-  if (cached !== undefined) return cached;
-  const raw = gunzipSync(readFileSync(FIXTURE_PATH));
-  const parsed = JSON.parse(raw.toString("utf-8")) as Fixture;
-  if (parsed.meta === undefined || parsed.cells === undefined) {
-    throw new Error(`フィクスチャの形式が不正です: ${FIXTURE_PATH}`);
+function cacheDir(): string {
+  const dir = process.env.OSM_CACHE_DIR;
+  if (dir === undefined || dir === "") {
+    throw new Error(
+      "OSM_CACHE_DIR 環境変数が設定されていません（bench/scripts/fetch-fixture.ts で取得します）",
+    );
   }
-  cached = parsed;
-  return parsed;
+  return dir;
 }
 
-export function readFixtureMeta(): FixtureMeta {
-  return loadFixtureArchive().meta;
-}
+/** `fs-cache-manager` のセルファイル名。一時ファイルは対象にする */
+const CELL_FILE_PATTERN = /^(-?\d+(?:\.\d+)?-){3}-?\d+(?:\.\d+)?\.json$/;
 
-/** `readCache` が読めるファイル名（昇順） */
+/** フィクスチャの規模。セルファイルから求める */
+export type FixtureStats = {
+  /** セルファイルの数 */
+  cellCount: number;
+  /** 全セルのノード数 */
+  nodeCount: number;
+  /** 全セルの way 数 */
+  wayCount: number;
+  /** セルが覆う領域 */
+  boundary: Boundary;
+  /** 最も新しいセルファイルの更新日時 */
+  fetchedAt: string;
+};
+
+let cached: FixtureStats | undefined;
+
+/** `readCache` が読めるセルファイル名（昇順） */
 export function listFixtureCells(): string[] {
-  return Object.keys(loadFixtureArchive().cells).sort();
+  return readdirSync(cacheDir())
+    .filter((file) => CELL_FILE_PATTERN.test(file))
+    .sort();
 }
 
 export function readFixtureCell(fileName: string): App.OSMData {
-  const cell = loadFixtureArchive().cells[fileName];
-  if (cell === undefined) throw new Error(`フィクスチャにセルがありません: ${fileName}`);
+  const cell = JSON.parse(readFileSync(join(cacheDir(), fileName), "utf-8")) as App.OSMData;
   return cell;
+}
+
+/**
+ * フィクスチャの規模をセルファイルから求める。
+ *
+ * セルファイル名に領域が書いてあるため、別途 manifest を置かずに済む。
+ * セルが 1 つも無い状態で測ると `pathLength` が 0 になって測定が成立しないので、
+ * ここでは先に落とす。
+ */
+export function readFixtureStats(): FixtureStats {
+  if (cached !== undefined) return cached;
+  const files = listFixtureCells();
+  if (files.length === 0) {
+    throw new Error(
+      `${cacheDir()} にセルファイルがありません（先に node bench/.build/fetch-fixture.mjs を実行してください）`,
+    );
+  }
+  let nodeCount = 0;
+  let wayCount = 0;
+  let newest = 0;
+  for (const file of files) {
+    for (const element of readFixtureCell(file).elements) {
+      if (element.type === "node") nodeCount += 1;
+      else if (element.type === "way") wayCount += 1;
+    }
+    newest = Math.max(newest, statSync(join(cacheDir(), file)).mtimeMs);
+  }
+  cached = {
+    cellCount: files.length,
+    nodeCount,
+    wayCount,
+    boundary: boundaryOf(files),
+    fetchedAt: new Date(newest).toISOString(),
+  };
+  return cached;
 }
 
 /**
@@ -78,11 +102,16 @@ export function loadFixture(): App.OSMData {
 
 /** フィクスチャが覆う領域をセル境界にスナップした形で求める */
 export function fixtureBoundary(): Boundary {
+  return boundaryOf(listFixtureCells());
+}
+
+/** セルファイル名の範囲から領域を求める */
+function boundaryOf(files: string[]): Boundary {
   let minLat = Infinity;
   let minLng = Infinity;
   let maxLat = -Infinity;
   let maxLng = -Infinity;
-  for (const file of listFixtureCells()) {
+  for (const file of files) {
     const [cellMinLat, cellMinLng, cellMaxLat, cellMaxLng] = file
       .replace(".json", "")
       .split("-")

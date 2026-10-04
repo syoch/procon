@@ -7,8 +7,7 @@ import { cacheManager } from "../../src/routes/api/osm/fs-cache-manager";
 import { RequestContext } from "../../src/lib/tracing/requestContext";
 import { divideBoundary } from "../../src/routes/api/osm/boundary";
 import { fixtureBoundary, listFixtureCells, readFixtureCell } from "../lib/data";
-import { measure, summarize } from "../lib/harness";
-import type { Samples } from "../lib/harness";
+import { StageRecorder } from "../lib/harness";
 import type { Scenario, ScenarioResult } from "./types";
 
 /**
@@ -24,7 +23,6 @@ import type { Scenario, ScenarioResult } from "./types";
 export const cacheReadScenario: Scenario = {
   name: "cache-read",
   description: "ファイルキャッシュが全ヒットした状態での requireOSMData（キャッシュ読取側）",
-  defaultIterations: 15,
   async run({ iterations, warmup }): Promise<ScenarioResult> {
     const boundary = fixtureBoundary();
     const cellCount = divideBoundary(boundary).length;
@@ -43,51 +41,52 @@ export const cacheReadScenario: Scenario = {
       throw new Error("キャッシュが効いていない: Overpass 取得に到達した");
     };
 
-    const contextStages: Record<string, number[]> = {};
+    // RequestContext の計測名は実行時に文字列で届くので、そのまま測定項目の名にする
+    const contextSamples = new Map<string, number[]>();
     let elementCount = 0;
 
+    const recorder = new StageRecorder({ warmup, iterations });
     const runOnce = async () => {
       const ctx = new RequestContext();
       const data = await requireOSMData(ctx, boundary, cacheManager, notExpectedToFetch);
       // endMeasurement は measuredEntries を空にするので、先に読む
       for (const entry of ctx.measuredEntries) {
-        (contextStages[entry.name] ??= []).push(entry.endTime - entry.startTime);
+        const stage = `RequestContext.${entry.name}`;
+        const samples = contextSamples.get(stage);
+        if (samples === undefined) contextSamples.set(stage, [entry.endTime - entry.startTime]);
+        else samples.push(entry.endTime - entry.startTime);
       }
       // console への出力は 1 回 10ms 程度かかるので、計測中には出さない
       const originalLog = console.log;
       console.log = () => {};
       try {
-        ctx.endMeasurement();
+        ctx.endMeasurement(new Date(), "POST", "http://localhost/bench");
       } finally {
         console.log = originalLog;
       }
       return data;
     };
 
-    const samples = await measure(
-      () => {},
-      async () => {
-        const data = await runOnce();
-        elementCount = data.elements.length;
-      },
-      { warmup, iterations },
-    );
+    await recorder.measure("requireOSMData", () => {}, async () => {
+      const data = await runOnce();
+      elementCount = data.elements.length;
+    });
 
     if (previousCacheDir === undefined) delete process.env.OSM_CACHE_DIR;
     else process.env.OSM_CACHE_DIR = previousCacheDir;
     rmSync(cacheDir, { recursive: true, force: true });
 
-    const stages: Record<string, Samples> = { requireOSMData: samples };
-    for (const [label, values] of Object.entries(contextStages)) {
-      const kept = values.slice(warmup);
-      if (kept.length === 0) continue;
-      stages[`RequestContext.${label}`] = summarize(kept);
+    for (const [stage, samples] of contextSamples) {
+      // 暖機ぶんは result() が落とすので、生の列をそのまま積む
+      recorder.record(stage, samples);
     }
 
+    const stages = recorder.result();
     return {
       scenario: "cache-read",
       stages,
-      total: samples.median,
+      // 内訳は requireOSMData に含まれるので、足し合わせない
+      total: stages.requireOSMData.median,
       info: { cellCount, elementCount, mode: "cache-hit" },
     };
   },

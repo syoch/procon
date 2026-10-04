@@ -1,9 +1,10 @@
 /**
  * 計測ハーネスの共通部品。
  *
- * 共有ランナー（GitHub Actions など）の CPU は一定ではないので、絶対値ではなく
- * 中央値と分散で判断する。暖機を入れないと JIT の最適化前の回が中央値に混ざり、
- * 数値が安定しないため必ず暖機する。
+ * 共有ランナーの CPU は一定ではないので中央値と分散で判断する。
+ * シナリオが使う記法は `StageRecorder` 1 つに統一している。
+ *
+ * @ref README.md#出力の読み方
  */
 
 export type Samples = {
@@ -35,35 +36,34 @@ export function summarize(samples: number[]): Samples {
 
 export type MeasureOptions = {
   /** 暖機。この回数分は結果に含めない */
-  warmup?: number;
+  warmup: number;
   /** 実測回数 */
-  iterations?: number;
+  iterations: number;
 };
 
 /**
- * `fn` を繰り返し実行して中央値を測る。
+ * `fn` を繰り返し実行して回ごとの所要時間を集める（暖機の回も含める）。
  *
  * `setup` は毎回走らせてから `fn` を測り、その戻り値を `fn` に渡す。
  * データの準備（clone やキャッシュの貼替など）のコストを測定に含めないため、
  * 準備は `setup` に分ける。グラフは破壊的に書き換わるため毎回作り直すこと。
+ *
+ * 測定項目を持たない校正（`lib/reference.ts`）は、暖機と中央値の取り直しを
+ * 呼び出し側で行うため、素のサンプル列を出力する。
  */
-export async function measure<S>(
+export async function sampleRuns<S>(
   setup: () => S | Promise<S>,
   fn: (prepared: S) => void | Promise<void>,
-  { warmup = 5, iterations = 20 }: MeasureOptions = {},
-): Promise<Samples> {
-  for (let i = 0; i < warmup; i++) {
-    await fn(await setup());
-  }
-
+  { warmup, iterations }: MeasureOptions,
+): Promise<number[]> {
   const samples: number[] = [];
-  for (let i = 0; i < iterations; i++) {
+  for (let i = 0; i < warmup + iterations; i++) {
     const prepared = await setup();
     const start = performance.now();
     await fn(prepared);
     samples.push(performance.now() - start);
   }
-  return summarize(samples);
+  return samples;
 }
 
 /** 再帰的に deeply copy する。グラフは破壊されるので毎回の clone に必須 */
@@ -75,4 +75,63 @@ export function clone<T>(value: T): T {
 export function stopwatch(): () => number {
   const start = performance.now();
   return () => performance.now() - start;
+}
+
+/**
+ * 1 シナリオ分の測定項目を段ごとに集めるレコーダ。
+ *
+ * 段の名は自由な文字列で、型では絞らない。
+ * 段の名前を変えると測定項目 ID が変わるので、base と head で共通する項目が減る。
+ * 暖機ぶんは `result()` でまとめて落とす。
+ */
+export class StageRecorder {
+  private readonly samples = new Map<string, number[]>();
+  private last = performance.now();
+
+  constructor(private readonly options: MeasureOptions) {}
+
+  /**
+   * 計測の開始位置を現在時刻に戻す。
+   *
+   * データの準備（clone など）を測り込まないように、準備のあとに呼ぶ。
+   */
+  reset(): void {
+    this.last = performance.now();
+  }
+
+  /** 直前の mark からの経過時間を測定項目に積む */
+  mark(stage: string): void {
+    const now = performance.now();
+    const list = this.samples.get(stage);
+    if (list === undefined) this.samples.set(stage, [now - this.last]);
+    else list.push(now - this.last);
+    this.last = now;
+  }
+
+  /** 段だけの処理を繰り返し測る。データの準備は `setup` で行う */
+  async measure<R>(
+    stage: string,
+    setup: () => R | Promise<R>,
+    fn: (prepared: R) => void | Promise<void>,
+  ): Promise<void> {
+    this.record(stage, await sampleRuns(setup, fn, this.options));
+  }
+
+  /** 実行時に段が確定する測定項目に、回ごとの所要時間（暖機の回も含めた列）を積む */
+  record(stage: string, samples: number[]): void {
+    const list = this.samples.get(stage);
+    if (list === undefined) this.samples.set(stage, [...samples]);
+    else list.push(...samples);
+  }
+
+  /** 暖機回ぶんを捨てて、測った段の中央値を取り直す */
+  result(): Record<string, Samples> {
+    const result: Record<string, Samples> = {};
+    for (const [stage, all] of this.samples) {
+      const kept = all.slice(this.options.warmup);
+      if (kept.length === 0) continue;
+      result[stage] = summarize(kept);
+    }
+    return result;
+  }
 }

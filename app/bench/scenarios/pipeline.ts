@@ -15,7 +15,8 @@ import {
 } from "../../src/routes/api/osm/osm-data";
 import { divideBoundary, simplifyBoundaries } from "../../src/routes/api/osm/boundary";
 import { clone, fixtureBoundary, loadFixture, pickEndpointsOnMainComponent } from "../lib/data";
-import { StageRecorder, type Scenario, type ScenarioResult } from "./types";
+import { StageRecorder } from "../lib/harness";
+import type { Scenario } from "./types";
 
 /**
  * 1 回の経路探索にかかる CPU を段ごとに測る。
@@ -27,124 +28,129 @@ import { StageRecorder, type Scenario, type ScenarioResult } from "./types";
  * 本番では `MAX_GSI_PASSES` 回グラフを作り直すので、グラフ構築と探索の段は
  * 1 パスあたりの値であり、実際には最大その回数倍になる。
  */
-export const pipelineScenario: Scenario = {
-  name: "pipeline",
-  description: "1 回の経路探索（キャッシュ済み）にかかる CPU を段ごとに測る",
-  defaultIterations: 20,
-  run({ mode, iterations, warmup }): ScenarioResult {
-    const profile = MODE_PROFILES[mode as ModeId];
-    const parameters = profile.defaultParameters;
-    const fixture = loadFixture();
-    const boundary = fixtureBoundary();
-    const cellCount = divideBoundary(boundary).length;
+/** 経路探索の特性はモードで変わるので、モードごとに 1 個作る */
+export function pipelineScenario(mode: ModeId): Scenario {
+  return {
+    name: "pipeline",
+    description: "1 回の経路探索（キャッシュ済み）にかかる CPU を段ごとに測る",
+    mode,
+    run({ iterations, warmup }) {
+      const profile = MODE_PROFILES[mode];
+      const parameters = profile.defaultParameters;
+      const fixture = loadFixture();
+      const boundary = fixtureBoundary();
+      const cellCount = divideBoundary(boundary).length;
 
-    // 始点・終点は最大連結成分上の実ノードから選ぶ。
-    // bbox の補間点だと道から離れ、transientSplit が「エッジの長さがゼロです」で
-    // 警告を出し、pathFind が空振りして時間を計測できなくなる。
-    const probe = buildSearchGraph(trimOSMDataByMode(clone(fixture), profile));
-    const { begin, end } = pickEndpointsOnMainComponent(mainComponentCoordinates(probe));
+      // 始点・終点は最大連結成分上の実ノードから選ぶ。
+      // bbox の補間点だと道から離れ、transientSplit が「エッジの長さがゼロです」で
+      // 警告を出し、pathFind が空振りして時間を計測できなくなる。
+      const probe = buildSearchGraph(trimOSMDataByMode(clone(fixture), profile));
+      const { begin, end } = pickEndpointsOnMainComponent(mainComponentCoordinates(probe));
 
-    const recorder = new StageRecorder(warmup);
-    let info: Record<string, string | number | boolean> = {};
+      const recorder = new StageRecorder({ warmup, iterations });
+      let info: Record<string, string | number | boolean> = {};
 
-    for (let i = 0; i < iterations + warmup; i++) {
-      const data = clone(fixture);
-      recorder.mark("__start__");
+      for (let i = 0; i < iterations + warmup; i++) {
+        // clone は測定対象ではない。計測の開始位置だけ先へ進めてから測り始める
+        const data = clone(fixture);
+        recorder.reset();
 
-      const divided = divideBoundary(boundary);
-      recorder.mark("divideBoundary");
+        const divided = divideBoundary(boundary);
+        recorder.mark("divideBoundary");
 
-      const simplified = simplifyBoundaries(divided);
-      recorder.mark("simplifyBoundaries");
+        const simplified = simplifyBoundaries(divided);
+        recorder.mark("simplifyBoundaries");
 
-      const split = SplitOSMData(data);
-      recorder.mark("SplitOSMData");
+        const split = SplitOSMData(data);
+        recorder.mark("SplitOSMData");
 
-      // requireOSMData の read 側と同じ構造: セルごとのデータを結合してから境界で trim する
-      const merged: App.OSMData = { elements: [] };
-      mergeOSMData(
-        merged,
-        ...Object.values(split).map((chunk) => chunk),
-      );
-      recorder.mark("mergeOSMData");
+        // requireOSMData の read 側と同じ構造: セルごとのデータを結合してから境界で trim する
+        const merged: App.OSMData = { elements: [] };
+        mergeOSMData(
+          merged,
+          ...Object.values(split).map((chunk) => chunk),
+        );
+        recorder.mark("mergeOSMData");
 
-      trimOSMData(merged, boundary);
-      recorder.mark("trimOSMData");
+        trimOSMData(merged, boundary);
+        recorder.mark("trimOSMData");
 
-      const osmData = trimOSMDataByMode(data, profile);
-      recorder.mark("trimOSMDataByMode");
+        const osmData = trimOSMDataByMode(data, profile);
+        recorder.mark("trimOSMDataByMode");
 
-      const osmGraph = transformOSMMapToOSMGraph(osmData);
-      recorder.mark("transformOSMMapToOSMGraph");
+        const osmGraph = transformOSMMapToOSMGraph(osmData);
+        recorder.mark("transformOSMMapToOSMGraph");
 
-      const crossGraph = CrossConvert(osmGraph);
-      if (crossGraph instanceof Error) throw crossGraph;
-      recorder.mark("CrossConvert");
+        const crossGraph = CrossConvert(osmGraph);
+        if (crossGraph instanceof Error) throw crossGraph;
+        recorder.mark("CrossConvert");
 
-      const searchGraph = fold2DegreeEdges(crossGraph);
-      if (searchGraph instanceof Error) throw searchGraph;
-      recorder.mark("fold2DegreeEdges");
+        const searchGraph = fold2DegreeEdges(crossGraph);
+        if (searchGraph instanceof Error) throw searchGraph;
+        recorder.mark("fold2DegreeEdges");
 
-      const mainEdges = largestComponentEdges(searchGraph);
-      recorder.mark("largestComponentEdges");
+        const mainEdges = largestComponentEdges(searchGraph);
+        recorder.mark("largestComponentEdges");
 
-      const beginNode = transientSplit(searchGraph, begin, mainEdges);
-      const endNode = transientSplit(searchGraph, end, mainEdges);
-      recorder.mark("transientSplit");
+        const beginNode = transientSplit(searchGraph, begin, mainEdges);
+        const endNode = transientSplit(searchGraph, end, mainEdges);
+        recorder.mark("transientSplit");
 
-      const path = pathFind(searchGraph, parameters, [beginNode], [endNode], {
-        ignoreOneway: profile.ignoreOneway,
-        highwayCostFactor: profile.highwayCostFactor,
-        scoring: profile.scoring,
-      });
-      recorder.mark("pathFind");
+        const path = pathFind(searchGraph, parameters, [beginNode], [endNode], {
+          ignoreOneway: profile.ignoreOneway,
+          highwayCostFactor: profile.highwayCostFactor,
+          scoring: profile.scoring,
+        });
+        recorder.mark("pathFind");
 
-      let sharpTurnCount = 0;
-      if (profile.sharpTurnMinRadius !== undefined && path.length > 0) {
+        // 段はモードによらず常に測る。急カーブを検出しなくても段の測定値は意味を持つ
         const junctions = collectRoadJunctions(osmData);
         recorder.mark("collectRoadJunctions");
 
-        sharpTurnCount = detectSharpTurnsOnPath(searchGraph, path, beginNode, {
-          minRadius: profile.sharpTurnMinRadius,
-          junctions,
-          bounds: boundary,
-        }).length;
+        const sharpTurnCount =
+          profile.sharpTurnMinRadius === undefined || path.length === 0
+            ? 0
+            : detectSharpTurnsOnPath(searchGraph, path, beginNode, {
+                minRadius: profile.sharpTurnMinRadius,
+                junctions,
+                bounds: boundary,
+              }).length;
         recorder.mark("detectSharpTurnsOnPath");
+
+        const segments = path.flatMap((edgeId) =>
+          "segments" in searchGraph.edges[edgeId] ? searchGraph.edges[edgeId].segments : [],
+        );
+        measureSegmentsWidthCoverage(segments);
+        recorder.mark("measureSegmentsWidthCoverage");
+
+        if (i === warmup) {
+          info = {
+            mode,
+            cellCount,
+            simplifiedRegionCount: simplified.length,
+            splitChunkCount: Object.keys(split).length,
+            fixtureNodes: fixture.elements.filter((e) => e.type === "node").length,
+            fixtureWays: fixture.elements.filter((e) => e.type === "way").length,
+            searchGraphNodes: Object.keys(searchGraph.nodes).length,
+            searchGraphEdges: Object.keys(searchGraph.edges).length,
+            componentEdges: mainEdges.size,
+            pathLength: path.length,
+            sharpTurnCount,
+          };
+        }
       }
 
-      const segments = path.flatMap((edgeId) =>
-        "segments" in searchGraph.edges[edgeId] ? searchGraph.edges[edgeId].segments : [],
-      );
-      measureSegmentsWidthCoverage(segments);
-      recorder.mark("measureSegmentsWidthCoverage");
-
-      if (i === warmup) {
-        info = {
-          mode,
-          cellCount,
-          simplifiedRegionCount: simplified.length,
-          splitChunkCount: Object.keys(split).length,
-          fixtureNodes: fixture.elements.filter((e) => e.type === "node").length,
-          fixtureWays: fixture.elements.filter((e) => e.type === "way").length,
-          searchGraphNodes: Object.keys(searchGraph.nodes).length,
-          searchGraphEdges: Object.keys(searchGraph.edges).length,
-          componentEdges: mainEdges.size,
-          pathLength: path.length,
-          sharpTurnCount,
-        };
-      }
-    }
-
-    const stages = recorder.result();
-    delete stages["__start__"];
-    return {
-      scenario: "pipeline",
-      stages,
-      total: Object.values(stages).reduce((sum, s) => sum + s.median, 0),
-      info,
+      const stages = recorder.result();
+      return {
+        scenario: "pipeline",
+        mode,
+        stages,
+        total: Object.values(stages).reduce((sum, s) => sum + s.median, 0),
+        info,
+      };
+    },
     };
-  },
-};
+}
 
 function buildSearchGraph(osmData: App.OSMData): App.SearchGraph {
   const crossGraph = CrossConvert(transformOSMMapToOSMGraph(osmData));

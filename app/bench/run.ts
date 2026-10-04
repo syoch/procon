@@ -1,26 +1,35 @@
 import { mkdirSync, writeFileSync, writeSync } from "node:fs";
-import { inspect } from "node:util";
 import { dirname } from "node:path";
 
+import { MODE_IDS, type ModeId } from "../src/lib/mode_profiles";
 import { pipelineScenario } from "./scenarios/pipeline";
 import { splitScenario } from "./scenarios/split";
 import { cacheReadScenario } from "./scenarios/cache-read";
 import type { Scenario, ScenarioResult } from "./scenarios/types";
-import { readFixtureMeta } from "./lib/data";
+import { readFixtureStats } from "./lib/data";
+import type { Samples } from "./lib/harness";
 import { measureCalibration, type Calibration } from "./lib/reference";
+import {
+  SCHEMA_VERSION,
+  type BenchReport,
+  type Measurement,
+  type ScenarioSummary,
+} from "./lib/report";
 
-
-const SCENARIOS: Scenario[] = [pipelineScenario, splitScenario, cacheReadScenario];
+// モードごとに測るシナリオはモードを渡して 1 個作る
+const SCENARIOS: Scenario[] = [
+  ...MODE_IDS.map((mode) => pipelineScenario(mode)),
+  splitScenario,
+  cacheReadScenario,
+];
 
 type Options = {
   /** 実行するシナリオ名（未指定なら全部） */
   only?: string;
   /** 実測回数 */
-  iterations?: number;
+  iterations: number;
   /** 暖機回数 */
-  warmup?: number;
-  /** 移動モード */
-  mode: string;
+  warmup: number;
   /** 結果をこのパスに JSON で書き出す */
   json?: string;
   /** 出力を抑える（CI で bench だけ実行して比較に回すとき） */
@@ -28,7 +37,7 @@ type Options = {
 };
 
 function parseArgs(argv: string[]): Options {
-  const options: Options = { mode: "car", quiet: false };
+  const options: Options = { quiet: false, iterations: NaN, warmup: NaN };
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
     const next = () => argv[++i];
@@ -41,9 +50,6 @@ function parseArgs(argv: string[]): Options {
         break;
       case "--warmup":
         options.warmup = Number(next());
-        break;
-      case "--mode":
-        options.mode = next();
         break;
       case "--json":
         options.json = next();
@@ -60,28 +66,35 @@ function parseArgs(argv: string[]): Options {
         throw new Error(`不明な引数: ${arg}`);
     }
   }
+  for (const name of ["iterations", "warmup"] as const) {
+    const value = options[name];
+    if (!(Number.isInteger(value) && value >= 0)) {
+      throw new Error(`--${name} は 0 以上の整数で指定してください（必須の引数です）`);
+    }
+  }
   return options;
 }
 
 function printUsage() {
-  console.log(`使い方: pnpm bench [オプション]
+  console.log(`使い方: pnpm bench --iterations <n> --warmup <n> [オプション]
 
-  --scenario <name>     実行するシナリオ (${SCENARIOS.map((s) => s.name).join(" / ")}、未指定なら全部)
-  --iterations <n>      実測回数 (既定は各シナリオの defaultIterations)
-  --warmup <n>          暖機回数 (既定 5)
-  --mode <id>           移動モード (既定 car)
+  --iterations <n>      実測回数（必須）
+  --warmup <n>          暖機回数（必須）
+  --scenario <name>     実行するシナリオ (${scenarioNames().join(" / ")}、未指定なら全部)
   --json <path>         結果を JSON で書き出す（比較スクリプトが読む）
   --quiet               標準出力を抑える
   -h, --help            この表示
 
+モードを使うシナリオは 1 回の実行で全モードを測る。
+測定項目 ID はモードを使うシナリオでは {シナリオ}/{モード}/{段} になる。
+
 例:
-  pnpm bench
-  pnpm bench --scenario pipeline --iterations 30
-  pnpm bench --json /tmp/bench.json --quiet
+  pnpm bench --iterations 20 --warmup 5
+  pnpm bench --iterations 30 --warmup 5 --scenario pipeline
+  pnpm bench --iterations 20 --warmup 5 --json /tmp/bench.json --quiet
 
 回帰チェックはここでは行わない。CI が「base と head を同じランナー上で 2 回測って比べる」
-ので、compare.mjs に結果 JSON を渡して判定する。machine ごとに違う値をリポジトリに
-保存しないため、記録用の基準ファイルは要らない。
+ので、compare.mjs に結果 JSON を渡して判定する。比較は測定項目 ID 単位で行う。
 
 校正ワークロードは開始時と各シナリオの直前に測り、JSON の calibration と
 scenarioCalibration に入れておく。compare.mjs がこれを比べることで「機械の速度が
@@ -106,25 +119,33 @@ function printCalibration(calibration: Calibration, label?: string) {
   );
 }
 
+/** 段名は短いが ID は `{シナリオ}/{段}` なので 40 桁で揃える */
+const ID_WIDTH = 40;
+
 function printResult(result: ScenarioResult) {
-  console.log(`\n## ${result.scenario}`);
+  const label = result.mode === undefined ? result.scenario : `${result.scenario} [${result.mode}]`;
+  console.log(`\n## ${label}`);
   if (result.info) {
     const info = Object.entries(result.info)
       .map(([k, v]) => `${k}=${v}`)
       .join(" ");
     console.log(`  ${info}`);
   }
-  const rows = Object.entries(result.stages).sort((a, b) => b[1].median - a[1].median);
-  const total = rows.reduce((sum, [, s]) => sum + s.median, 0);
-  console.log(`  ${"stage".padEnd(32)}${"median".padStart(10)}${"min".padStart(10)}${"max".padStart(10)}`);
+  // キーの型はシナリオごとに出ているが、表示は 1 つの表にまとめたい
+  const rows = (Object.entries(result.stages) as [string, Samples][]).sort(
+    (a, b) => b[1].median - a[1].median,
+  );
+  console.log(
+    `  ${"id".padEnd(ID_WIDTH)}${"median".padStart(10)}${"min".padStart(10)}${"max".padStart(10)}`,
+  );
   for (const [stage, samples] of rows) {
+    const id = `${result.scenario}/${stage}`;
     console.log(
-      `  ${stage.padEnd(32)}${ms(samples.median).padStart(10)}${ms(samples.min).padStart(10)}${ms(samples.max).padStart(10)}`,
+      `  ${id.padEnd(ID_WIDTH)}${ms(samples.median).padStart(10)}${ms(samples.min).padStart(10)}${ms(samples.max).padStart(10)}`,
     );
   }
-  console.log(`  ${"total".padEnd(32)}${ms(total).padStart(10)}`);
+  console.log(`  ${"total".padEnd(ID_WIDTH)}${ms(result.total).padStart(10)}`);
 }
-
 
 /**
  * 計測中に出る出力を要約する。
@@ -183,10 +204,14 @@ function withSummarizedOutput<T>(fn: () => T | Promise<T>): { value: T; log: str
 
 async function main() {
   const options = parseArgs(process.argv.slice(2));
-  const meta = readFixtureMeta();
+  const stats = readFixtureStats();
   if (!options.quiet) {
-    console.log(`fixture: ${meta.name} (${meta.cellCount} cells, nodes=${meta.nodeCount}, ways=${meta.wayCount})`);
-    console.log(`node: ${process.version} / mode: ${options.mode}`);
+    const b = stats.boundary;
+    console.log(
+      `fixture: ${stats.cellCount} cells (${b.minLat},${b.minLng} - ${b.maxLat},${b.maxLng}) ` +
+        `nodes=${stats.nodeCount} ways=${stats.wayCount} fetchedAt=${stats.fetchedAt}`,
+    );
+    console.log(`node: ${process.version} / iterations: ${options.iterations} / warmup: ${options.warmup}`);
   }
 
   const selected = options.only
@@ -194,11 +219,13 @@ async function main() {
     : SCENARIOS;
   if (selected.length === 0) {
     throw new Error(
-      `シナリオが見つかりません: ${options.only} (候補: ${SCENARIOS.map((s) => s.name).join(", ")})`,
+      `シナリオが見つかりません: ${options.only} (候補: ${scenarioNames().join(", ")})`,
     );
   }
 
   const results: ScenarioResult[] = [];
+  // 測定項目 ID をキーにした測定値の写像
+  const measurements: Record<string, Measurement> = {};
   // 校正はシナリオより先に測る。フィクスチャを展開した直後でメモリが動いていると、
   // 校正がメモリを測ることになってしまうため、計測対象に触る前に済ませる。
   const calibration = await measureCalibration();
@@ -211,22 +238,25 @@ async function main() {
   const scenarioCalibration: Record<string, Calibration> = {};
 
   for (const scenario of selected) {
+    const label = scenario.mode === undefined ? scenario.name : `${scenario.name} [${scenario.mode}]`;
     // 直前の校正を先に取る。シナリオの実行中はメモリが動きっぱなしなので、
     // シナリオの後に取ると校正がメモリを測ることになってしまう。
+    // 校正はシナリオ単位で持つ（モードが違っても同じ仕事量を測るだけなので）。
     const before = await measureCalibration();
     scenarioCalibration[scenario.name] = before;
-    if (!options.quiet) printCalibration(before, `${scenario.name} の直前`);
+    if (!options.quiet) printCalibration(before, `${label} の直前`);
 
     const { value, log } = await withSummarizedOutput(() =>
-      scenario.run({
-        mode: options.mode,
-        iterations: options.iterations ?? scenario.defaultIterations,
-        warmup: options.warmup ?? 5,
-      }),
+      scenario.run({ iterations: options.iterations, warmup: options.warmup }),
     );
     results.push(value);
+    // 測定項目の ID と測定値を平坦に並べる。CI が base と head を突き合わせるときの
+    // 共有するのは「ID と測定値」だけで、JSON の他の構造には依存させない。
+    for (const [stage, samples] of Object.entries(value.stages)) {
+      measurements[stageId(value.scenario, value.mode, stage)] = samples;
+    }
     if (!options.quiet && log.length > 0) {
-      console.log(`\n  ${scenario.name} のログ:`);
+      console.log(`\n  ${label} のログ:`);
       for (const line of log.slice(0, 10)) console.log(line);
       if (log.length > 10) console.log(`    ... 他 ${log.length - 10} 行`);
     }
@@ -237,23 +267,36 @@ async function main() {
   }
 
   if (options.json) {
-    const payload = {
-      node: process.version,
-      mode: options.mode,
-      fixture: readFixtureMeta(),
-      // 段の結果とは別に、校正の測定値をトップレベルに置く。
-      // 比較する 2 つの JSON はこれの有無が同じになるよう、同じ版で出力するのが前提。
+    const payload: BenchReport = {
+      schemaVersion: SCHEMA_VERSION,
       calibration,
-      // シナリオ名 -> そのシナリオを走らせる直前に測った校正。
-      // 開始時の 1 回だけだと「計測の途中で遅くなった」ことを語れないので、
-      // シナリオ単位でも残しておく（compare.mjs はこれをシナリオごとに突き合わせる）。
       scenarioCalibration,
-      results,
+      measurements,
+      // シナリオごとの補足（データ規模・合計時間）。比較には使わないので形式を固定しない。
+      results: results.map(toScenarioSummary),
     };
     mkdirSync(dirname(options.json), { recursive: true });
     writeFileSync(options.json, `${JSON.stringify(payload, null, 2)}\n`, "utf-8");
     if (!options.quiet) console.log(`\n wrote ${options.json}`);
   }
+}
+
+/** 測定項目 ID はモードを使うシナリオでは `{シナリオ}/{モード}/{段}` になる */
+function stageId(scenario: string, mode: ModeId | undefined, stage: string): string {
+  return mode === undefined ? `${scenario}/${stage}` : `${scenario}/${mode}/${stage}`;
+}
+
+/** シナリオ名の候補。重複したモードを 1 つにまとめる */
+function scenarioNames(): string[] {
+  return [...new Set(SCENARIOS.map((s) => s.name))];
+}
+
+function toScenarioSummary(result: ScenarioResult): ScenarioSummary {
+  return {
+    scenario: result.mode === undefined ? result.scenario : `${result.scenario}/${result.mode}`,
+    total: result.total,
+    ...(result.info === undefined ? {} : { info: result.info }),
+  };
 }
 
 main().catch((error) => {
