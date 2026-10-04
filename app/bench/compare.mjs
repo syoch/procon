@@ -592,14 +592,27 @@ function warning(reason, message) {
 /**
  * 警告の集合を 1 つの理由にまとめる。
  *
- * 警告を生成する側が reason を付けるので、ここでは集約だけを行う。
- * 説明の文言を書き換えても結果は変わらない。
+ * 警告を生成する側が reason を付け、warning() が未知の理由を落とすので、
+ * ここに来る警告の reason は必ず REASON_PRIORITY にある。
+ * 返るなら必ず上のどれかなので "unknown" には到達しない。
+ * workflow の * 分岐が現実の経路は「bench-compare: の 1 行が stderr に出なかった」場合。
  */
 function reasonOf(warnings) {
   for (const reason of REASON_PRIORITY) {
     if (warnings.some((w) => w.reason === reason)) return reason;
   }
   return "unknown";
+}
+
+/**
+ * 選んだ理由の警告を 1 つ取り出す。
+ *
+ * reason と説明文は対にして出す。
+ * reasonOf() が選ぶのは受け取った警告からなので、一致するものは必ず 1 件ある。
+ * 一致しない warnings[0] を出すと「理由は work なのに文面は machine」のような食い違いになる。
+ */
+function warningOf(warnings, reason) {
+  return warnings.find((w) => w.reason === reason) ?? warnings[0];
 }
 
 try {
@@ -627,7 +640,8 @@ try {
     process.exitCode = 1;
   } else if (warnings.length > 0) {
     process.exitCode = 2;
-    console.error(`${REASON_PREFIX}${reasonOf(warnings)}: ${warnings[0].message}`);
+    const reason = reasonOf(warnings);
+    console.error(`${REASON_PREFIX}${reason}: ${warningOf(warnings, reason).message}`);
   }
 } catch (error) {
   const versionMismatch = error instanceof BenchInputError && error.versionMismatch;
