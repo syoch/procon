@@ -70,6 +70,12 @@ const AGGREGATE_SAMPLES = 5;
  * `SAMPLES * AGGREGATE_SAMPLES`（35）、2 回目以降は `SAMPLES`（7）になる。
  * 独立した 1 回測定が欲しいときは `measureCalibrationOnce()` を明示して呼ぶ。
  *
+ * ここは `iterations` フィールドの値（採用したサンプル数）の説明で、
+ * 実際に動かした仕事量ではない。仕事量は 60 kernel run 分。
+ * `measureCalibrationOnce()` 1 回が `WARMUP + SAMPLES` = 10 kernel run なので、
+ * 捨てる 1 回と採用する 5 回で 6 回分になる。
+ * 1 kernel run は `ITERATIONS` 回のループなので合計 60 * ITERATIONS 回。
+ *
  * フラグを立てる前に測定が完了するので、並行して呼んでも
  * 最初に完了した側だけが長測定になる。校正は直列 await なので競合しない。
  */
@@ -160,6 +166,7 @@ export async function measureCalibrationOnce(options: CalibrationOptions = {}): 
  * 最初の 1 回をそのまま採用すると base と head の校正が実行順でずれてしまう。
  *
  * 返り値の `iterations` は呼び出し順で変わる（最初は 35、以降は 7）。
+ * 35 は採用したサンプル数であって仕事量ではない（仕事量は 60 kernel run 分）。
  * 1 回分の独立した測定が欲しいときは `measureCalibrationOnce()` を使う。
  *
  * @ref docs/設計/09-bench測定と比較.md

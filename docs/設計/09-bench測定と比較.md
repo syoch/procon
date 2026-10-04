@@ -256,9 +256,16 @@ PR #108（main ベース。exit 2 の修正が無い）では
 - 2 回目以降の校正（シナリオ直前）は 1 回だけで測る。その時点までは既に十分動いている
 
 コストは 60 kernel run 分（実測 6 倍、1 回 69ms の開発機では 4.6s）。
+`measureCalibrationOnce()` 1 回が `WARMUP + SAMPLES` = 10 kernel run なので、
+捨てる 1 回と採用する 5 回で 6 回分になる。
+1 kernel run は `ITERATIONS` 回のループ。
 CI の bench ジョブでは base と head の合計で +7.6s で、許容範囲に収まる。
-`iterations` には採用したサンプル数（35）が入る点に注意。
-中央値の母数は 5 で、`iterations` は破棄した 1 回分を含まない。
+
+**`iterations` フィールドは仕事量ではない。**
+入るのは採用したサンプル数（35）で、中央値の母数は 5 と同じ。
+破棄した 1 回分と各回の暖機 3 run は入らないので、
+35 を読むと 60 kernel run 分の仕事量と取り違える。
+60 が欲しいときは「1 回あたり 10 kernel run × 6 回」と数える。
 
 #### tradeoff
 
