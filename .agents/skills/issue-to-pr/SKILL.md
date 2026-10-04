@@ -215,11 +215,74 @@ python3 ~/.agents/skills/opencode/session-delegation/scripts/delegate.py \
 
 **委任したら監視しない。** 完了通知を送らせて、向こうが次の作業へ進む。
 
-```bash
-# 委任先が行う。push と commit のあとにマーカーを書いてから実行する
-python3 ~/.agents/skills/opencode/session-delegation/scripts/delegate.py \
-  --notify-done <宛先セッションID> /tmp/opencode/procon/done-<something>.json
+#### マーカーの形式
+
+通知は JSON ファイル 1 個で渡す。
+フィールドは 4 つで、全部省略できる。
+
+| キー | 内容 |
+|---|---|
+| `summary` | やったことを 1 行で |
+| `checks` | 検証した項目のリスト |
+| `notes` | 判断の根拠や、意図的に直さなかったもの |
+| `branch` / `pr` / `ci` | 末尾に機械的に付く識別情報 |
+
+```json
+{
+  "summary": "校正ゲートの計測順バイアスを直した",
+  "checks": ["校正の比が 0.94x になった", "回帰判定が動いている"],
+  "notes": ["案 D と E は不採用。理由と根拠をコメントに残した"],
+  "branch": "Chore/104-BenchIdCompare",
+  "pr": "https://github.com/syoch/procon/pull/105",
+  "ci": "bench / check / test / build すべて pass"
+}
 ```
+
+`summary` だけだと次の作業を決められないので、
+`checks` と `notes` を書いておく。
+
+#### 通知の実行
+
+**委任先のセッションが**、作業を終えたタイミングで実行する。
+委任した側が実行するのではない。
+
+```bash
+python3 ~/.agents/skills/opencode/session-delegation/scripts/delegate.py \
+  --notify-done <宛先のセッションID> /tmp/opencode/procon/done-<something>.json
+```
+
+宛先のセッション ID は、`--session` で求めたものと一致する。
+つまり自分（委任した側）のセッション ID を渡す。
+
+```bash
+python3 ~/.agents/skills/opencode/session-delegation/scripts/session_state.py \
+  <宛先のセッションID> /tmp/opencode/procon/wt-<N>
+```
+
+表示された `session:` の行に ID が出る。
+
+#### 実行するタイミング
+
+**push と commit のあとに実行する。**
+通知を受けて次の作業へ進むのは、待つ側の判断なので、
+成果が/git に入っていないと参照できない。
+
+マーカーは先に書ける。
+送信に失敗してもファイルは残るので、あとから送れる。
+
+#### 失敗したとき
+
+応答を待つので、成功したかどうかが分かる。
+
+```bash
+OK: <セッションID> に通知しました（<文字数> 文字>
+ERROR: <理由>
+```
+
+`--notify-done` はループを持たないので、落ちても他の作業に影響しない。
+
+`ERROR` が出たときは、`delegate.py` の出力とマーカーの中身をそのまま、
+完了報告に一緒に伝えてください。
 
 ### プロンプトに書くこと
 
