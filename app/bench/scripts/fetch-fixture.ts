@@ -2,8 +2,12 @@
  * bench のフィクスチャを `OSM_CACHE_DIR` に用意する。
  *
  * 本番の OSM キャッシュと同じセルファイル（`{minLat}-{minLng}-{maxLat}-{maxLng}.json`）を
- * 書き出す。`requireOSMData` を通すので、セルの分解・問い合わせ・保存はすべて
- * 本番と同じ経路で行われ、bench 側は `readCache` でそのまま読める。
+ * `cacheManager.saveCache` で書き出すので、`cache-read` シナリオは `readCache` でそのまま読める。
+ * 問い合わせは本番と同じ `fetchOverpassData` を通す。
+ *
+ * 1 セルずつ問い合わせる。まとめて 1 回で問い合わせると公開 Overpass 側で
+ * タイムアウトするので（504 が返る）、セルの数だけ小さく分けて取る。
+ * 取り直しはセルの数だけコストがかかるので、まず `readCache` で既にあるセルを飛ばす。
  *
  * `meta.json` と全セルが揃っていれば何もしない。
  * CI は `actions/cache` でこのディレクトリを復元するので、2 回目以降はネットワークに
@@ -15,12 +19,11 @@
  */
 import { existsSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { setTimeout as sleep } from "node:timers/promises";
 
-import { requireOSMData } from "../../src/routes/api/osm/index";
 import { cacheManager } from "../../src/routes/api/osm/fs-cache-manager";
 import { fetchOverpassData } from "../../src/routes/api/osm/osm-fetcher";
 import { divideBoundary, type Boundary } from "../../src/routes/api/osm/boundary";
-import { RequestContext } from "../../src/lib/tracing/requestContext";
 import { listFixtureCells, readFixtureCell, readFixtureMeta, type FixtureMeta } from "../lib/data";
 
 /**
@@ -40,6 +43,12 @@ const BOUNDARY: Boundary = {
 /** 公開されている Overpass のエンドポイント。`OVERPASS_ENDPOINT` で差し替えられる */
 const DEFAULT_OVERPASS_ENDPOINT = "https://overpass-api.de/api/interpreter";
 
+/** 1 セルにつき試す回数 */
+const MAX_ATTEMPTS = 3;
+
+/** リトライの前に待つ時間 [ms] */
+const RETRY_WAIT_MS = 5_000;
+
 /** `OSM_CACHE_DIR` を読む */
 function cacheDir(): string {
   const dir = process.env.OSM_CACHE_DIR;
@@ -49,14 +58,37 @@ function cacheDir(): string {
   return dir;
 }
 
+/** `fs-cache-manager` のセルファイル名 */
+function cellFileName(cell: Boundary): string {
+  return `${cell.minLat}-${cell.minLng}-${cell.maxLat}-${cell.maxLng}.json`;
+}
+
 /** `meta.json` と全セルが揃っているか */
-function isComplete(): boolean {
+function isComplete(cells: Boundary[]): boolean {
   if (!existsSync(join(cacheDir(), "meta.json"))) return false;
-  const expected = divideBoundary(BOUNDARY).map(
-    (cell) => `${cell.minLat}-${cell.minLng}-${cell.maxLat}-${cell.maxLng}.json`,
-  );
   const present = new Set(listFixtureCells());
-  return expected.every((name) => present.has(name));
+  return cells.every((cell) => present.has(cellFileName(cell)));
+}
+
+/**
+ * 1 セルを Overpass から取得する。
+ *
+ * 公開 Overpass は混雑しているごとに 504 を返すので、一定時間置いてから試す。
+ */
+async function fetchCell(cell: Boundary): Promise<App.OSMData> {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await fetchOverpassData([cell]);
+    } catch (error) {
+      if (attempt >= MAX_ATTEMPTS) throw error;
+      const message = error instanceof Error ? error.message : String(error);
+      console.log(
+        `  ${cellFileName(cell)}: ${message} / ` +
+          `${RETRY_WAIT_MS / 1000} 秒置いてから ${attempt + 1} 回目を試します`,
+      );
+      await sleep(RETRY_WAIT_MS);
+    }
+  }
 }
 
 function writeMeta(): FixtureMeta {
@@ -82,7 +114,8 @@ function writeMeta(): FixtureMeta {
 }
 
 async function main(): Promise<void> {
-  if (isComplete()) {
+  const cells = divideBoundary(BOUNDARY);
+  if (isComplete(cells)) {
     const meta = readFixtureMeta();
     console.log(
       `フィクスチャは揃っています: ${cacheDir()} (${meta.cellCount} cells, ` +
@@ -92,12 +125,17 @@ async function main(): Promise<void> {
   }
 
   process.env.OVERPASS_ENDPOINT ??= DEFAULT_OVERPASS_ENDPOINT;
-  console.log(`フィクスチャを取得します: ${cacheDir()}`);
+  console.log(`フィクスチャを取得します: ${cacheDir()} (${cells.length} セル)`);
   console.log(`  Overpass: ${process.env.OVERPASS_ENDPOINT}`);
   console.log(`  領域: ${JSON.stringify(BOUNDARY)}`);
   const started = Date.now();
-  // requireOSMData はセルごとに readCache するので、欠けたセルだけを取り直す
-  await requireOSMData(new RequestContext(), BOUNDARY, cacheManager, fetchOverpassData);
+  for (const [index, cell] of cells.entries()) {
+    const cached = await cacheManager.readCache(cell);
+    if (cached === null) {
+      await cacheManager.saveCache(cell, await fetchCell(cell));
+    }
+    console.log(`  ${index + 1}/${cells.length} ${cellFileName(cell)}`);
+  }
   const meta = writeMeta();
   console.log(
     `取得しました: ${meta.cellCount} cells, nodes=${meta.nodeCount}, ways=${meta.wayCount} ` +
