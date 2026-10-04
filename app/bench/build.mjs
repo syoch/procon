@@ -17,36 +17,45 @@ import { build } from "esbuild";
 const HERE = dirname(fileURLToPath(import.meta.url));
 const APP_DIR = join(HERE, "..");
 const OUT_DIR = join(HERE, ".build");
-const OUT_FILE = join(OUT_DIR, "bench.mjs");
+
+/** エントリポイント -> 出力名。bench.mjs は時間計測、compare-modes.mjs はモードごとの経路比較 */
+const ENTRY_POINTS = {
+  "run.ts": "bench.mjs",
+  "compare-modes.ts": "compare-modes.mjs",
+};
 
 await mkdirSync(OUT_DIR, { recursive: true });
 
-await build({
-  entryPoints: [join(HERE, "run.ts")],
-  outfile: OUT_FILE,
-  bundle: true,
-  platform: "node",
-  format: "esm",
-  target: "node22",
-  // ベンチは測定対象なので、minify すると関数名が消えプロファイルが読めなくなる
-  minify: false,
-  sourcemap: true,
-  logLevel: "warning",
-  alias: {
-    $lib: join(APP_DIR, "src", "lib"),
-    "$env/dynamic/private": join(HERE, "env-stub.ts"),
-  },
-  define: {
-    // 本番ビルドと同じ条件に揃える（dev ビルドだと assert などが残る）
-    "import.meta.env.DEV": "false",
-  },
-  banner: {
-    js: [
-      "// 自動生成: app/bench/build.mjs が作成しています。直接編集しないでください。",
-      "import { createRequire as __createRequire } from 'node:module';",
-      "const require = __createRequire(import.meta.url);",
-    ].join("\n"),
-  },
-});
+for (const [entry, outName] of Object.entries(ENTRY_POINTS)) {
+  const outFile = join(OUT_DIR, outName);
+  await build({
+    entryPoints: [join(HERE, entry)],
+    outfile: outFile,
+    bundle: true,
+    platform: "node",
+    format: "esm",
+    target: "node22",
+    // ベンチは測定対象なので、minify すると関数名が消えプロファイルが読めなくなる
+    minify: false,
+    sourcemap: true,
+    logLevel: "warning",
+    alias: {
+      $lib: join(APP_DIR, "src", "lib"),
+      "$env/dynamic/private": join(HERE, "env-stub.ts"),
+    },
+    define: {
+      // 本番ビルドと同じ条件に揃える（dev ビルドだと assert などが残る）
+      "import.meta.env.DEV": "false",
+    },
+    banner: {
+      js: [
+        "// 自動生成: app/bench/build.mjs が作成しています。直接編集しないでください。",
+        "import { createRequire as __createRequire } from 'node:module';",
+        "const require = __createRequire(import.meta.url);",
+      ].join("\n"),
+    },
+  });
 
-console.log(`built ${OUT_FILE}`);
+  console.log(`built ${outFile}`);
+}
+
