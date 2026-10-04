@@ -34,7 +34,13 @@ const TABLE_MASK = TABLE_SIZE - 1;
  */
 const ITERATIONS = 24_000_000;
 
-/** 1 回あたりのループ回数を差し替えるための口。ベンチ自体は固定値を使う */
+/**
+ * 1 回あたりのループ回数を差し替えるための口。
+ *
+ * ベンチの計測（run.ts）は固定値を使う。テストだけが回数を縮める。
+ * `work` はループ回数に依存するので、同じ Node で 2 回測るときは必ず同じ
+ * `iterations` を渡さないと `work` が一致しない（compare.mjs の work 判定に当たる）。
+ */
 export type CalibrationOptions = {
   iterations?: number;
 };

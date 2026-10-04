@@ -608,11 +608,19 @@ function reasonOf(warnings) {
  * 選んだ理由の警告を 1 つ取り出す。
  *
  * reason と説明文は対にして出す。
- * reasonOf() が選ぶのは受け取った警告からなので、一致するものは必ず 1 件ある。
- * 一致しない warnings[0] を出すと「理由は work なのに文面は machine」のような食い違いになる。
+ * 別の reason の説明を返すと「理由は work なのに文面は machine」のような食い違いになるので、
+ * 見つからない場合は bench 自身の不整合として落とす（exit 3）。
  */
 function warningOf(warnings, reason) {
-  return warnings.find((w) => w.reason === reason) ?? warnings[0];
+  const found = warnings.find((w) => w.reason === reason);
+  if (!found) {
+    const error = new Error(
+      `選んだ理由 ${reason} の警告が見つかりません（reasonOf() と warningOf() が食い違います）`,
+    );
+    error.benchBug = true;
+    throw error;
+  }
+  return found;
 }
 
 try {
