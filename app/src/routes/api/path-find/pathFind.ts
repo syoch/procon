@@ -110,14 +110,14 @@ function calcTotalDistance(path: App.Coordinate[]) {
  */
 function getEdgeDistance(
   mapData: App.SearchGraph,
-  edge: any,
+  edge: App.SearchGraph['edges'][App.EdgeId],
   reversed: boolean,
   current: App.NodeId,
   nextNodeId: App.NodeId,
 ): number {
   let segmentDist = 0;
 
-  if (edge.segments && edge.segments.length > 0) {
+  if ("segments" in edge && edge.segments.length > 0) {
     let prevCoord = mapData.nodes[reversed ? edge.end : edge.begin].coordinate;
     const segments = reversed ? [...edge.segments].reverse() : edge.segments;
 
