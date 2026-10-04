@@ -9,14 +9,16 @@ import { measureCalibration, measureCalibrationOnce } from "../../bench/lib/refe
  * 測定回数と仕事量の検算値しか見ない。
  *
  * 暖機はプロセス単位の状態なので、順序を固定した 1 本のテストにまとめている。
+ * ループ回数は縮めてあるので、実行時間は数十 ms にとどまる。
  */
 
+const SMALL = { iterations: 24_000 };
+
 describe("校正の暖機", () => {
-  // 校正 1 回分が 700ms 程度、暖機込みだと 5 秒を超えるので timeout を伸ばす
-  test("最初の 1 回だけ長く測り、2 回目以降は 1 回分に戻る", { timeout: 60_000 }, async () => {
-    const single = await measureCalibrationOnce();
-    const first = await measureCalibration();
-    const second = await measureCalibration();
+  test("最初の 1 回だけ長く測り、2 回目以降は 1 回分に戻る", async () => {
+    const single = await measureCalibrationOnce(SMALL);
+    const first = await measureCalibration(SMALL);
+    const second = await measureCalibration(SMALL);
 
     // 集めるのは 5 回分（破棄した先頭は含めない）
     expect(first.iterations).toBe(single.iterations * 5);

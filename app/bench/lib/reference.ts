@@ -34,6 +34,11 @@ const TABLE_MASK = TABLE_SIZE - 1;
  */
 const ITERATIONS = 24_000_000;
 
+/** 1 回あたりのループ回数を差し替えるための口。ベンチ自体は固定値を使う */
+export type CalibrationOptions = {
+  iterations?: number;
+};
+
 /** 最初の数回は最適化前なので捨てる */
 const WARMUP = 3;
 
@@ -114,20 +119,24 @@ export type Calibration = Samples & {
 /**
  * 校正を 1 回測る。
  *
- * 引数は取らない。アプリ本体の実測回数（`--iterations`）に追随させると、
+ * アプリ本体の実測回数（`--iterations`）に追随させると
  * base と head で仕事量が揃わないので固定値にする。
  * 校正は測定項目 ID を持たないので `StageRecorder` を通さず、素のサンプル列を
  * 暖機ぶん捨てて中央値に落とす。
  *
  * プロセス内で最初の 1 回だけ長く測る仕掛けは `measureCalibration()` 側に閉じている。
  * この関数自身は常に 1 回分だけ測るので、テストからも呼べる。
+ *
+ * `iterations` はテスト用にループ回数を縮めるためだけに開けている。
+ * ベンチの計測では常に固定値を使う。
  */
-export async function measureCalibrationOnce(): Promise<Calibration> {
+export async function measureCalibrationOnce(options: CalibrationOptions = {}): Promise<Calibration> {
+  const iterations = options.iterations ?? ITERATIONS;
   let work = 0;
   const runs = await sampleRuns(
     resetTable,
     () => {
-      work = runKernel(ITERATIONS);
+      work = runKernel(iterations);
     },
     { warmup: WARMUP, iterations: SAMPLES },
   );
@@ -149,13 +158,13 @@ export async function measureCalibrationOnce(): Promise<Calibration> {
  *
  * @ref docs/設計/09-bench測定と比較.md
  */
-export async function measureCalibration(): Promise<Calibration> {
-  if (warmed) return measureCalibrationOnce();
+export async function measureCalibration(options: CalibrationOptions = {}): Promise<Calibration> {
+  if (warmed) return measureCalibrationOnce(options);
   warmed = true;
-  await measureCalibrationOnce();
+  await measureCalibrationOnce(options);
   const samples: Calibration[] = [];
   for (let i = 0; i < AGGREGATE_SAMPLES; i++) {
-    samples.push(await measureCalibrationOnce());
+    samples.push(await measureCalibrationOnce(options));
   }
   // 仕事量の検算値は決定的なので回が違っても同じ値になる。どれを採用しても同じ。
   const medians = samples.map((s) => s.median).sort((a, b) => a - b);

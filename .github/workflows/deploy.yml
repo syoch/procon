@@ -270,7 +270,7 @@ jobs:
                 } >> "$GITHUB_STEP_SUMMARY"
                 echo "::notice::bench の出力契約の過渡期なので、性能の比較は成立しません（merge 後は解消します）"
                 ;;
-              ids|machine)
+              ids|work|machine)
                 {
                   echo '> [!WARNING]'
                   echo '> 性能の比較は成立しませんでした（回帰の判定はしていません）。'
@@ -311,6 +311,23 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
       # 回帰と契約違反だけが compare を落とす。比較不成立（exit 2）は緑 + 警告で終える
+      - name: bench 自身のバグを報告する
+        if: always() && steps.cmp.outputs.exit_code == '3'
+        run: |
+          # exit 1 と区別するのは、結果 JSON の問題ではなく bench のコードの問題だから。
+          # 直すべきは bench のコードで、結果 JSON ではない。
+          echo "::error::bench 自身のバグで比較が処理できませんでした（詳細は job summary を参照）"
+          {
+            echo '> [!CAUTION]'
+            echo '> bench 自身のバグで比較が処理できませんでした。'
+            echo '> 結果 JSON の問題ではなく bench のコードの問題です。'
+            echo
+            echo '```'
+            cat "$RUNNER_TEMP/bench-compare.err" 2>/dev/null || echo '(出力なし)'
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit 1
+
       - name: 回帰を報告する
         if: always() && steps.cmp.outputs.exit_code == '1'
         run: |

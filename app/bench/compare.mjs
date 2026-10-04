@@ -283,7 +283,7 @@ function checkWork(base, head) {
       ok: false,
       warnings: [
         warning(
-          "machine",
+          "work",
           "校正の work がありません（同じ版の bench で 2 回とも計測し直してください）",
         ),
       ],
@@ -298,7 +298,7 @@ function checkWork(base, head) {
     ok: false,
     warnings: [
       warning(
-        "contract",
+        "work",
         `校正の work が一致しません（同じ仕事をした保証が壊れています）: base=${formatWorks(before)}` +
           ` / head=${formatWorks(after)}。校正の中身が違う（Node の版、bench の版、校正ワークロードの` +
           "いずれかが違う）ので、校正も項目も比較の対象にならない",
@@ -566,17 +566,25 @@ const REASON_PREFIX = "bench-compare: ";
  *
  * `contract`: 出力契約の過渡期。bench の出力契約を変えた PR だけで出て、merge 後は解消する
  * `ids`:      両側に共通する測定項目 ID が無い
+ * `work`:     校正の work が一致しない（同じ仕事をした保証が壊れている）
  * `machine`:  校正（機械の速度）が外れている
  *
- * 先頭ほど強く主張するので、::notice:: に落とすのは contract だけになる。
+ * 先頭ほど強く主張する。::notice:: に落とすのは contract だけなので、
+ * contract は「merge すれば解決する」場合に限られる。
+ * work は bench のコードを変えた PR で频繁に出るので、machine より後ろに置く。
  * どれにも当たらない場合は unknown として扱い、CI は警告側で扱う。
  */
-const REASON_PRIORITY = ["contract", "ids", "machine"];
+const REASON_PRIORITY = ["contract", "ids", "work", "machine"];
 
 /** 理由と説明の組を作る。警告を生成する側は必ずこれを通す */
 function warning(reason, message) {
   if (!REASON_PRIORITY.includes(reason)) {
-    throw new Error(`未知の比較不成立の理由です: ${reason}（REASON_PRIORITY に足してください）`);
+    // 開発時の誤りを見逃さないためにここで落とす。CI では exit 3 として区別される
+    const error = new Error(
+      `未知の比較不成立の理由です: ${reason}（REASON_PRIORITY に足してください）`,
+    );
+    error.benchBug = true;
+    throw error;
   }
   return { reason, message };
 }
@@ -623,13 +631,17 @@ try {
   }
 } catch (error) {
   const versionMismatch = error instanceof BenchInputError && error.versionMismatch;
-  const category = versionMismatch ? "contract" : "invalid";
+  // bench 自身のバグは結果 JSON の問題と切り分けるため、独立した分類にする
+  const category = error?.benchBug ? "bench" : versionMismatch ? "contract" : "invalid";
   console.error(
     error instanceof BenchInputError
       ? `bench の結果が契約を守っていません: ${error.message}`
       : `bench の比較に失敗しました: ${error instanceof Error ? error.message : String(error)}`,
   );
   console.error(`${REASON_PREFIX}${category}: ${error.message}`);
+  // bench 自身のバグ（warning() に無い reason を渡した等）は exit 3 にする。
+  // exit 1 は「測定値や結果 JSON の問題」なので、原因の切り分けに使えるよう分けておく。
+  if (category === "bench") process.exit(3);
   // 版が違えば比較というものが成り立たない（exit 2）。
   // 読めない・構造が壊れている場合は契約違反なので赤にする（exit 1）
   process.exit(versionMismatch ? 2 : 1);
