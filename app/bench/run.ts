@@ -6,7 +6,7 @@ import { splitScenario } from "./scenarios/split";
 import { cacheReadScenario } from "./scenarios/cache-read";
 import type { AnyScenario, AnyScenarioResult } from "./scenarios/types";
 import { stageId } from "./ids";
-import { readFixtureMeta } from "./lib/data";
+import { readFixtureStats } from "./lib/data";
 import type { Samples } from "./lib/harness";
 import { measureCalibration, type Calibration } from "./lib/reference";
 import {
@@ -198,9 +198,13 @@ function withSummarizedOutput<T>(fn: () => T | Promise<T>): { value: T; log: str
 
 async function main() {
   const options = parseArgs(process.argv.slice(2));
-  const meta = readFixtureMeta();
+  const stats = readFixtureStats();
   if (!options.quiet) {
-    console.log(`fixture: ${meta.name} (${meta.cellCount} cells, nodes=${meta.nodeCount}, ways=${meta.wayCount})`);
+    const b = stats.boundary;
+    console.log(
+      `fixture: ${stats.cellCount} cells (${b.minLat},${b.minLng} - ${b.maxLat},${b.maxLng}) ` +
+        `nodes=${stats.nodeCount} ways=${stats.wayCount} fetchedAt=${stats.fetchedAt}`,
+    );
     console.log(`node: ${process.version} / iterations: ${options.iterations} / warmup: ${options.warmup}`);
   }
 

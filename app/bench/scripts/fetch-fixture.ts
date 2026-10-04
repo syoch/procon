@@ -3,11 +3,10 @@
  *
  * 取得は本番と同じ `requireOSMData` を通すので、セルへの分割・問い合わせ・保存は
  * 本番と同じ経路になる。1 クエリが 504 を返すときは全体を取り直す。
+ * 全セルが揃っていれば何もしない。
  *
  * @ref README.md#フィクスチャ
  */
-import { existsSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 
 import { requireOSMData } from "../../src/routes/api/osm/index";
@@ -15,7 +14,7 @@ import { cacheManager } from "../../src/routes/api/osm/fs-cache-manager";
 import { fetchOverpassData } from "../../src/routes/api/osm/osm-fetcher";
 import { divideBoundary, type Boundary } from "../../src/routes/api/osm/boundary";
 import { RequestContext } from "../../src/lib/tracing/requestContext";
-import { listFixtureCells, readFixtureCell, readFixtureMeta, type FixtureMeta } from "../lib/data";
+import { readFixtureStats } from "../lib/data";
 
 /**
  * 取得する領域（長岡市中心部）。
@@ -82,36 +81,14 @@ async function fetchFixture(cells: Boundary[]): Promise<void> {
   }
 }
 
-function writeMeta(): FixtureMeta {
-  let nodeCount = 0;
-  let wayCount = 0;
-  const cells = listFixtureCells();
-  for (const cell of cells) {
-    for (const element of readFixtureCell(cell).elements) {
-      if (element.type === "node") nodeCount += 1;
-      else if (element.type === "way") wayCount += 1;
-    }
-  }
-  const meta: FixtureMeta = {
-    name: "nagaoka-central",
-    capturedAt: new Date().toISOString(),
-    cellCount: cells.length,
-    nodeCount,
-    wayCount,
-    bbox: BOUNDARY,
-  };
-  writeFileSync(join(cacheDir(), "meta.json"), `${JSON.stringify(meta, null, 2)}\n`, "utf-8");
-  return meta;
-}
-
 async function main(): Promise<void> {
   const cells = divideBoundary(BOUNDARY);
   const missing = await missingCells(cells);
-  if (missing.length === 0 && existsSync(join(cacheDir(), "meta.json"))) {
-    const meta = readFixtureMeta();
+  if (missing.length === 0) {
+    const stats = readFixtureStats();
     console.log(
-      `フィクスチャは揃っています: ${cacheDir()} (${meta.cellCount} cells, ` +
-        `nodes=${meta.nodeCount}, ways=${meta.wayCount}, capturedAt=${meta.capturedAt})`,
+      `フィクスチャは揃っています: ${cacheDir()} (${stats.cellCount} cells, ` +
+        `nodes=${stats.nodeCount}, ways=${stats.wayCount}, fetchedAt=${stats.fetchedAt})`,
     );
     return;
   }
@@ -124,9 +101,9 @@ async function main(): Promise<void> {
   console.log(`  領域: ${JSON.stringify(BOUNDARY)}`);
   const started = Date.now();
   await fetchFixture(cells);
-  const meta = writeMeta();
+  const stats = readFixtureStats();
   console.log(
-    `取得しました: ${meta.cellCount} cells, nodes=${meta.nodeCount}, ways=${meta.wayCount} ` +
+    `取得しました: ${stats.cellCount} cells, nodes=${stats.nodeCount}, ways=${stats.wayCount} ` +
       `(${(Date.now() - started) / 1000} 秒)`,
   );
 }

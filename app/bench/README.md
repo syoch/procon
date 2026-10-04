@@ -361,10 +361,10 @@ node bench/scripts/measure-noise.mjs --iterations 20 --warmup 5 --runs 9 --json 
 
 ```
 OSM_CACHE_DIR/
-├── meta.json                       # 領域・セル数・取得日時
 └── {minLat}-{minLng}-{maxLat}-{maxLng}.json
 ```
 
+セルファイル名が領域を表し、規模もセルから数えられるので manifest は置かない。
 セルファイル名は `fs-cache-manager` の `encodeFilename` と同じ形式にする。
 `cache-read` シナリオはこのセルを実際に `readCache` するため、
 ファイル名と中身の形式を変えると壊れる。
@@ -378,7 +378,7 @@ OSM_CACHE_DIR/
 
 公開 Overpass は混雑すると 504 を返すので、失敗したときは全体を取り直す。
 取り直しは 3 回までで、取得済みのセルはキャッシュに残っているため 2 回目以降のクエリは減る。
-`meta.json` と全セルが揃っていれば何もせず終わる（no-op）。
+全セルが揃っていれば何もせず終わる（no-op）。
 
 ```bash
 cd app
@@ -398,6 +398,7 @@ OSM_CACHE_DIR=/tmp/procon-osm-cache node bench/.build/fetch-fixture.mjs
 
 キャッシュが退避されて取り直すときだけ、その時点の OSM データになって全測定項目がずれる。
 それはグラフが変わった差なので、検出できる差のうちの 1 つとして扱う。
+取得時刻はセルファイルの更新日時から分かるので、bench の 1 行目に `fetchedAt` として出る。
 
 ## ディレクトリ
 
