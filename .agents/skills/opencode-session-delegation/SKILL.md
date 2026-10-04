@@ -206,6 +206,20 @@ mutation($id: ID!) { resolveReviewThread(input: { threadId: $id }) { thread { id
 **1 件ずつ、該当箇所の変更が済んでから resolve する。**
 各コメントには対応内容を返信する。
 
+## 旧スクリプト
+
+`/tmp/opencode` に置いていた補助スクリプトは skill 側へ統合した。
+**新しいスクリプトを作らず、これを使う。**
+
+| 旧 | 移行先 |
+|---|---|
+| `send_prompt.py` / `send_prompt2.py` | `delegate.py` |
+| `notify_done.py` | `delegate.py --notify-done` |
+| `poll-session.py` | `session_state.py` |
+
+`send_prompt.py` は `providerID` / `modelID` をトップレベルに送るため**必ずハングする**。
+事故のもとになるので、記録として残す。
+
 ## 落とし穴
 
 - **不正な body はハングする。** プロバイダを切り替えても直らない
