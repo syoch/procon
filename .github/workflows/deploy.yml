@@ -60,6 +60,7 @@ jobs:
   # 2. ジョブの結論は compare.mjs の終了コードだけで決まる。
   #    exit 0 は緑、exit 1 は赤、exit 2 は緑 + 警告にする。
   #    不成立の理由は job summary の先頭とログに両方残す。
+  # 3. base を測れなかった場合も赤にする（緑に見えるのに回帰を検出していない状態を避ける）。
   bench:
     runs-on: ubuntu-latest
     # 計測条件の値はここ 1 箇所に集約する。base と head に同じ値を渡す
@@ -193,7 +194,6 @@ jobs:
             --base "$RUNNER_TEMP/bench-base.json" \
             --head "$RUNNER_TEMP/bench-head.json" \
             --tolerance "${{ vars.BENCH_TOLERANCE || '1.5' }}" \
-            --report-on-invalid \
             --format markdown \
             2> "$RUNNER_TEMP/bench-compare.err" \
             | tee "$RUNNER_TEMP/bench-compare.md"
@@ -232,8 +232,8 @@ jobs:
             echo "::notice::base に bench がまだ無い（この PR で追加）ため、性能の比較はしませんでした"
           elif [ "$BASE_OUTCOME" != "success" ]; then
             {
-              echo '> [!WARNING]'
-              echo '> base 側の計測に失敗したため、比較が成立しませんでした。'
+              echo '> [!CAUTION]'
+              echo '> base 側の計測に失敗したため、比較が成立しませんでした（ジョブは失敗します）。'
               echo
               echo 'base は自分の bench を自分の `app/src` でビルドしています。'
               echo 'そのため base の計測失敗は base 自身の破損か、依存関係の解決失敗を意味します。'
@@ -249,7 +249,7 @@ jobs:
               echo
               echo '</details>'
             } >> "$GITHUB_STEP_SUMMARY"
-            echo "::warning::base 側の計測に失敗したため、性能の比較が成立しませんでした"
+            echo "::error::base 側の計測に失敗したため、性能の比較が成立しませんでした"
           elif [ "$CMP_EXIT" = "2" ]; then
             {
               echo '> [!WARNING]'
@@ -280,11 +280,19 @@ jobs:
             echo "</details>"
           } >> "$GITHUB_STEP_SUMMARY"
 
-      # 回帰と契約違反だけがジョブを落とす。比較不成立（exit 2）は緑 + 警告で終える
+      # 回帰と契約違反だけが compare を落とす。比較不成立（exit 2）は緑 + 警告で終える
       - name: 回帰を報告する
         if: always() && steps.cmp.outputs.exit_code == '1'
         run: |
-          echo "::error::許容倍率（${{ vars.BENCH_TOLERANCE || '1.5' }} 倍）を超える測定項目があります。job summary を確認してください"
+          echo "::error::許容倍率（${{ vars.BENCH_TOLERANCE || '1.5' }} 倍）を超える測定項目があるか、結果 JSON が契約を守っていません。job summary を確認してください"
+          exit 1
+
+      # base を測れなかった場合はジョブを落とす。
+      # 緑に見えるのに回帰を検出していない状態は、検証されていないより悪いため。
+      - name: base の計測失敗を報告する
+        if: always() && steps.base_has_bench.outputs.exists == 'true' && steps.base_bench.outcome != 'success'
+        run: |
+          echo "::error::base 側の計測に失敗したため、性能の比較が成立しませんでした（詳細は job summary を参照）"
           exit 1
 
       - name: 結果をアーティファクトとして保存

@@ -32,9 +32,6 @@ pnpm bench -- --iterations 20 --warmup 5   # バンドルと実行をまとめ�
 node bench/compare.mjs --base base.json --head head.json [--tolerance 1.5] [--format markdown]
 # 校正（機械の速度の比較）の許容を緩くする
 node bench/compare.mjs --base base.json --head head.json --calibration-tolerance 0.2
-# 比較不成立（exit 2）でも回帰リストを「参考値」として出す
-node bench/compare.mjs --base base.json --head head.json --report-on-invalid
-
 # 同じコードを N 回走らせて、測定項目と校正のばらつきを採取する
 node bench/build.mjs   # 先にバンドルする
 node bench/scripts/measure-noise.mjs --iterations 20 --warmup 5 --runs 9
@@ -255,13 +252,17 @@ JSON では `scenarioCalibration` にシナリオ名で入る）。
 校正も測定項目も「同じ仕事をした」ことが前提になる。
 その前提が崩れるので、比べる意味がない。
 
-### 参考値としての回帰レポート（`--report-on-invalid`）
+### 校正が外れているときの回帰の扱い
 
-`--report-on-invalid` を付けると、**exit 2 を保ったまま**
-「性能回帰の参考値（機械の状態が信用できないため判定ではない）」として回帰リストを出す。
-CI はこのフラグを付けるので、失敗した PR でも「本当に遅くなった測定項目があったか」が読める。
-判定（exit code）は 2 のままなので、比較不成立という結論は変わらない。
-既定では出さない。
+**回帰の判定は不成立より先に行う。**
+校正が外れていても許容倍率を超えていれば exit 1（赤）にして、回帰として報告する。
+
+偽陽性になる可能性は残るが、緑にすると回帰検出を黙って止めることになる。
+検証されていない緑は、検証されていない結論より悪い。
+見出しには「校正が外れているため、機械の状態が信用できない」ことを添える。
+
+校正が外れていて**回帰が無い**ときは exit 2（緑 + 警告）で、
+見出しに「比較が成立しないため、回帰の判定は出していません」と書く。
 
 **基準ファイルを持たない設計が拾えないもの**:
 

@@ -5,7 +5,6 @@
  *   node bench/compare.mjs --base base.json --head head.json [--tolerance 1.5]
  *   node bench/compare.mjs --base base.json --head head.json --format markdown
  *   node bench/compare.mjs --base base.json --head head.json [--calibration-tolerance 0.1]
- *   node bench/compare.mjs --base base.json --head head.json [--report-on-invalid]
  *
  * **比較するのは測定項目 ID 単位**で、ハーネスの同一性は求めない。
  * base は自分の bench で自分の `app/src` を測るので、head がハーネスを変えていようが
@@ -43,13 +42,13 @@
  *
  * exit code:
  *   0  許容倍率以内（改善も含む）
- *   1  許容倍率を超えた測定項目がある（回帰）／結果 JSON が契約を守っていない
+ *   1  許容倍率を超えた測定項目がある（回帰）／結果 JSON が読めない・契約を守っていない
  *   2  比較そのものが成立しない（測定項目 ID が一致しない / 校正が外れている / 版が違う）
  *
- * 校正が通らないと回帰レポートごと出ないので、本物の回帰も一緒に隠れてしまう。
- * `--report-on-invalid` を付けると exit 2 を保ったまま「参考値（機械の状態が
- * 信用できない）」として回帰のリストを出す。比較できないことと、本当に遅くなったこと
- * を同時に読みたいためで、判定の結論（exit code）は変えない。
+ * 回帰の判定は不成立より先に行う。校正が外れていても許容倍率を超えていれば exit 1 にする。
+ * 偽陽性でも緑にしない方が、回帰検出を黙って止めるよりはよい。
+ *
+ * 校正が外れていて回帰が無いときは exit 2 にして、回帰の判定を出していないことを明示する。
  *
  * 結果 JSON の構造は `lib/report.ts` が型と検証を持っている。
  * 版が違う JSON には測定項目 ID が入っていないので exit 2、版が同じで構造が
@@ -64,18 +63,11 @@ const OPTIONS = {
   format: "text",
   minMs: 0.5,
   calibrationTolerance: 0.1,
-  /** 校正が通らなかったときも「参考値」として回帰リストを出す */
-  reportOnInvalid: false,
 };
 
 function parseArgs(argv) {
   for (let i = 0; i < argv.length; i++) {
     const key = argv[i];
-    // 値を持たないフラグは次の引数を消費してはいけない。分岐を先に書いてから取得する
-    if (key === "--report-on-invalid") {
-      OPTIONS.reportOnInvalid = true;
-      continue;
-    }
     const value = argv[++i];
     if (key === "--base") OPTIONS.base = value;
     else if (key === "--head") OPTIONS.head = value;
@@ -95,14 +87,28 @@ function parseArgs(argv) {
   }
 }
 
-/** 結果 JSON を読み込んで検証する。版の違う JSON は比較不成立として扱う */
+/**
+ * 結果 JSON を読み込んで検証する。
+ *
+ * 版が違う（測定項目 ID を持つ出力ではない）場合は比較不成立として exit 2 にする。
+ * 読めない・構造が契約を守らない場合は計測結果が壊れているので契約違反として exit 1 にする。
+ * 途中で kill されて JSON が切れている場合はここに落ちる。
+ */
 function load(path) {
-  const parsed = JSON.parse(readFileSync(path, "utf-8"));
+  let parsed;
+  try {
+    parsed = JSON.parse(readFileSync(path, "utf-8"));
+  } catch (error) {
+    throw new BenchInputError(`${path}: ${error instanceof Error ? error.message : String(error)}`);
+  }
   try {
     return parseBenchReport(parsed);
   } catch (error) {
-    if (error instanceof UnsupportedSchemaError || error instanceof SchemaViolationError) {
-      throw new BenchInputError(`${path}: ${error.message}`, error instanceof SchemaViolationError);
+    if (error instanceof UnsupportedSchemaError) {
+      throw new BenchInputError(`${path}: ${error.message}`, { versionMismatch: true });
+    }
+    if (error instanceof SchemaViolationError) {
+      throw new BenchInputError(`${path}: ${error.message}`);
     }
     throw error;
   }
@@ -110,10 +116,11 @@ function load(path) {
 
 /** 入力 JSON が契約を守らなかったことを表す。契約違反だけ exit 1 にする */
 class BenchInputError extends Error {
-  constructor(message, violation) {
+  /** 版だけが違う場合は比較不成立（exit 2） */
+  constructor(message, { versionMismatch = false } = {}) {
     super(message);
     this.name = "BenchInputError";
-    this.violation = violation;
+    this.versionMismatch = versionMismatch;
   }
 }
 
@@ -393,35 +400,26 @@ function scenarioCalibrationLines(scenarios) {
 }
 
 /**
- * 回帰の判定（または参考値）の見出しと明細を組み立てる。
+ * 回帰の判定の見出しと明細を組み立てる。
  *
- * 比較が成立しなかったときは既定では回帰の判定を出さない（校正ゲートと ID の一致）。
- * `--report-on-invalid` を付けると、exit 2 を保ったまま「参考値（機械の状態が
- * 信用できない）」として回帰のリストを出す。変わるのは表示だけで、
- * 「比較が成立しない」という結論は変わらない。
+ * 比較が成立しなかったときでも、回帰があれば exit 1 で落とす（緑にしない）ので、
+ * ここでは必ず「検出しました」と出す。
+ * 機械の状態が信用できないときは、その旨を見出しに添える。
+ * 回帰が無くて比較も成立しなかったときは「判定を出していない」を出して、
+ * exit 2 の理由を明示する。
  */
-function verdict(invalid, regressions) {
-  const reference = invalid && OPTIONS.reportOnInvalid;
-  if (invalid && !reference) {
-    return {
-      heading:
-        "比較が成立しないため、回帰の判定は出していません" +
-        "（--report-on-invalid を付けると参考値として出ます）",
-      items: [],
-    };
-  }
+function verdict({ invalid, regressions }) {
+  const note = invalid ? "（校正が外れているため、機械の状態が信用できない）" : "";
   if (regressions.length === 0) {
     return {
-      heading: reference
-        ? `性能回帰なし（参考値。機械の状態が信用できないため判定ではない、許容 ${OPTIONS.tolerance}x）`
+      heading: invalid
+        ? "性能回帰なし。ただし比較が成立しないため、回帰の判定は出していません"
         : `性能回帰なし（許容 ${OPTIONS.tolerance}x）`,
       items: [],
     };
   }
   return {
-    heading: reference
-      ? `性能回帰の参考値（機械の状態が信用できないため判定ではない。許容 ${OPTIONS.tolerance}x）:`
-      : `性能回帰を検出しました（許容 ${OPTIONS.tolerance}x）:`,
+    heading: `性能回帰を検出しました（許容 ${OPTIONS.tolerance}x）${note}:`,
     items: regressions,
   };
 }
@@ -470,7 +468,7 @@ function renderText(result, gate, warnings) {
   lines.push(`  ${calibrationText(gate.calibration)}`);
   lines.push(`  ${workText(gate.work)}`);
   for (const line of scenarioCalibrationLines(gate.scenarios)) lines.push(`  ${line}`);
-  const result_ = verdict(gate.ok === false || warnings.length > 0, result.regressions);
+  const result_ = verdict({ invalid: warnings.length > 0, regressions: result.regressions });
   lines.push(`  ${result_.heading}`);
   for (const r of result_.items) {
     lines.push(`  ${r.id}: ${ms(r.before)} -> ${ms(r.after)} (${r.ratio.toFixed(2)}x)`);
@@ -515,7 +513,7 @@ function renderMarkdown(result, gate, warnings) {
       );
     }
   }
-  const result_ = verdict(gate.ok === false || warnings.length > 0, result.regressions);
+  const result_ = verdict({ invalid: warnings.length > 0, regressions: result.regressions });
   lines.push(`**${result_.heading}**`);
   for (const r of result_.items) {
     lines.push(`- \`${r.id}\`: ${ms(r.before)} → ${ms(r.after)} (${r.ratio.toFixed(2)}x)`);
@@ -552,16 +550,18 @@ try {
       ? [...renderWarnings(warnings), renderMarkdown(result, gate, warnings)].join("\n\n")
       : renderText(result, gate, warnings);
   console.log(text);
-  if (warnings.length > 0) process.exitCode = 2;
-  else if (result.regressions.length > 0) process.exitCode = 1;
+  // 回帰を不成立より先に判定する。校正が外れていても許容倍率を超えていれば exit 1 にする。
+  // 偽陽性でも緑にしない方が、回帰検出を黙って止めるよりはよい。
+  if (result.regressions.length > 0) process.exitCode = 1;
+  else if (warnings.length > 0) process.exitCode = 2;
 } catch (error) {
-  const violation = error instanceof BenchInputError && error.violation;
+  const versionMismatch = error instanceof BenchInputError && error.versionMismatch;
   console.error(
-    violation
+    error instanceof BenchInputError
       ? `bench の結果が契約を守っていません: ${error.message}`
       : `bench の比較に失敗しました: ${error instanceof Error ? error.message : String(error)}`,
   );
   // 版が違えば比較というものが成り立たない（exit 2）。
-  // 版が同じで構造が壊れていれば契約違反なので赤にする（exit 1）
-  process.exit(violation ? 1 : 2);
+  // 読めない・構造が壊れている場合は契約違反なので赤にする（exit 1）
+  process.exit(versionMismatch ? 2 : 1);
 }
