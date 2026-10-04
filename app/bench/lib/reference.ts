@@ -41,15 +41,27 @@ const WARMUP = 3;
 const SAMPLES = 7;
 
 /**
- * プロセス内で最初に校正を測るときの実測回数。
+ * プロセス内で最初に校正を測るときの採用サンプル数。
  *
  * ランナーのコールドコスト（全速になるまでの時間、ページキャッシュの読み込み、
  * Turbo の立ち上がり）は 1 回では抜けきらない。
  * 先頭の 1 回を捨てて、さらに 5 回測るとサンプルの半分以上が落ち着いた値になる。
+ *
+ * コストは 60 kernel run 分（実測 6 倍）なので、対話的な利用では重く感じる。
+ * CI の bench ジョブでは base と head の合計で +7.6s にとどまる。
  */
 const AGGREGATE_SAMPLES = 5;
 
-/** プロセス内で校正を測ったか。最初の 1 回だけ長く測るために使う */
+/**
+ * プロセス内で校正を測ったか。最初の 1 回だけ長く測るために使う。
+ *
+ * 返り値は呼び出し順で変わる。最初の 1 回は `iterations` が
+ * `SAMPLES * AGGREGATE_SAMPLES`（35）、2 回目以降は `SAMPLES`（7）になる。
+ * 独立した 1 回測定が欲しいときは `measureCalibrationOnce()` を明示して呼ぶ。
+ *
+ * フラグを立てる前に測定が完了するので、並行して呼んでも
+ * 最初に完了した側だけが長測定になる。校正は直列 await なので競合しない。
+ */
 let warmed = false;
 
 const table = new Int32Array(TABLE_SIZE);
@@ -106,6 +118,9 @@ export type Calibration = Samples & {
  * base と head で仕事量が揃わないので固定値にする。
  * 校正は測定項目 ID を持たないので `StageRecorder` を通さず、素のサンプル列を
  * 暖機ぶん捨てて中央値に落とす。
+ *
+ * プロセス内で最初の 1 回だけ長く測る仕掛けは `measureCalibration()` 側に閉じている。
+ * この関数自身は常に 1 回分だけ測るので、テストからも呼べる。
  */
 export async function measureCalibrationOnce(): Promise<Calibration> {
   let work = 0;
@@ -128,6 +143,9 @@ export async function measureCalibrationOnce(): Promise<Calibration> {
  *
  * 集めるのは「機械の速度」であって「最初は何も動いていない状態」ではないので、
  * 最初の 1 回をそのまま採用すると base と head の校正が実行順でずれてしまう。
+ *
+ * 返り値の `iterations` は呼び出し順で変わる（最初は 35、以降は 7）。
+ * 1 回分の独立した測定が欲しいときは `measureCalibrationOnce()` を使う。
  *
  * @ref docs/設計/09-bench測定と比較.md
  */

@@ -138,6 +138,9 @@ const isRecord = (value) => typeof value === "object" && value !== null && !Arra
  *
  * `rows` は追加と削除も含めて全 ID を含む。
  * 「追加」と「削除」は測定対象が変わったことを意味するので、回帰判定には入らない。
+ *
+ * 警告は reason を一緒に持つ。CI は reason だけを見て注記の等級を決めるので、
+ * ここで付けないと説明の文言を書き換えた瞬間に別の等級になってしまう。
  */
 function compareMeasurements(base, head) {
   const baseItems = base.measurements;
@@ -151,9 +154,12 @@ function compareMeasurements(base, head) {
   const common = ids.filter((id) => baseItems[id] !== undefined && headItems[id] !== undefined);
   if (common.length === 0) {
     warnings.push(
-      `測定項目 ID が一致しません: base=${Object.keys(baseItems).length} 件 ` +
-        `head=${Object.keys(headItems).length} 件、共通 0 件。` +
-        "測定項目 ID を持つ bench の出力どうしを比較してください",
+      warning(
+        "ids",
+        `測定項目 ID が一致しません: base=${Object.keys(baseItems).length} 件 ` +
+          `head=${Object.keys(headItems).length} 件、共通 0 件。` +
+          "測定項目 ID を持つ bench の出力どうしを比較してください",
+      ),
     );
   }
   for (const id of ids) {
@@ -210,8 +216,11 @@ function checkCalibration(base, head) {
       ratio: null,
       ok: false,
       warnings: [
-        `校正の測定値が無い、または不正です: base=${ms(before)} head=${ms(after)}` +
-          "（同じ版の bench で 2 回とも計測し直してください）",
+        warning(
+          "machine",
+          `校正の測定値が無い、または不正です: base=${ms(before)} head=${ms(after)}` +
+            "（同じ版の bench で 2 回とも計測し直してください）",
+        ),
       ],
     };
   }
@@ -224,9 +233,12 @@ function checkCalibration(base, head) {
     ratio,
     ok,
     warnings: [
-      `校正で機械の速度が変わった可能性: ${ms(before)} -> ${ms(after)} (${ratio.toFixed(2)}x、` +
-        `許容は 1±${OPTIONS.calibrationTolerance} まで)。2 回の計測の間でランナーの負荷が変わったので、` +
-        "項目の差は信用できない（ジョブをもう一度動かすと解決する）",
+      warning(
+        "machine",
+        `校正で機械の速度が変わった可能性: ${ms(before)} -> ${ms(after)} (${ratio.toFixed(2)}x、` +
+          `許容は 1±${OPTIONS.calibrationTolerance} まで)。2 回の計測の間でランナーの負荷が変わったので、` +
+          "項目の差は信用できない（ジョブをもう一度動かすと解決する）",
+      ),
     ],
   };
 }
@@ -270,7 +282,10 @@ function checkWork(base, head) {
       count,
       ok: false,
       warnings: [
-        "校正の work がありません（同じ版の bench で 2 回とも計測し直してください）",
+        warning(
+          "machine",
+          "校正の work がありません（同じ版の bench で 2 回とも計測し直してください）",
+        ),
       ],
     };
   }
@@ -282,9 +297,12 @@ function checkWork(base, head) {
     count,
     ok: false,
     warnings: [
-      `校正の work が一致しません（同じ仕事をした保証が壊れています）: base=${formatWorks(before)}` +
-        ` / head=${formatWorks(after)}。校正の中身が違う（Node の版、bench の版、校正ワークロードの` +
-        "いずれかが違う）ので、校正も項目も比較の対象にならない",
+      warning(
+        "contract",
+        `校正の work が一致しません（同じ仕事をした保証が壊れています）: base=${formatWorks(before)}` +
+          ` / head=${formatWorks(after)}。校正の中身が違う（Node の版、bench の版、校正ワークロードの` +
+          "いずれかが違う）ので、校正も項目も比較の対象にならない",
+      ),
     ],
   };
 }
@@ -314,7 +332,10 @@ function checkScenarioCalibration(base, head, startOk, comparedScenarios) {
       entries: [],
       ok: false,
       warnings: [
-        "シナリオ直前の校正が無い、または不正です（同じ版の bench で 2 つとも計測し直してください）",
+        warning(
+          "machine",
+          "シナリオ直前の校正が無い、または不正です（同じ版の bench で 2 つとも計測し直してください）",
+        ),
       ],
     };
   }
@@ -330,7 +351,10 @@ function checkScenarioCalibration(base, head, startOk, comparedScenarios) {
     if (!usableMs(before) || !usableMs(after)) {
       entries.push({ name, before, after, ratio: null, ok: false });
       warnings.push(
-        `シナリオ "${name}" の直前の校正が無い、または不正です: base=${ms(before)} head=${ms(after)}`,
+        warning(
+          "machine",
+          `シナリオ "${name}" の直前の校正が無い、または不正です: base=${ms(before)} head=${ms(after)}`,
+        ),
       );
       continue;
     }
@@ -343,10 +367,13 @@ function checkScenarioCalibration(base, head, startOk, comparedScenarios) {
       ? "開始時の校正は一致しているので、遅れたのは計測の途中だったと分かる"
       : "開始時の校正もずれているので、どこで変わったのかは分からない";
     warnings.push(
-      `シナリオ "${name}" の直前の校正で機械の速度が変わった可能性: ${ms(before)} -> ${ms(after)}` +
-        ` (${ratio.toFixed(2)}x、許容は 1±${OPTIONS.calibrationTolerance} まで)。` +
-        `base と head でこのシナリオの計測は別々の状態で取られたので、このシナリオの項目の差は` +
-        `信用できない（ジョブをもう一度動かすと解決する）。${where}`,
+      warning(
+        "machine",
+        `シナリオ "${name}" の直前の校正で機械の速度が変わった可能性: ${ms(before)} -> ${ms(after)}` +
+          ` (${ratio.toFixed(2)}x、許容は 1±${OPTIONS.calibrationTolerance} まで)。` +
+          `base と head でこのシナリオの計測は別々の状態で取られたので、このシナリオの項目の差は` +
+          `信用できない（ジョブをもう一度動かすと解決する）。${where}`,
+      ),
     );
   }
   return { entries, ok: entries.every((e) => e.ok), warnings };
@@ -456,7 +483,7 @@ function changeText(added, removed) {
 
 function renderText(result, gate, warnings) {
   const lines = [];
-  for (const warning of warnings) lines.push(`  ! ${warning}`);
+  for (const w of warnings) lines.push(`  ! ${w.message}`);
   if (warnings.length > 0) lines.push("");
   lines.push(`  ${"id".padEnd(ID_WIDTH)}${"base".padStart(10)}${"head".padStart(10)}${"ratio".padStart(9)}`);
   for (const row of result.rows) lines.push(rowText(row));
@@ -528,22 +555,43 @@ function renderMarkdown(result, gate, warnings) {
  */
 function renderWarnings(warnings) {
   if (warnings.length === 0) return [];
-  return ["> [!WARNING]", ...warnings.map((w) => `> ${w}`)];
+  return ["> [!WARNING]", ...warnings.map((w) => `> ${w.message}`)];
 }
 
 /** 比較不成立の理由を機械可読にするための接頭辞。CI はこの 1 行で注記の等級を切り替える */
 const REASON_PREFIX = "bench-compare: ";
 
 /**
- * 比較不成立の理由を分類する。
+ * 比較不成立の理由を、優先順に並べたもの。
  *
- * `contract`: base か head の出力が測定項目 ID を持たない（bench の出力契約の過渡期。merge 後は解消する）
- * `ids`: 両側に共通する測定項目 ID が無い
- * `machine`: 校正（機械の速度）が外れている
+ * `contract`: 出力契約の過渡期。bench の出力契約を変えた PR だけで出て、merge 後は解消する
+ * `ids`:      両側に共通する測定項目 ID が無い
+ * `machine`:  校正（機械の速度）が外れている
+ *
+ * 先頭ほど強く主張するので、::notice:: に落とすのは contract だけになる。
+ * どれにも当たらない場合は unknown として扱い、CI は警告側で扱う。
+ */
+const REASON_PRIORITY = ["contract", "ids", "machine"];
+
+/** 理由と説明の組を作る。警告を生成する側は必ずこれを通す */
+function warning(reason, message) {
+  if (!REASON_PRIORITY.includes(reason)) {
+    throw new Error(`未知の比較不成立の理由です: ${reason}（REASON_PRIORITY に足してください）`);
+  }
+  return { reason, message };
+}
+
+/**
+ * 警告の集合を 1 つの理由にまとめる。
+ *
+ * 警告を生成する側が reason を付けるので、ここでは集約だけを行う。
+ * 説明の文言を書き換えても結果は変わらない。
  */
 function reasonOf(warnings) {
-  if (warnings.some((w) => w.startsWith("測定項目 ID が一致しません"))) return "ids";
-  return "machine";
+  for (const reason of REASON_PRIORITY) {
+    if (warnings.some((w) => w.reason === reason)) return reason;
+  }
+  return "unknown";
 }
 
 try {
@@ -571,7 +619,7 @@ try {
     process.exitCode = 1;
   } else if (warnings.length > 0) {
     process.exitCode = 2;
-    console.error(`${REASON_PREFIX}${reasonOf(warnings)}: ${warnings[0]}`);
+    console.error(`${REASON_PREFIX}${reasonOf(warnings)}: ${warnings[0].message}`);
   }
 } catch (error) {
   const versionMismatch = error instanceof BenchInputError && error.versionMismatch;
