@@ -14,8 +14,17 @@ skill 側を更新すれば実質的に新しい状態を維持できます。
 | skill | 使う場面 |
 |---|---|
 | [`docs-and-comments`](./.agents/skills/docs-and-comments/) | **Markdown とコードコメントを書くとき必ず読む。** 文書・コメントの置き場所、1 文 1 行、肯定形、表の重複、混入チェック |
-| [`issue-pr-worktree-flow`](./.agents/skills/issue-pr-worktree-flow/) | Issue を作るとき、PR まで進めるとき、worktree を作るとき |
-| [`opencode-session-delegation`](./.agents/skills/opencode-session-delegation/) | 作業を別セッションに委任するとき |
+| [`issue-to-pr`](./.agents/skills/issue-to-pr/) | Issue を作るとき、PR まで進めるとき、worktree を作るとき、レビューコメントを resolve するとき |
+
+global skill（`~/.agents/skills/`）も状況に応じて参照する。
+
+| skill | 使う場面 |
+|---|---|
+| `session-delegation` | 作業を別セッションに委任するとき。依頼スクリプトと稼働確認の做法 |
+| `gh-pr-inline-review` | インラインコメントの投稿と Resolve Conversation |
+| `session-archive-workflow` | セッションのアーカイブと削除 |
+| `worktree-fix-merge-cycle` | 小さな修正を別ブランチで作る |
+| `stacked-pr-rebase` | stacked PR の base 変更 |
 
 ## 参照する文書
 
@@ -38,7 +47,7 @@ skill 側を更新すれば実質的に新しい状態を維持できます。
 Project「プロコン」（number 2、ID `PVT_kwHOAu9HaM4BdpD9`）に **Issue と PR の両方**を登録します。
 
 具体的な手順とフィールド ID は
-[`issue-pr-worktree-flow`](./.agents/skills/issue-pr-worktree-flow/) にまとめてあります。
+[`issue-to-pr`](./.agents/skills/issue-to-pr/) にまとめてあります。
 
 ### worktree で作業する
 
@@ -79,7 +88,7 @@ git worktree add -b <Type>/<Issue 番号>-<ShortDesc> /tmp/opencode/procon/wt-<I
 - セッション ID はディレクトリで絞り込む: `GET /session?directory=<worktree>`
 - **監視し続けません。** 完了通知を送らせて、向こうが次の作業へ進めます
 
-做法は [`opencode-session-delegation`](./.agents/skills/opencode-session-delegation/) を参照。
+做法は global skill の `session-delegation` を参照。
 
 ### 検証してから push する
 

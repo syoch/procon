@@ -1,20 +1,21 @@
 ---
-name: issue-pr-worktree-flow
-description: Use when creating a GitHub Issue or turning one into a PR in this repo: Milestone and Project ("プロコン") assignment with linked items for traceability, naming convention (Type/IssueNum-Desc), branching from origin/main, worktree isolation under /tmp/opencode/procon/wt-<Issue>, AGENTS.md/.agents symlinks for delegated sessions, handoff comment, local CI verification, and push plus PR creation. Trigger keywords: Issue 作成, Milestone 設定, Project 登録, プロコン, Projects v2, Status フィールド, Issue から PR を作る, ブランチ命名規則, worktree 作成, worktree 分離, シンボリックリンク, 引き継ぎメモ, gh pr create, origin/main から分岐, PR 作成手順, CI 確認, worktree 削除.
+name: issue-to-pr
+description: Use when turning a GitHub Issue into a merged PR in this repo: Milestone and Project ("プロコン") assignment for both Issue and PR, naming convention (Type/IssueNum-Desc), branching from origin/main, worktree isolation under /tmp/opencode/procon/wt-<Issue>, AGENTS.md/.agents symlinks for delegated sessions, handoff comment, delegation via the session-delegation skill, local CI verification, push, PR creation, and resolving review threads. Trigger keywords: Issue 作成, Milestone 設定, Project 登録, プロコン, Projects v2, Status フィールド, Issue から PR を作る, ブランチ命名規則, worktree 作成, worktree 分離, シンボリックリンク, 引き継ぎメモ, gh pr create, origin/main から分岐, PR 作成手順, CI 確認, worktree 削除, セッション委任, Resolve Conversation.
 args: <Issue 番号>
 ---
 
 # Issue から PR まで
 
 ```
-Issue  →  PR  →  worktree 分離  →  セッション委任
+Issue  →  PR  →  worktree 分離  →  セッション委任  →  Resolve Conversation
 ```
 
-この 4 つが 1 本の線。
+この 5 つが 1 本の線。
 どれかを飛ばすと、後工程で取り返しがつかなくなる。
 （例: worktree 分離を飛ばすと、委任したセッションが自分の作業ツリーを壊す）
 
-セッション委任の做法は [`opencode-session-delegation`](../opencode-session-delegation/) を参照。
+セッション委任の做法は global skill の `session-delegation` を参照。
+インラインコメントと Resolve Conversation は `gh-pr-inline-review` を参照。
 
 ## 前提知識
 
@@ -182,6 +183,70 @@ gh run view --log     # 失敗したときの実際のログ
 **bench ジョブのログは実際の挙動を証拠として読む。**
 比較が成立したのかを `::error::` / `::warning::` / `::notice::` で区別する。
 
+### レビューコメントを Resolve Conversation する
+
+対応内容を返信してから resolve する。
+順序を逆にすると変更していないコメント解決扱いになる。
+
+```bash
+# 1. 未解決のスレッドを確認
+gh api graphql -f query='
+query { repository(owner:"syoch", name:"procon") { pullRequest(number:<N>) { reviewThreads(first:100) {
+  nodes { id isResolved isOutdated path line comments(first:1){ nodes { databaseId } } } } } } }' \
+  --jq '.data.repository.pullRequest.reviewThreads.nodes | map(select(.isResolved==false))'
+
+# 2. 1 件ずつ、返信してから resolve
+gh api repos/syoch/procon/pulls/<N>/comments/<databaseId>/replies -f body="対応しました。..."
+gh api graphql -f query='
+mutation($id: ID!) { resolveReviewThread(input: { threadId: $id }) { thread { id isResolved } } }' \
+  -f id="<PRRT_kwDO...>"
+```
+
+投稿と resolve の手順は `gh-pr-inline-review` を参照。
+
+### セッションに委任する（長い作業の場合）
+
+1 セッション 1 作業を原則にする。
+自分でループを全て抱えるとコンテキストが潰れる。
+
+做法の詳細は global skill `session-delegation` を参照。
+このリポジトリでの用法だけ以下に書く。
+
+```bash
+python3 ~/.agents/skills/opencode/session-delegation/scripts/delegate.py \
+  --worktree /tmp/opencode/procon/wt-<N> \
+  --title "<作業名>" \
+  --prompt-file /tmp/opencode/procon/prompts/<file>.md \
+  --log /tmp/opencode/procon/logs/<name>.log
+```
+
+**委任したら監視しない。** 完了通知を送らせて、向こうが次の作業へ進む。
+
+```bash
+# 委任先が行う。push と commit のあとにマーカーを書いてから実行する
+python3 ~/.agents/skills/opencode/session-delegation/scripts/delegate.py \
+  --notify-done <宛先セッションID> /tmp/opencode/procon/done-<something>.json
+```
+
+### プロンプトに書くこと
+
+- **触ってはいけないファイルを明示する。**
+  他の PR の作業中だとシンボリックリンク経由で巻き込むので、
+  `AGENTS.md` と `.agents/` を対象として指定する
+- **「push 後の作業」までやるよう指示する。**
+  Resolve Conversation と報告まで含める
+- 規約を明記する（言語混入スキャン、Markdown の書き方）
+- **途中で止めないことを明示する**
+
+### 稼働を確認したいとき
+
+```bash
+python3 ~/.agents/skills/opencode/session-delegation/scripts/session_state.py \
+  <セッションID> /tmp/opencode/procon/wt-<N>
+```
+
+**1 回の観測で停止と判断しない。** コールドスタートの空白は区別できない。
+
 ## 落とし穴
 
 - **`rm -rf` で作業ツリーを消さない。** `git worktree remove` を使う
@@ -228,17 +293,16 @@ gh run view --log     # 失敗したときの実際のログ
 - Resolve Conversation したコメントが、対応した変更に対応している
 
 - 不要になった worktree が整理されている
-
 ## 関連
 
-- セッション委任の做法は [`opencode-session-delegation`](../opencode-session-delegation/) を参照
+global skill は名前だけで参照する（実体は `~/.agents/skills/<category>/<name>/`）。
 
+- セッション委任の做法は `session-delegation` を参照
+- インラインコメントと Resolve Conversation は `gh-pr-inline-review` を参照
 - stacked PR の base 変更・吸収判断は `stacked-pr-rebase` を参照
-
 - 小さな修正を別ブランチで作る場合は `worktree-fix-merge-cycle` を参照
-
-- インラインコメントでのレビューは `gh-pr-inline-review` を参照
-
 - セッションのアーカイブと削除は `session-archive-workflow` を参照
+
+project skill は相対リンクで参照する。
 
 - 文書とコメントの書き方は [`docs-and-comments`](../docs-and-comments/) を参照
