@@ -131,7 +131,7 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: ${{ env.OSM_CACHE_DIR }}
-          key: bench-osm-cache-v1
+          key: bench-osm-cache-v2
 
       # アプリのキャッシュ層（requireOSMData / cacheManager / fetchOverpassData）を通すので、
       # セルファイル名と中身の形式は本番のキャッシュと同じになる。
@@ -147,7 +147,7 @@ jobs:
         uses: actions/cache/save@v4
         with:
           path: ${{ env.OSM_CACHE_DIR }}
-          key: bench-osm-cache-v1
+          key: bench-osm-cache-v2
 
       # bench が main にあるかどうかで 2 通りに分かれる。
       #   A. base に bench が無い -> この PR で bench を入れたので比較しない（正常）
