@@ -1,8 +1,10 @@
 # LLM リソースのうち共有するものは git 管理する。
 #   追跡する:   AGENTS.md / .agents/skills/
 #   追跡しない: .private/（作業データ・調査成果物）
-#               .agents/memory/（このマシン専用の記憶）
 #
-# .agents/memory は .git/info/exclude でローカル管理する。
-# コミット済み .gitignore には書かない。
+# .agents/memory は .git/info/exclude でローカル管理している。
 .private/
+
+# Python のキャッシュ
+__pycache__/
+*.pyc

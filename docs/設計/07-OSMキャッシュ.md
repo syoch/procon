@@ -1,6 +1,6 @@
 # OSM 取得結果キャッシュの設計
 
-OSM の Overpass API 応答をサーバ側でディスクにキャッシュする仕組み。
+Overpass API の応答をサーバ側でディスクにキャッシュする仕組み。
 Issue #60 / PR #61 で実装（2026-09-18）。
 
 ## なぜサーバ側に置くか
@@ -14,40 +14,24 @@ Issue #60 / PR #61 で実装（2026-09-18）。
 
 ## クエリの範囲
 
-**`way["highway"](bbox)` に限定する。** タグ指定なしの `way(bbox)` だと建物等も
-取得することになり、応答が約 2 倍になる。
+**`way["highway"](bbox)` に限定する。** タグ指定なしの `way(bbox)` だと、
+建物や境界など**経路探索に使わない way まで取得してしまう**。
+探索結果に影響しないものを取得しないことが狙いです。
+
+応答サイズも減りますが、これは副次的な効果です。
 
 リクエスト時に `wayHighwayExcludes` で highway 種別フィルタをかけるので、
-取得側は広く取ってよい。
+取得側は highway タグに絞った広めにとって構いません。
 
 ## タイル分割と取得手順
 
 1. タイルを 1/64°（0.015625）単位に分割する
-2. 欠けているタイルだけ.collection まとめて union クエリで取得する
+2. 欠けているタイルだけまとめて union クエリで取得する
 3. タイル単位で trim して保存する
 4. 必要なタイルを merge する
 5. 最後に一度 trim する
 
 境界を跨ぐタイルは union でまとめて取ることで、1 回のクエリで済ませる。
-
-## 環境変数
-
-`$env/dynamic/private` から読む。
-
-| 変数 | 必須 |
-|---|---|
-| `OSM_CACHE_DIR` | 任意 |
-| `OVERPASS_ENDPOINT` | 必須 |
-
-**遅延取得にすること。** module 直下で throw すると SvelteKit の postbuild `analyse`
-が import 時に落ちるため、`pnpm run build` も nix build も失敗する。
-
-## デプロイ
-
-- systemd unit に `Environment=OSM_CACHE_DIR=/var/cache/procon/osm` _Write
-- `EnvironmentFile=/etc/procon.env` を指定し、その中に `OVERPASS_ENDPOINT` を入れる
-  （setup-script では作成していないので、運用で用意する）
-- `/var/cache/procon/osm` は procon 所有で作成する
 
 ## TTL / eviction / versioning は意図的に未実装
 
@@ -61,11 +45,15 @@ Issue #60 / PR #61 で実装（2026-09-18）。
 
 リセットは `OSM_CACHE_DIR` を消せばよい。
 
+## 環境変数
+
+`OVERPASS_ENDPOINT` とキャッシュディレクトリの指定は [`infra/README.md`](../../infra/README.md#環境変数) にまとめる。
+運用者が読むのはそちらなので、設計資料には書かない。
+
 ## 既知の残課題
 
 | 課題 | 内容 |
 |---|---|
-| `EnvironmentFile` | `-` を付けないとファイルが必須。未作成だと unit が起動しない |
 | boundary テスト | `console.log` のみ |
 | zod エラー | 整形されていない |
 | bbox 範囲チェック | 未実装 |

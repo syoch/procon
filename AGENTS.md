@@ -1,7 +1,21 @@
 # AGENTS.md
 
 このファイルは LLM エージェントの作業指示です。
-人間向けの読み書は [`docs/`](./docs/) にあります。
+
+**規約の正となるのは `.agents/skills/` 配下の skill です。**
+このファイルは「どれを参照するか」だけを決めています。
+作業中に skill の内容が反映されていない場合でも、
+skill 側を更新すれば実質的に新しい状態を維持できます。
+
+## 参照する skill
+
+作業に応じて必ず参照します。
+
+| skill | 使う場面 |
+|---|---|
+| [`docs-and-comments`](./.agents/skills/docs-and-comments/) | **Markdown とコードコメントを書くとき必ず読む。** 文書・コメントの置き場所、1 文 1 行、肯定形、表の重複、混入チェック |
+| [`issue-pr-worktree-flow`](./.agents/skills/issue-pr-worktree-flow/) | Issue を作るとき、PR まで進めるとき、worktree を作るとき |
+| [`opencode-session-delegation`](./.agents/skills/opencode-session-delegation/) | 作業を別セッションに委任するとき |
 
 ## 参照する文書
 
@@ -21,27 +35,39 @@
 
 `gh issue create` で Issue を作り、Milestone と Project を設定してからコードを書き始めます。
 
-- Project「プロコン」（number 2、ID `PVT_kwHOAu9HaM4BdpD9`）に登録する
-- Status の約束は **OPEN → `Todo` / CLOSED → `Done`**
-- 具体的な手順とフィールド ID は `.agents/skills/issue-pr-worktree-flow/` にまとめる
+Project「プロコン」（number 2、ID `PVT_kwHOAu9HaM4BdpD9`）に **Issue と PR の両方**を登録します。
+
+具体的な手順とフィールド ID は
+[`issue-pr-worktree-flow`](./.agents/skills/issue-pr-worktree-flow/) にまとめてあります。
 
 ### worktree で作業する
 
+ブランチ命名は `<Type>/<Issue 番号>-<ShortDesc>`、
+置き場所は `/tmp/opencode/procon/wt-<Issue 番号>`、base は `origin/main` です。
+
 ```bash
 git fetch origin
-git worktree add -b <Type>/<Issue>-<ShortDesc> /tmp/opencode/wt-<Issue> origin/main
+mkdir -p /tmp/opencode/procon
+git worktree add -b <Type>/<Issue 番号>-<ShortDesc> /tmp/opencode/procon/wt-<Issue 番号> origin/main
 ```
 
 `git worktree add` は追跡ファイルしか作らないので、`AGENTS.md` と `.agents/` は
-**存在しません。**
-存在しないので `mkdir` で作ります。
+**存在しません**。存在しないので `mkdir` で作ります。
 委譲する場合は `AGENTS.md` と `.agents/` をシンボリックリンクで対象へ結びます。
 
-### 委任する（OpenCode Web API）
+### 実装する
+
+**通常のファイル編集は `edit` ツールを使います。**
+大規模・機械的な編集だけ CLI や Python を使います。
+
+書き込み前に、対象ファイルの既存の書き方を確認します
+（_read を 1 回して、インデント・改行・コメントの粒度を合わせる）。
+
+### 委任する
 
 長い作業は別セッションに委任します。
 1 セッション 1 作業を原則にします。
-自分でループを皆有するとコンテキストが潰れるので、分けて上限を待ちます。
+自分でループを全て抱えるとコンテキストが潰れます。
 
 サーバーは systemd の `opencode.service`（port 12000）を使います。
 
@@ -49,10 +75,11 @@ git worktree add -b <Type>/<Issue>-<ShortDesc> /tmp/opencode/wt-<Issue> origin/m
 { "model": { "providerID": "...", "modelID": "..." }, "parts": [{ "type": "text", "text": "..." }] }
 ```
 
-- `model` は入れ子にする。トップレベルの `providerID` / `modelID` は不正
-- セッション ID はディレクトリで絞り込む:
-  `GET /session?directory=/tmp/opencode/wt-<Issue>`
-- `noReply: true` は fire-and-forget ではない。セッション状態を必ず確認する
+- `model` は入れ子にする。トップレベルの `providerID` / `modelID` は不正でハングする
+- セッション ID はディレクトリで絞り込む: `GET /session?directory=<worktree>`
+- **監視し続けません。** 完了通知を送らせて、向こうが次の作業へ進めます
+
+做法は [`opencode-session-delegation`](./.agents/skills/opencode-session-delegation/) を参照。
 
 ### 検証してから push する
 
@@ -68,7 +95,7 @@ flake.nix はリポジトリルートにあります。
 
 ## 日本語を書くときの注意
 
-**長い日本語の散文（本Issue 文・PR 本文・設計資料）は生成劣化が起きる。**
+**長い日本語の散文（Issue 本文・PR 本文・設計資料）は生成劣化が起きる。**
 1500 文字を超えると、繰り返し・無関係語の混入・言語混入（ハングル・簡体字・
 キリル文字）・字形の誤変換が現れる。既知の例:
 
@@ -88,8 +115,10 @@ flake.nix はリポジトリルートにあります。
 3. **1 文 1 行で書く。** 折り返さない。句点で区切って次の行にする。
 
 4. **投稿前に混入をスキャンする。**
-   コードフェンス内と行内コードを除外してから U+FFFD・ハングル・簡体字・
-   キリル文字・不自然な英単語を探す。
+
+   ```bash
+   python3 .agents/skills/docs-and-comments/scripts/check_mixing.py <file> [<file> ...]
+   ```
 
 5. **検出後に `read` で目視する。**
    スキャナは完璧ではありません。
@@ -105,6 +134,11 @@ README や設計資料のように長い日本語を生成する必要がある�
 特にこの方針を適用します。
 
 ## ドキュメントとコメント
+
+**文書とコメントを書くときは、必ず
+[`docs-and-comments`](./.agents/skills/docs-and-comments/) を読んで従ってください。**
+
+要約すると次の通りです。
 
 ### 情報の置き場所
 
@@ -130,23 +164,25 @@ README や設計資料のように長い日本語を生成する必要がある�
 つまり、**表は skill を正**とします。
 表を AGENTS.md に転記しません。
 
-`.agents/skills/docs-and-comments/SKILL.md` が正となり、検証用のコマンドもあります。
-
 ## 制約
 
-- `.agents/ws/`, `.agents/reports/` などの作業データは **共有しません。**
-  必要なら `/tmp/opencode/` を使ってください。
-- 秘密情報（トークン・パスワード）を commit しない。
+- 作業データ（`.private/` など）は **共有しません。** 必要なら `/tmp/opencode/` を使ってください
+
+- 秘密情報（トークン・パスワード）を commit しない
+
 - `AGENTS.md` と `.agents/skills/` だけが git 管理下です。
   `.agents/memory/` はローカル専用の記憶で追跡対象外です。
-- `scripts/`、編集用ページ（`routes/exp/`）は commit 対象にしない。
+
+- `scripts/`、編集用ページ（`routes/exp/`）は commit 対象にしない
 
 ## 実装上の注意
 
-- **`app/bench/**` は `pnpm check` の対象外。** `app/jsconfig.json` の `include` に
-  `bench/**/*.ts` を入れていない。include を自分で書くと
-  `$env/dynamic/private` が 5 error になるので、必ず `.svelte-kit/ambient.d.ts` ほかを
-  列挙し直す
+- **`app/bench/**` は `pnpm check` の対象外。**
+  `app/jsconfig.json` の `include` に `bench/**/*.ts` を入れていない。
+  include を自分で書くと `$env/dynamic/private` が 5 error になるので、
+  必ず `.svelte-kit/ambient.d.ts` ほかを列挙し直す
+
 - **次数 1 の端ノードは fold で `MapVCrossNode` 化されてエッジが消える。**
   検証グラフは両端を交差点にする
+
 - **`EnvironmentFile` に `-` を付けない。** ファイルが必須になり、unit が起動しない

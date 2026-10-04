@@ -7,7 +7,8 @@ description: Use when writing or reviewing Markdown documents and code comments:
 
 ## 置き場所を決める（最初に必ず問う）
 
-情報の**行き先**を決める。3 つある。
+情報の**行き先**を決める。
+置き場所は 3 つある。
 
 | 情報 | 置き場所 | 例 |
 |---|---|---|
@@ -35,7 +36,8 @@ description: Use when writing or reviewing Markdown documents and code comments:
 
 ### 簡潔に
 
-1 行で。説明したいことがあればドキュメントに書く。
+1 行で。
+説明したいことがあればドキュメントに書く。
 
 ### 自明なコメントは書かない
 
@@ -56,7 +58,8 @@ description: Use when writing or reviewing Markdown documents and code comments:
 
 ### 1文1行。line wrap しない
 
-折り返さない。文末の句点で区切って次の行にする。
+折り返さない。
+文末の句点で区切って次の行にする。
 
 ```markdown
 # ❌ 折り返し
@@ -116,40 +119,28 @@ PY
 
 ### 文字化け・混入のチェック
 
-日本語を書くときは U+FFFD（`�`）・ハングル・簡体字・英単語の混入を検査する。
+日本語を書くときは U+FFFD・ハングル・簡体字・英単語の混入を検査する。
 
-**この skill 自身は検査対象から外す。** 検出例を文章として含むので、
-必ず自己検出されてしまいます。上記の正規表現は言語名を実際に打たず、
-文字コード範囲で書きます。
+実際のスクリプトは [`scripts/check_mixing.py`](./scripts/check_mixing.py) に置いてある。
+正規表現をインラインで書くと、言語名を直接打つことになるので
+自分自身のファイルが検出対象になる。
+スクリプトは文字コード範囲で表すことで回避している。
 
 ```bash
-python3 - <<'PY'
-import re, sys
-SELF = "docs-and-comments/SKILL.md"
-HANGUL = re.compile(r"[\uAC00-\uD7AF\u1100-\u11FF\u3130-\u318F]")
-CYRILLIC = re.compile(r"[\u0400-\u04FF]")
-for f in sys.argv[1:]:
-    if f.endswith(SELF):
-        continue
-    raw = open(f, "rb").read()
-    if b"\xef\xbf\xbd" in raw:
-        print(f"[REPLACEMENT] {f}")
-    s = raw.decode("utf-8", errors="replace")
-    in_fence = False
-    for i, l in enumerate(s.split("\n"), 1):
-        # コードフェンス内は検出例を載せていることがあるので除外する
-        if l.strip().startswith("```"):
-            in_fence = not in_fence
-            continue
-        if in_fence:
-            continue
-        outside = re.sub(r"`[^`]*`", "", l)
-        if HANGUL.search(outside):
-            print(f"[HANGUL] {f}:{i} {outside.strip()[:60]}")
-        if CYRILLIC.search(outside):
-            print(f"[CYRILLIC] {f}:{i} {outside.strip()[:60]}")
-PY
+python3 .agents/skills/docs-and-comments/scripts/check_mixing.py <file> [<file> ...]
 ```
+
+終了コードは指摘があれば 1、なければ 0。
+1 文 1 行の違反も同時に検出する。
+コードフェンス内と行内コードは除外する。
+
+**正規表現を自分で書くときの注意。**
+言語名を実際に打つと、そのファイル自身が常に検出される。
+文字コード範囲（`\uAC00-` のような形）で書く。
+
+**この検査だけでは足りない。**
+検出器は完璧ではない。技術語のために緩めた結果を見落とすので、
+最後は必ず `read` で目視する。
 
 ## 落とし穴
 
