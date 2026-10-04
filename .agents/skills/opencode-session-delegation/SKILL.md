@@ -44,8 +44,8 @@ curl -s http://localhost:12000/doc | python3 -m json.tool | less
 python3 .agents/skills/opencode-session-delegation/scripts/delegate.py \
   --worktree /tmp/opencode/procon/wt-<Issue 番号> \
   --title "<作業名>" \
-  --prompt-file /tmp/opencode/prompt-<something>.md \
-  --log /tmp/opencode/agent-<Issue 番号>.log
+  --prompt-file /tmp/opencode/procon/prompt-<something>.md \
+  --log /tmp/opencode/procon/agent-<Issue 番号>.log
 ```
 
 スクリプトは次能做到:
@@ -107,7 +107,7 @@ assistant の parts: 0
 応答が返るまで処理が続くので、**バックグラウンドプロセスとして起動する**。
 
 ```bash
-nohup python3 delegate.py ... > /tmp/opencode/agent-<N>.log 2>&1 &
+nohup python3 delegate.py ... > /tmp/opencode/procon/agent-<N>.log 2>&1 &
 ```
 
 これで元のセッションを閉じて作業を進められる。
@@ -121,7 +121,7 @@ nohup python3 delegate.py ... > /tmp/opencode/agent-<N>.log 2>&1 &
 ```bash
 # 委任先のセッションで、完了時にこれを実行する
 python3 .agents/skills/opencode-session-delegation/scripts/delegate.py \
-  --notify-done <宛先セッションID> /tmp/opencode/done-<something>.json
+  --notify-done <宛先セッションID> /tmp/opencode/procon/done-<something>.json
 ```
 
 マーカー JSON には `summary` と `checks` を書く。
@@ -205,20 +205,6 @@ mutation($id: ID!) { resolveReviewThread(input: { threadId: $id }) { thread { id
 
 **1 件ずつ、該当箇所の変更が済んでから resolve する。**
 各コメントには対応内容を返信する。
-
-## 旧スクリプト
-
-`/tmp/opencode` に置いていた補助スクリプトは skill 側へ統合した。
-**新しいスクリプトを作らず、これを使う。**
-
-| 旧 | 移行先 |
-|---|---|
-| `send_prompt.py` / `send_prompt2.py` | `delegate.py` |
-| `notify_done.py` | `delegate.py --notify-done` |
-| `poll-session.py` | `session_state.py` |
-
-`send_prompt.py` は `providerID` / `modelID` をトップレベルに送るため**必ずハングする**。
-事故のもとになるので、記録として残す。
 
 ## 落とし穴
 
