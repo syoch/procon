@@ -163,8 +163,8 @@ function printUsage() {
 道そのものはモードをまたいで同じ id を持つのでこれで比べられる。
 交差点内部の MapVCrossEdge は隣接ノードがそのモードのグラフに含まれるかどうかで id が変わるため数えない。
 
-始点・終点はフィクスチャ（app/bench/fixtures/nagaoka-central.json.gz の長岡市中心部）の
-内側を指定する。範囲外の点は探索できない。`);
+  始点・終点は OSM キャッシュ（OSM_CACHE_DIR）のセル範囲の内側を指定する。
+  範囲外の点は探索できない。セルは先に node bench/.build/fetch-fixture.mjs で取得する。`);
 }
 
 type SearchResult = {
