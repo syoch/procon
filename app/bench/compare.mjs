@@ -531,6 +531,21 @@ function renderWarnings(warnings) {
   return ["> [!WARNING]", ...warnings.map((w) => `> ${w}`)];
 }
 
+/** 比較不成立の理由を機械可読にするための接頭辞。CI はこの 1 行で注記の等級を切り替える */
+const REASON_PREFIX = "bench-compare: ";
+
+/**
+ * 比較不成立の理由を分類する。
+ *
+ * `contract`: base か head の出力が測定項目 ID を持たない（bench の出力契約の過渡期。merge 後は解消する）
+ * `ids`: 両側に共通する測定項目 ID が無い
+ * `machine`: 校正（機械の速度）が外れている
+ */
+function reasonOf(warnings) {
+  if (warnings.some((w) => w.startsWith("測定項目 ID が一致しません"))) return "ids";
+  return "machine";
+}
+
 try {
   parseArgs(process.argv.slice(2));
   const base = load(OPTIONS.base);
@@ -552,15 +567,21 @@ try {
   console.log(text);
   // 回帰を不成立より先に判定する。校正が外れていても許容倍率を超えていれば exit 1 にする。
   // 偽陽性でも緑にしない方が、回帰検出を黙って止めるよりはよい。
-  if (result.regressions.length > 0) process.exitCode = 1;
-  else if (warnings.length > 0) process.exitCode = 2;
+  if (result.regressions.length > 0) {
+    process.exitCode = 1;
+  } else if (warnings.length > 0) {
+    process.exitCode = 2;
+    console.error(`${REASON_PREFIX}${reasonOf(warnings)}: ${warnings[0]}`);
+  }
 } catch (error) {
   const versionMismatch = error instanceof BenchInputError && error.versionMismatch;
+  const category = versionMismatch ? "contract" : "invalid";
   console.error(
     error instanceof BenchInputError
       ? `bench の結果が契約を守っていません: ${error.message}`
       : `bench の比較に失敗しました: ${error instanceof Error ? error.message : String(error)}`,
   );
+  console.error(`${REASON_PREFIX}${category}: ${error.message}`);
   // 版が違えば比較というものが成り立たない（exit 2）。
   // 読めない・構造が壊れている場合は契約違反なので赤にする（exit 1）
   process.exit(versionMismatch ? 2 : 1);

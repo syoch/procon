@@ -137,6 +137,8 @@ CI が **base のコードと head のコードを同じランナー上で 2 回
 
 比較は測定項目 ID 単位で行うので、base の bench が head の bench と違っても
 同じ ID の測定項目同士は比較できる。
+ただし両側が測定項目 ID を持つことが前提で、
+base を測定した bench が `measurements` を持たない場合は比較不成立になる。
 
 ```
 App@base    <-> bench/Measure@base   ->  bench 結果 ---+
@@ -263,6 +265,18 @@ JSON では `scenarioCalibration` にシナリオ名で入る）。
 
 校正が外れていて**回帰が無い**ときは exit 2（緑 + 警告）で、
 見出しに「比較が成立しないため、回帰の判定は出していません」と書く。
+
+`compare.mjs` は exit 2 のとき、理由を `bench-compare: <理由>: <説明>` の 1 行で stderr に出す。
+CI はその 1 行で注記の等級を切り替える。
+
+| 理由 | 意味 | 注記 |
+| --- | --- | --- |
+| `contract` | base か head の出力が測定項目 ID を持たない（出力契約の過渡期） | `::notice::` |
+| `ids` | 両側に共通する測定項目 ID が無い | `::warning::` |
+| `machine` | 校正（機械の速度）が外れている | `::warning::` |
+
+`contract` は「bench の出力契約を変えた PR」でしか出ない。
+その PR を merge したあとは両側とも新しい契約になるので、注記（`::notice::`）にして区別する。
 
 **基準ファイルを持たない設計が拾えないもの**:
 

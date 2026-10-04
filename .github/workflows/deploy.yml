@@ -140,8 +140,12 @@ jobs:
           fi
 
       # 計測ハーネスは両側とも各 checkout が持つものを使う。
-      # ハーネスの同一性は求めない。比較は**測定項目 ID 単位**で行うので、
-      # base の bench が head の bench と違っても、同じ ID の測定項目同士は比較できる。
+      # ハーネスの同一性は求めない。比較は**測定項目 ID 単位**で行う。
+      #
+      # ただし測定項目 ID を持つのは新しい方の bench だけなので、
+      # base を測定した bench が measurements を持たない場合は比較が成立しない。
+      # それは bench の出力契約を変えた PR のときだけ当てになり、
+      # その PR が merge されたあとは両側とも新しい契約になるので自然に解決する。
       - name: 基準となる sha を控える
         id: refs
         run: |
@@ -251,15 +255,28 @@ jobs:
             } >> "$GITHUB_STEP_SUMMARY"
             echo "::error::base 側の計測に失敗したため、性能の比較が成立しませんでした"
           elif [ "$CMP_EXIT" = "2" ]; then
-            {
-              echo '> [!WARNING]'
-              echo '> 性能の比較は成立しませんでした（回帰の判定はしていません）。'
-              while IFS= read -r line; do
-                echo "> $line"
-              done < "$RUNNER_TEMP/bench-compare.err"
-              echo
-            } >> "$GITHUB_STEP_SUMMARY"
-            echo "::warning::性能の比較が成立しませんでした（理由は job summary を参照）"
+            # 出力契約を変えた PR では、merge するまで base が測定項目 ID を持たない。
+            # その警告は「その PR でしか出ない」ので、毎回 ::warning:: を上げると
+            # 誰も読まなくなる。契約の過渡期は注記（::notice::）にして区別する。
+            REASON=$(sed -n 's/^bench-compare: \([a-z]*\):.*/\1/p' "$RUNNER_TEMP/bench-compare.err" | head -1)
+            if [ "$REASON" = "contract" ]; then
+              {
+                echo '> [!NOTE]'
+                echo '> 性能の比較は成立しませんでした（回帰の判定はしていません）。'
+                echo '> この PR で bench の出力契約を変えたため、merge するまで base 側が測定項目 ID を持たない状態です。'
+              } >> "$GITHUB_STEP_SUMMARY"
+              echo "::notice::bench の出力契約の過渡期なので、性能の比較は成立しません（merge 後は解消します）"
+            else
+              {
+                echo '> [!WARNING]'
+                echo '> 性能の比較は成立しませんでした（回帰の判定はしていません）。'
+                while IFS= read -r line; do
+                  echo "> $line"
+                done < "$RUNNER_TEMP/bench-compare.err"
+                echo
+              } >> "$GITHUB_STEP_SUMMARY"
+              echo "::warning::性能の比較が成立しませんでした（原因は $REASON。理由は job summary を参照）"
+            fi
           fi
 
           if [ -s "$RUNNER_TEMP/bench-compare.md" ]; then
