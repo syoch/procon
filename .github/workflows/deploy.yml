@@ -89,7 +89,7 @@ jobs:
     env:
       BENCH_ITERATIONS: "20"
       BENCH_WARMUP: "5"
-      OSM_CACHE_DIR: ${{ runner.temp }}/osm-cache
+      OSM_CACHE_DIR: ${{ github.workspace }}/osm-cache
     steps:
       # 比較する 2 つの作業ディレクトリを用意する
       - uses: actions/checkout@v4
@@ -130,7 +130,7 @@ jobs:
         id: osm_cache
         uses: actions/cache/restore@v4
         with:
-          path: ${{ runner.temp }}/osm-cache
+          path: ${{ env.OSM_CACHE_DIR }}
           key: bench-osm-cache-v1
 
       # アプリのキャッシュ層（requireOSMData / cacheManager / fetchOverpassData）を通すので、
@@ -146,7 +146,7 @@ jobs:
         if: steps.osm_cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@v4
         with:
-          path: ${{ runner.temp }}/osm-cache
+          path: ${{ env.OSM_CACHE_DIR }}
           key: bench-osm-cache-v1
 
       # bench が main にあるかどうかで 2 通りに分かれる。
