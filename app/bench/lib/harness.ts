@@ -6,7 +6,6 @@
  *
  * @ref README.md#出力の読み方
  */
-import { stageNames, type ScenarioName, type StageName } from "../ids";
 
 export type Samples = {
   /** 実測した回の中央値 [ms] */
@@ -81,18 +80,15 @@ export function stopwatch(): () => number {
 /**
  * 1 シナリオ分の測定項目を段ごとに集めるレコーダ。
  *
- * 生成時のシナリオ名から「そのシナリオが測る段」だけを要求するので、
- * `mark("SplitOSMDdata")` のような typo はコンパイルエラーになる。
+ * 段の名は自由な文字列で、型では絞らない。
+ * 段の名前を変えると測定項目 ID が変わるので、base と head で共通する項目が減る。
  * 暖機ぶんは `result()` でまとめて落とす。
  */
-export class StageRecorder<S extends ScenarioName = ScenarioName> {
-  private readonly samples = new Map<StageName<S>, number[]>();
+export class StageRecorder {
+  private readonly samples = new Map<string, number[]>();
   private last = performance.now();
 
-  constructor(
-    private readonly scenario: S,
-    private readonly options: MeasureOptions,
-  ) {}
+  constructor(private readonly options: MeasureOptions) {}
 
   /**
    * 計測の開始位置を現在時刻に戻す。
@@ -104,7 +100,7 @@ export class StageRecorder<S extends ScenarioName = ScenarioName> {
   }
 
   /** 直前の mark からの経過時間を測定項目に積む */
-  mark(stage: StageName<S>): void {
+  mark(stage: string): void {
     const now = performance.now();
     const list = this.samples.get(stage);
     if (list === undefined) this.samples.set(stage, [now - this.last]);
@@ -114,7 +110,7 @@ export class StageRecorder<S extends ScenarioName = ScenarioName> {
 
   /** 段だけの処理を繰り返し測る。データの準備は `setup` で行う */
   async measure<R>(
-    stage: StageName<S>,
+    stage: string,
     setup: () => R | Promise<R>,
     fn: (prepared: R) => void | Promise<void>,
   ): Promise<void> {
@@ -122,35 +118,19 @@ export class StageRecorder<S extends ScenarioName = ScenarioName> {
   }
 
   /** 実行時に段が確定する測定項目に、回ごとの所要時間（暖機の回も含めた列）を積む */
-  record(stage: StageName<S>, samples: number[]): void {
+  record(stage: string, samples: number[]): void {
     const list = this.samples.get(stage);
     if (list === undefined) this.samples.set(stage, [...samples]);
     else list.push(...samples);
   }
 
-  /**
-   * 暖機回ぶんを捨てて中央値を取り直す。
-   *
-   * レジストリが列挙する段を 1 つも測ってなければ結果を作らない。
-   * 段が欠けたまま downstream（JSON 写出・比較）へ進むと、
-   * 比較の時点で「その項目が無い」ことしか分からなくなる。
-   */
-  result(): Record<StageName<S>, Samples> {
-    const result = {} as Record<StageName<S>, Samples>;
-    const missing: StageName<S>[] = [];
-    for (const stage of stageNames(this.scenario)) {
-      const kept = this.samples.get(stage)?.slice(this.options.warmup);
-      if (kept === undefined || kept.length === 0) {
-        missing.push(stage);
-        continue;
-      }
+  /** 暖機回ぶんを捨てて、測った段の中央値を取り直す */
+  result(): Record<string, Samples> {
+    const result: Record<string, Samples> = {};
+    for (const [stage, all] of this.samples) {
+      const kept = all.slice(this.options.warmup);
+      if (kept.length === 0) continue;
       result[stage] = summarize(kept);
-    }
-    if (missing.length > 0) {
-      throw new Error(
-        `レジストリにある段を測っていません: ${missing.map((stage) => `${this.scenario}/${stage}`).join(", ")}` +
-          "（bench/ids.ts の SCENARIO_STAGE_IDS と実装を突き合わせてください）",
-      );
     }
     return result;
   }

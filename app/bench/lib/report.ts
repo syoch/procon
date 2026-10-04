@@ -15,9 +15,6 @@ import { z } from "zod";
 /** 結果 JSON の版。構造を変えたらこれを変え、スキーマも同時に更新する */
 export const SCHEMA_VERSION = 1;
 
-/** 測定項目 ID の形: `{シナリオ}/{段}` または `{シナリオ}/{モード}/{段}` */
-export const STAGE_ID_PATTERN = /^[^/\s]+\/[^/\s]+(\/[^/\s]+)?$/;
-
 /** 1 件の測定値 */
 export const measurementSchema = z.object({
   /** 実測した回の中央値 [ms] */
@@ -82,23 +79,15 @@ export class SchemaViolationError extends Error {
 /**
  * 結果 JSON を読んで検証する。
  *
+ * 測定項目 ID はキーのまま扱う。
+ * ID の形は bench 側の約束（`{シナリオ}[/{モード}]/{段}`）で、ここでは見ない。
+ *
  * 版の違う JSON は `UnsupportedSchemaError`、版が同じで構造が壊れているものは
  * `SchemaViolationError` で落とす。呼び出し側はこの 2 つで exit code を分ける。
- * 検証に通った値をそのまま返す。
  */
 export function parseBenchReport(raw: unknown): BenchReport {
   const parsed = benchReportSchema.safeParse(raw);
-  if (parsed.success) {
-    // zod の record はキーのパターンを持てないので、ID の形だけ別に確かめる
-    for (const id of Object.keys(parsed.data.measurements)) {
-      if (!STAGE_ID_PATTERN.test(id)) {
-        throw new SchemaViolationError(
-          `測定項目 ID の形が {シナリオ}/{段} または {シナリオ}/{モード}/{段} ではありません: ${id}`,
-        );
-      }
-    }
-    return parsed.data;
-  }
+  if (parsed.success) return parsed.data;
   if (isWrongVersion(raw)) {
     throw new UnsupportedSchemaError(
       `結果 JSON の版が ${String((raw as { schemaVersion: unknown }).schemaVersion)} です` +

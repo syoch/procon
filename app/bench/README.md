@@ -48,9 +48,6 @@ node で実行する。アプリと同じ TypeScript ソースを `$lib` など�
 値が決まっているのは [`deploy.yml`](../../.github/workflows/deploy.yml) の
 `BENCH_ITERATIONS` / `BENCH_WARMUP` の 2 つだけで、base と head に同じ値を渡す。
 
-開発機（Ryzen 5 5625U / Node 26.10.0）で `--iterations 20 --warmup 5` を全モードで走らせると
-81 項目を 30.5 秒で測定する。
-
 ## シナリオ
 
 | シナリオ | 測るもの | 実行される頻度 |
@@ -73,45 +70,28 @@ node で実行する。アプリと同じ TypeScript ソースを `$lib` など�
 
 ## 測定項目 ID
 
-**測定項目は ID で突き合わせる。** ID はモードを使うシナリオでは `{シナリオ}/{モード}/{段}`、
-使わないシナリオでは `{シナリオ}/{段}` になる。
-段の全 ID を [`bench/ids.ts`](./ids.ts) の `SCENARIO_STAGE_IDS` に 1 箇所で列挙する。
+**測定項目は ID で突き合わせる。**
+ID はモードを使うシナリオでは `{シナリオ}/{モード}/{段}`、使わないシナリオでは `{シナリオ}/{段}` になる。
+`run.ts` の `stageId()` が組み立てる。
 
-```ts
-export const SCENARIO_STAGE_IDS = {
-  pipeline: ["divideBoundary", ..., "measureSegmentsWidthCoverage"],
-  split: ["SplitOSMData"],
-  "cache-read": ["requireOSMData", "RequestContext.divide", ...],
-} as const;
-
-/** モードを使うシナリオ。ID は `{シナリオ}/{モード}/{段}` になる */
-const USES_MODE = { pipeline: true, split: false, "cache-read": false } as const;
-```
-
-`pipeline` は 15 段を 5 モードで測るので 75 項目、`split` が 1、`cache-read` が 5 で
-合計 81 項目になる。
-ID は `stageId()` が組み立てて、レジストリに無い ID だと JSON を作る前に落ちる。
-
-シナリオは `StageRecorder` にシナリオ名を渡してから段名を並べる。
-生成時のシナリオ名から「そのシナリオが測る段」だけを要求するので、
-`mark("SplitOSMDdata")` のような typo はコンパイルエラーになる。
-`bench/**/*.ts` は `pnpm check`（`jsconfig.json` の `include`）の対象なので、
-CI でもこの保証が効く。
+段の名前は文字列で、型では絞らない。
+段の名前を変えると ID が変わるので、base と head で共通する項目が減る（削除 + 追加）。
+したがって typo は差分に出たときに読む。
+モードを使うシナリオはモードごとに 1 個作る（`pipelineScenario(mode)`）ので、
+モードの判定は上流側に要らない。
 
 | 記法 | 用途 |
 |---|---|
 | `recorder.mark("段")` | 1 パスの中の区切りを測る（`pipeline`） |
 | `recorder.measure("段", setup, fn)` | 段だけの処理を暖機込みで繰り返し測る（`split` / `cache-read`） |
-| `recorder.record(stage, samples)` | 実行時に段が確定する測定項目に、生のサンプルを積む（`cache-read` の `RequestContext.*`） |
+| `recorder.record("段", samples)` | 実行時に段が確定する測定項目に、生のサンプルを積む（`cache-read` の `RequestContext.*`） |
 
-`RequestContext` の計測名は文字列で届くので、`toStageName()` でレジストリに無い名前は
-JSON を作る前に落とす。
-本番側に計測が追加されたら、bench 側で ID を足すまで落ちる。
+`RequestContext` の計測名は実行時に文字列で届くので、そのまま段の名前にする。
+本番側に計測が追加されると、段が 1 つ増える。
 
 ### ID に入れるもの
 
-ID は `{シナリオ}/{段}` の 1 つだけで、**上流から渡せず、リビジョンによって変動しうる値**だけを
-入れる。
+ID には**上流から渡えず、リビジョンによって変動しうる値だけ**を入れる。
 
 | 値 | 扱い |
 |---|---|
@@ -208,8 +188,8 @@ base に無い ID は「追加」、head に無い ID は「削除」として `
 | `scenarioCalibration` | シナリオ名 -> そのシナリオを走らせる直前の校正 |
 | `results` | シナリオごとの補足（データ規模・合計時間）。比較には使わない |
 
-測定項目 ID は既知の定数集合（`bench/ids.ts`）なので、JSON の構造は固定する。
 `measurements` の各キーがそのまま測定項目 ID になる。
+ID の形は bench 側の約束なので、`lib/report.ts` は検証しない。
 ID の集合が base と head で違う場合は「追加」「削除」として `compare.mjs` が明示する。
 
 検証に失敗したときの扱いは 2 通りに分かれる。
@@ -408,7 +388,6 @@ bench/
 ├── build.mjs                      # esbuild でバンドルする
 ├── compare.mjs                    # 2 つの結果を ID で突き合わせる（回帰チェック）
 ├── env-stub.ts                    # $env/dynamic/private の差し替え
-├── ids.ts                         # 測定項目 ID のレジストリ（全 ID を 1 箇所に列挙する）
 ├── run.ts                         # エントリ。引数解析・出力・回帰チェック
 ├── lib/
 │   ├── data.ts                    # フィクスチャ読み込み・始点終点の決定

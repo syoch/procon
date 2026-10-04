@@ -6,7 +6,6 @@ import { requireOSMData } from "../../src/routes/api/osm/index";
 import { cacheManager } from "../../src/routes/api/osm/fs-cache-manager";
 import { RequestContext } from "../../src/lib/tracing/requestContext";
 import { divideBoundary } from "../../src/routes/api/osm/boundary";
-import { toStageName, type StageName } from "../ids";
 import { fixtureBoundary, listFixtureCells, readFixtureCell } from "../lib/data";
 import { StageRecorder } from "../lib/harness";
 import type { Scenario, ScenarioResult } from "./types";
@@ -21,10 +20,10 @@ import type { Scenario, ScenarioResult } from "./types";
  * `cacheManager` は import 時に `OSM_CACHE_DIR` を読むので、このシナリオでは
  * プロセス環境ではなく `env` を差し替えてから readCache する。
  */
-export const cacheReadScenario: Scenario<"cache-read"> = {
+export const cacheReadScenario: Scenario = {
   name: "cache-read",
   description: "ファイルキャッシュが全ヒットした状態での requireOSMData（キャッシュ読取側）",
-  async run({ iterations, warmup }): Promise<ScenarioResult<"cache-read">> {
+  async run({ iterations, warmup }): Promise<ScenarioResult> {
     const boundary = fixtureBoundary();
     const cellCount = divideBoundary(boundary).length;
 
@@ -42,18 +41,17 @@ export const cacheReadScenario: Scenario<"cache-read"> = {
       throw new Error("キャッシュが効いていない: Overpass 取得に到達した");
     };
 
-    // RequestContext の計測名は実行時に文字列で届く。レジストリに無い名前は
-    // toStageName が落とすので、本番側に計測が増えたら bench 側で明示する必要がある。
-    const contextSamples = new Map<StageName<"cache-read">, number[]>();
+    // RequestContext の計測名は実行時に文字列で届くので、そのまま測定項目の名にする
+    const contextSamples = new Map<string, number[]>();
     let elementCount = 0;
 
-    const recorder = new StageRecorder("cache-read", { warmup, iterations });
+    const recorder = new StageRecorder({ warmup, iterations });
     const runOnce = async () => {
       const ctx = new RequestContext();
       const data = await requireOSMData(ctx, boundary, cacheManager, notExpectedToFetch);
       // endMeasurement は measuredEntries を空にするので、先に読む
       for (const entry of ctx.measuredEntries) {
-        const stage = toStageName("cache-read", `RequestContext.${entry.name}`);
+        const stage = `RequestContext.${entry.name}`;
         const samples = contextSamples.get(stage);
         if (samples === undefined) contextSamples.set(stage, [entry.endTime - entry.startTime]);
         else samples.push(entry.endTime - entry.startTime);

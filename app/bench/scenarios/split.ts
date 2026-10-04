@@ -12,12 +12,12 @@ import type { Scenario, ScenarioResult } from "./types";
  * 出力の重複やセル取りこぼしは、このシナリオでは検出できない。
  * 正しさの検証は `app/tests/osm-cache/split-osm-data.test.ts` の責務。
  */
-export const splitScenario: Scenario<"split"> = {
+export const splitScenario: Scenario = {
   name: "split",
   description: "SplitOSMData 単体（キャッシュ保存時に 1 回だけ走る）",
-  async run({ iterations, warmup }): Promise<ScenarioResult<"split">> {
+  async run({ iterations, warmup }): Promise<ScenarioResult> {
     const fixture = loadFixture();
-    const recorder = new StageRecorder("split", { warmup, iterations });
+    const recorder = new StageRecorder({ warmup, iterations });
     await recorder.measure(
       "SplitOSMData",
       // clone は測定対象ではないので setup 側で行う
