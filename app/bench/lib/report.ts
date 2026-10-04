@@ -1,16 +1,14 @@
 /**
- * bench の結果 JSON のスキーマ。
+ * 結果 JSON のスキーマ。
  *
- * base と head を突き合わせるときに共有する契約は ID と測定値だけだが、
- * その 2 つを取り出せるようにするには「JSON がどの形か」を決める必要がある。
- * 取り出す側（compare.mjs）と作る側（run.ts）が同じスキーマを使う。
+ * 作る側（`run.ts`）と取り出す側（`compare.mjs`）が同じスキーマを使う。
+ * 型は `z.infer` で取り出すので、検証と型が同じ定義から生まれる。
  *
- * 測定項目 ID は既知の定数集合（`bench/ids.ts`）なので、JSON の構造は固定する。
- * ID は `measurements` のキーにそのまま入る。
- * キーの集合が base と head で違う場合は「追加」「削除」として compare.mjs が明示する。
+ * 版の違う JSON は `UnsupportedSchemaError`、構造が契約を守っていないものは
+ * `SchemaViolationError` で落とす。
+ * 呼び出し側は前者を比較不成立（exit 2）、後者を契約違反（exit 1）として扱う。
  *
- * 型は zod のスキーマから取り出す（`z.infer`）。
- * 検証と型が同じ定義から生まれるので、片方だけ直した状態を置かない。
+ * @ref README.md#結果-json-のスキーマ
  */
 import { z } from "zod";
 
@@ -91,7 +89,7 @@ export class SchemaViolationError extends Error {
 export function parseBenchReport(raw: unknown): BenchReport {
   const parsed = benchReportSchema.safeParse(raw);
   if (parsed.success) {
-    // キーの形だけ別に確かめる。ID であることを保証するJSON ではない
+    // zod の record はキーのパターンを持てないので、ID の形だけ別に確かめる
     for (const id of Object.keys(parsed.data.measurements)) {
       if (!STAGE_ID_PATTERN.test(id)) {
         throw new SchemaViolationError(

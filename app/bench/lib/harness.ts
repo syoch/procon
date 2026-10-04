@@ -1,13 +1,10 @@
 /**
  * 計測ハーネスの共通部品。
  *
- * 共有ランナー（GitHub Actions など）の CPU は一定ではないので、絶対値ではなく
- * 中央値と分散で判断する。暖機を入れないと JIT の最適化前の回が中央値に混ざり、
- * 数値が安定しないため必ず暖機する。
+ * 共有ランナーの CPU は一定ではないので中央値と分散で判断する。
+ * シナリオが使う記法は `StageRecorder` 1 つに統一している。
  *
- * シナリオが使う記法は `StageRecorder` 1 つに統一した。
- * `mark` は 1 パスの中の区切りを、`measure` は 1 段だけの繰り返しを測る。
- * どちらも測定項目 ID（`bench/ids.ts`）を要求するので、ID を間違えるとコンパイルエラーになる。
+ * @ref README.md#出力の読み方
  */
 import { stageNames, type ScenarioName, type StageName } from "../ids";
 

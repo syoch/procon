@@ -1,25 +1,10 @@
 /**
- * bench のフィクスチャを `OSM_CACHE_DIR` に用意する。
+ * フィクスチャを `OSM_CACHE_DIR` に用意する。
  *
- * 取得は本番と同じ `requireOSMData` を通すので、
- * セルへの分割・問い合わせ・保存はすべて本番と同じ経路になる。
- * 書かれるセルファイル名も `fs-cache-manager` の形式なので、
- * `cache-read` シナリオは `readCache` でそのまま同じセルを読める。
+ * 取得は本番と同じ `requireOSMData` を通すので、セルへの分割・問い合わせ・保存は
+ * 本番と同じ経路になる。1 クエリが 504 を返すときは全体を取り直す。
  *
- * `requireOSMData` は取得済みのセルを `readCache` で飛ばし、
- * 残ったセルを `simplifyBoundaries` で 1 クエリにまとめる。
- * したがって 1 回の実行で投げるクエリは 1 本だけになる。
- *
- * 1 クエリが 504 を返すことがある（実測では 15 秒で切られた）ので、
- * 全体を取り直す仕様にして 3 回まで試す。取得済みのセルはキャッシュに残っているので
- * 取り直しのクエリも減る。
- *
- * `meta.json` と全セルが揃っていれば何もしない。
- * CI は `actions/cache` でこのディレクトリを復元するので、2 回目以降はネットワークに出ない。
- *
- * 使い方:
- *   node bench/build.mjs
- *   OSM_CACHE_DIR=/tmp/osm-cache node bench/.build/fetch-fixture.mjs
+ * @ref README.md#フィクスチャ
  */
 import { existsSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
