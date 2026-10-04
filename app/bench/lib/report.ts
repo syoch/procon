@@ -17,8 +17,8 @@ import { z } from "zod";
 /** 結果 JSON の版。構造を変えたらこれを変え、スキーマも同時に更新する */
 export const SCHEMA_VERSION = 1;
 
-/** 測定項目 ID の形: `{シナリオ}/{段}` */
-export const STAGE_ID_PATTERN = /^[^/\s]+\/[^/\s]+$/;
+/** 測定項目 ID の形: `{シナリオ}/{段}` または `{シナリオ}/{モード}/{段}` */
+export const STAGE_ID_PATTERN = /^[^/\s]+\/[^/\s]+(\/[^/\s]+)?$/;
 
 /** 1 件の測定値 */
 export const measurementSchema = z.object({
@@ -94,7 +94,9 @@ export function parseBenchReport(raw: unknown): BenchReport {
     // キーの形だけ別に確かめる。ID であることを保証するJSON ではない
     for (const id of Object.keys(parsed.data.measurements)) {
       if (!STAGE_ID_PATTERN.test(id)) {
-        throw new SchemaViolationError(`測定項目 ID の形が {シナリオ}/{段} ではありません: ${id}`);
+        throw new SchemaViolationError(
+          `測定項目 ID の形が {シナリオ}/{段} または {シナリオ}/{モード}/{段} ではありません: ${id}`,
+        );
       }
     }
     return parsed.data;

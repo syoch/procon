@@ -20,9 +20,8 @@ cd app
 export OSM_CACHE_DIR=/tmp/procon-osm-cache
 node bench/build.mjs                                   # 先にバンドルする
 node bench/.build/fetch-fixture.mjs                    # 長岡市中心の実データを取りに行く（2 秒程度）
-node bench/.build/bench.mjs --iterations 20 --warmup 5 # 全シナリオを測る
+node bench/.build/bench.mjs --iterations 20 --warmup 5 # 全シナリオを全モードで測る
 node bench/.build/bench.mjs --iterations 20 --warmup 5 --scenario pipeline
-node bench/.build/bench.mjs --iterations 20 --warmup 5 --mode bicycle
 node bench/.build/bench.mjs --iterations 20 --warmup 5 --json /tmp/out.json --quiet
 node bench/.build/bench.mjs --help
 
@@ -48,13 +47,20 @@ node で実行する。アプリと同じ TypeScript ソースを `$lib` など�
 値が決まっているのは [`deploy.yml`](../../.github/workflows/deploy.yml) の
 `BENCH_ITERATIONS` / `BENCH_WARMUP` の 2 つだけで、base と head に同じ値を渡す。
 
+開発機（Ryzen 5 5625U / Node 26.10.0）で `--iterations 20 --warmup 5` を全モードで走らせると
+81 項目を 30.5 秒で測定する。
+
 ## シナリオ
 
 | シナリオ | 測るもの | 実行される頻度 |
 |---|---|---|
-| `pipeline` | データ層 → グラフ構築 → 経路探索 → 急カーブの 1 検索の CPU 内訳 | 検索のたび |
+| `pipeline` | データ層 → グラフ構築 → 経路探索 → 急カーブの 1 検索の CPU 内訳（全モード） | 検索のたび |
 | `split` | `SplitOSMData` 単体 | キャッシュ保存時のみ（新規セル / TTL 失効） |
 | `cache-read` | ファイルキャッシュが全ヒットした状態での `requireOSMData` | 検索のたび |
+
+`pipeline` は全モード（`walk` / `bicycle` / `car` / `motorcycle` / `truck`）を測る。
+モードでグラフの大きさも経路も変わるので（開発機の実測で `searchGraphEdges` が
+11143〜16158 まで変わる）、モードごとに別々の測定項目として持つ。
 
 `cache-read` からは本番の `RequestContext` と同じ段（`RequestContext.*`）も採れる。
 ここが本番のログに出る値なので、実装のログと突き合わせられる。
@@ -66,16 +72,24 @@ node で実行する。アプリと同じ TypeScript ソースを `$lib` など�
 
 ## 測定項目 ID
 
-**測定項目は ID で突き合わせる。** ID は `{シナリオ}/{段}` の形式で、
-全 ID を [`bench/ids.ts`](./ids.ts) の `SCENARIO_STAGE_IDS` に 1 箇所で列挙する。
+**測定項目は ID で突き合わせる。** ID はモードを使うシナリオでは `{シナリオ}/{モード}/{段}`、
+使わないシナリオでは `{シナリオ}/{段}` になる。
+段の全 ID を [`bench/ids.ts`](./ids.ts) の `SCENARIO_STAGE_IDS` に 1 箇所で列挙する。
 
 ```ts
 export const SCENARIO_STAGE_IDS = {
-  pipeline: ["__start__", "divideBoundary", ..., "measureSegmentsWidthCoverage"],
+  pipeline: ["divideBoundary", ..., "measureSegmentsWidthCoverage"],
   split: ["SplitOSMData"],
   "cache-read": ["requireOSMData", "RequestContext.divide", ...],
 } as const;
+
+/** モードを使うシナリオ。ID は `{シナリオ}/{モード}/{段}` になる */
+const USES_MODE = { pipeline: true, split: false, "cache-read": false } as const;
 ```
+
+`pipeline` は 15 段を 5 モードで測るので 75 項目、`split` が 1、`cache-read` が 5 で
+合計 81 項目になる。
+ID は `stageId()` が組み立てて、レジストリに無い ID だと JSON を作る前に落ちる。
 
 シナリオは `StageRecorder` にシナリオ名を渡してから段名を並べる。
 生成時のシナリオ名から「そのシナリオが測る段」だけを要求するので、
@@ -87,9 +101,9 @@ CI でもこの保証が効く。
 |---|---|
 | `recorder.mark("段")` | 1 パスの中の区切りを測る（`pipeline`） |
 | `recorder.measure("段", setup, fn)` | 段だけの処理を暖機込みで繰り返し測る（`split` / `cache-read`） |
-| `recorder.record(id, samples)` | 実行時に ID が確定する測定項目に、生のサンプルを積む（`cache-read` の `RequestContext.*`） |
+| `recorder.record(stage, samples)` | 実行時に段が確定する測定項目に、生のサンプルを積む（`cache-read` の `RequestContext.*`） |
 
-`RequestContext` の計測名は文字列で届くので、`toStageId()` でレジストリに無い名前は
+`RequestContext` の計測名は文字列で届くので、`toStageName()` でレジストリに無い名前は
 JSON を作る前に落とす。
 本番側に計測が追加されたら、bench 側で ID を足すまで落ちる。
 
@@ -100,14 +114,16 @@ ID は `{シナリオ}/{段}` の 1 つだけで、**上流から渡せず、リ
 
 | 値 | 扱い |
 |---|---|
-| `{シナリオ}/{段}` | ID の唯一の成分 |
-| `mode` | `--mode` で渡す。CI は全シナリオ `car` 固定 |
+| `{シナリオ}` | ID の 1 番目の成分 |
+| `{モード}` | モードを使うシナリオの ID の 2 番目の成分 |
+| `{段}` | ID の最後の成分 |
 | `iterations` / `warmup` | CLI で渡す。CI は 1 箇所の値を base と head に渡す |
 | `node` | `node-version: 26` で CI が固定 |
 | データ規模（ノード数・辺数・経路長） | 同じ bbox の OSM キャッシュが保証する |
 
 したがって ID が完全一致する項目どうしは同じ測定対象を指し、比べるのは `median` の比だけになる。
 ID をリネームすると **削除 + 追加** になり、比較されない。
+モードの値を変えると ID が変わるので、そのモードだけ比較されなくなる。
 
 ## 出力の読み方
 

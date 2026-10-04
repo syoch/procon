@@ -6,7 +6,7 @@ import { transientSplit } from "../../src/lib/transient-split";
 import { pathFind } from "../../src/lib/path_finder";
 import { collectRoadJunctions, detectSharpTurnsOnPath } from "../../src/lib/sharp_turn";
 import { measureSegmentsWidthCoverage } from "../../src/lib/road_width";
-import { MODE_PROFILES, type ModeId } from "../../src/lib/mode_profiles";
+import { MODE_IDS, MODE_PROFILES } from "../../src/lib/mode_profiles";
 import {
   SplitOSMData,
   mergeOSMData,
@@ -31,8 +31,11 @@ import type { Scenario, ScenarioResult } from "./types";
 export const pipelineScenario: Scenario<"pipeline"> = {
   name: "pipeline",
   description: "1 回の経路探索（キャッシュ済み）にかかる CPU を段ごとに測る",
+  // 経路探索の特性はモードで変わるので、全モードを測る
+  modes: MODE_IDS,
   run({ mode, iterations, warmup }): ScenarioResult<"pipeline"> {
-    const profile = MODE_PROFILES[mode as ModeId];
+    if (mode === undefined) throw new Error("pipeline はモードを指定して測るシナリオです");
+    const profile = MODE_PROFILES[mode];
     const parameters = profile.defaultParameters;
     const fixture = loadFixture();
     const boundary = fixtureBoundary();

@@ -1,9 +1,10 @@
+import type { ModeId } from "../../src/lib/mode_profiles";
 import type { ScenarioName, StageName } from "../ids";
 import type { Samples } from "../lib/harness";
 
 export type ScenarioContext = {
-  /** 移動モード (car / bicycle / walk / ...) */
-  mode: string;
+  /** 移動モード。モードを使うシナリオには必ず渡る */
+  mode?: ModeId;
   /** 実測回数 */
   iterations: number;
   /** 暖機回数 */
@@ -12,7 +13,7 @@ export type ScenarioContext = {
 
 export type ScenarioResult<S extends ScenarioName = ScenarioName> = {
   scenario: S;
-  /** 段ごとの実測値。キーは測定項目 ID の `{シナリオ}/{段}` の `{段}` 側 */
+  /** 段ごとの実測値。キーは測定項目 ID の `{段}` の部分 */
   stages: Record<StageName<S>, Samples>;
   /** 各段の中央値を足したもの [ms] */
   total: number;
@@ -23,6 +24,8 @@ export type ScenarioResult<S extends ScenarioName = ScenarioName> = {
 export type Scenario<S extends ScenarioName = ScenarioName> = {
   name: S;
   description: string;
+  /** モードごとに測るなら列挙する。1 回の実行で列挙したモードをすべて測る */
+  modes?: readonly ModeId[];
   run(context: ScenarioContext): ScenarioResult<S> | Promise<ScenarioResult<S>>;
 };
 

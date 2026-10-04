@@ -5,6 +5,7 @@ import { pipelineScenario } from "./scenarios/pipeline";
 import { splitScenario } from "./scenarios/split";
 import { cacheReadScenario } from "./scenarios/cache-read";
 import type { AnyScenario, AnyScenarioResult } from "./scenarios/types";
+import { stageId } from "./ids";
 import { readFixtureMeta } from "./lib/data";
 import type { Samples } from "./lib/harness";
 import { measureCalibration, type Calibration } from "./lib/reference";
@@ -24,8 +25,6 @@ type Options = {
   iterations: number;
   /** 暖機回数 */
   warmup: number;
-  /** 移動モード */
-  mode: string;
   /** 結果をこのパスに JSON で書き出す */
   json?: string;
   /** 出力を抑える（CI で bench だけ実行して比較に回すとき） */
@@ -33,7 +32,7 @@ type Options = {
 };
 
 function parseArgs(argv: string[]): Options {
-  const options: Options = { mode: "car", quiet: false, iterations: NaN, warmup: NaN };
+  const options: Options = { quiet: false, iterations: NaN, warmup: NaN };
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
     const next = () => argv[++i];
@@ -46,9 +45,6 @@ function parseArgs(argv: string[]): Options {
         break;
       case "--warmup":
         options.warmup = Number(next());
-        break;
-      case "--mode":
-        options.mode = next();
         break;
       case "--json":
         options.json = next();
@@ -80,10 +76,12 @@ function printUsage() {
   --iterations <n>      実測回数（必須）
   --warmup <n>          暖機回数（必須）
   --scenario <name>     実行するシナリオ (${SCENARIOS.map((s) => s.name).join(" / ")}、未指定なら全部)
-  --mode <id>           移動モード (既定 car)
   --json <path>         結果を JSON で書き出す（比較スクリプトが読む）
   --quiet               標準出力を抑える
   -h, --help            この表示
+
+モードを使うシナリオは 1 回の実行で全モードを測る。
+測定項目 ID はモードを使うシナリオでは {シナリオ}/{モード}/{段} になる。
 
 例:
   pnpm bench --iterations 20 --warmup 5
@@ -119,8 +117,8 @@ function printCalibration(calibration: Calibration, label?: string) {
 /** 段名は短いが ID は `{シナリオ}/{段}` なので 40 桁で揃える */
 const ID_WIDTH = 40;
 
-function printResult(result: AnyScenarioResult) {
-  console.log(`\n## ${result.scenario}`);
+function printResult(result: AnyScenarioResult, label: string) {
+  console.log(`\n## ${label}`);
   if (result.info) {
     const info = Object.entries(result.info)
       .map(([k, v]) => `${k}=${v}`)
@@ -203,7 +201,7 @@ async function main() {
   const meta = readFixtureMeta();
   if (!options.quiet) {
     console.log(`fixture: ${meta.name} (${meta.cellCount} cells, nodes=${meta.nodeCount}, ways=${meta.wayCount})`);
-    console.log(`node: ${process.version} / mode: ${options.mode} / iterations: ${options.iterations} / warmup: ${options.warmup}`);
+    console.log(`node: ${process.version} / iterations: ${options.iterations} / warmup: ${options.warmup}`);
   }
 
   const selected = options.only
@@ -215,8 +213,9 @@ async function main() {
     );
   }
 
-  const results: AnyScenarioResult[] = [];
-  // 測定項目 ID を `{シナリオ}/{段}` に組み立てた測定値の写像
+  // モードを使うシナリオはモードごとに 1 件ずつ結果が出る。表示と JSON は label で区別する
+  const results: { label: string; result: AnyScenarioResult }[] = [];
+  // 測定項目 ID をキーにした測定値の写像
   const measurements: Record<string, Measurement> = {};
   // 校正はシナリオより先に測る。フィクスチャを展開した直後でメモリが動いていると、
   // 校正がメモリを測ることになってしまうため、計測対象に触る前に済ませる。
@@ -230,30 +229,36 @@ async function main() {
   const scenarioCalibration: Record<string, Calibration> = {};
 
   for (const scenario of selected) {
-    // 直前の校正を先に取る。シナリオの実行中はメモリが動きっぱなしなので、
-    // シナリオの後に取ると校正がメモリを測ることになってしまう。
-    const before = await measureCalibration();
-    scenarioCalibration[scenario.name] = before;
-    if (!options.quiet) printCalibration(before, `${scenario.name} の直前`);
+    // モードを使うシナリオは 1 回の実行で列挙したモードをすべて測る。
+    // モードを使わないシナリオは 1 回だけ測る。
+    for (const mode of scenario.modes ?? [undefined]) {
+      // 直前の校正を先に取る。シナリオの実行中はメモリが動きっぱなしなので、
+      // シナリオの後に取ると校正がメモリを測ることになってしまう。
+      // 校正はシナリオ単位で持つ（モードが違っても同じ仕事量を測るため）。
+      const before = await measureCalibration();
+      scenarioCalibration[scenario.name] = before;
+      const label = mode === undefined ? scenario.name : `${scenario.name} [${mode}]`;
+      if (!options.quiet) printCalibration(before, `${label} の直前`);
 
-    const { value, log } = await withSummarizedOutput(() =>
-      scenario.run({ mode: options.mode, iterations: options.iterations, warmup: options.warmup }),
-    );
-    results.push(value);
-    // 測定項目の ID と測定値を平坦に並べる。CI が base と head を突き合わせるときの
-    // 共有するのは「ID と測定値」だけで、JSON の他の構造には依存させない。
-    for (const [stage, samples] of Object.entries(value.stages) as [string, Samples][]) {
-      measurements[`${value.scenario}/${stage}`] = samples;
-    }
-    if (!options.quiet && log.length > 0) {
-      console.log(`\n  ${scenario.name} のログ:`);
-      for (const line of log.slice(0, 10)) console.log(line);
-      if (log.length > 10) console.log(`    ... 他 ${log.length - 10} 行`);
+      const { value, log } = await withSummarizedOutput(() =>
+        scenario.run({ mode, iterations: options.iterations, warmup: options.warmup }),
+      );
+      results.push({ label, result: value });
+      // 測定項目の ID と測定値を平坦に並べる。CI が base と head を突き合わせるときの
+      // 共有するのは「ID と測定値」だけで、JSON の他の構造には依存させない。
+      for (const [stage, samples] of Object.entries(value.stages) as [string, Samples][]) {
+        measurements[stageId(value.scenario, stage, mode)] = samples;
+      }
+      if (!options.quiet && log.length > 0) {
+        console.log(`\n  ${label} のログ:`);
+        for (const line of log.slice(0, 10)) console.log(line);
+        if (log.length > 10) console.log(`    ... 他 ${log.length - 10} 行`);
+      }
     }
   }
 
-  for (const result of results) {
-    if (!options.quiet) printResult(result);
+  for (const { label, result } of results) {
+    if (!options.quiet) printResult(result, label);
   }
 
   if (options.json) {
@@ -263,7 +268,7 @@ async function main() {
       scenarioCalibration,
       measurements,
       // シナリオごとの補足（データ規模・合計時間）。比較には使わないので形式を固定しない。
-      results: results.map(toScenarioSummary),
+      results: results.map(({ label, result }) => toScenarioSummary(label, result)),
     };
     mkdirSync(dirname(options.json), { recursive: true });
     writeFileSync(options.json, `${JSON.stringify(payload, null, 2)}\n`, "utf-8");
@@ -271,9 +276,9 @@ async function main() {
   }
 }
 
-function toScenarioSummary(result: AnyScenarioResult): ScenarioSummary {
+function toScenarioSummary(label: string, result: AnyScenarioResult): ScenarioSummary {
   return {
-    scenario: result.scenario,
+    scenario: label,
     total: result.total,
     ...(result.info === undefined ? {} : { info: result.info }),
   };
