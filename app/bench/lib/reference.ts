@@ -40,6 +40,18 @@ const WARMUP = 3;
 /** 実測回数。中央値を使うので奇数にする */
 const SAMPLES = 7;
 
+/**
+ * プロセス内で最初に校正を測るときの実測回数。
+ *
+ * ランナーのコールドコスト（全速になるまでの時間、ページキャッシュの読み込み、
+ * Turbo の立ち上がり）は 1 回では抜けきらない。
+ * 先頭の 1 回を捨てて、さらに 5 回測るとサンプルの半分以上が落ち着いた値になる。
+ */
+const AGGREGATE_SAMPLES = 5;
+
+/** プロセス内で校正を測ったか。最初の 1 回だけ長く測るために使う */
+let warmed = false;
+
 const table = new Int32Array(TABLE_SIZE);
 
 /** 状態を初期値に戻す。毎回同じ状態から始めると回ごとの仕事量が揃い、中央値が読みやすい */
@@ -88,14 +100,14 @@ export type Calibration = Samples & {
 };
 
 /**
- * 校正を測る。
+ * 校正を 1 回測る。
  *
  * 引数は取らない。アプリ本体の実測回数（`--iterations`）に追随させると、
  * base と head で仕事量が揃わないので固定値にする。
  * 校正は測定項目 ID を持たないので `StageRecorder` を通さず、素のサンプル列を
  * 暖機ぶん捨てて中央値に落とす。
  */
-export async function measureCalibration(): Promise<Calibration> {
+export async function measureCalibrationOnce(): Promise<Calibration> {
   let work = 0;
   const runs = await sampleRuns(
     resetTable,
@@ -105,4 +117,36 @@ export async function measureCalibration(): Promise<Calibration> {
     { warmup: WARMUP, iterations: SAMPLES },
   );
   return { ...summarize(runs.slice(WARMUP)), work };
+}
+
+/**
+ * 校正を測る。
+ *
+ * プロセス内で最初の 1 回だけは、コールドコストを避けて長く測る。
+ * 1 回捨ててから `AGGREGATE_SAMPLES` 回測り、中央値にまとめる。
+ * 2 回目以降は 1 回だけで測る（その時点までは既に十分動いている）。
+ *
+ * 集めるのは「機械の速度」であって「最初は何も動いていない状態」ではないので、
+ * 最初の 1 回をそのまま採用すると base と head の校正が実行順でずれてしまう。
+ *
+ * @ref docs/設計/09-bench測定と比較.md
+ */
+export async function measureCalibration(): Promise<Calibration> {
+  if (warmed) return measureCalibrationOnce();
+  warmed = true;
+  await measureCalibrationOnce();
+  const samples: Calibration[] = [];
+  for (let i = 0; i < AGGREGATE_SAMPLES; i++) {
+    samples.push(await measureCalibrationOnce());
+  }
+  // 仕事量の検算値は決定的なので回が違っても同じ値になる。どれを採用しても同じ。
+  const medians = samples.map((s) => s.median).sort((a, b) => a - b);
+  return {
+    median: medians[Math.floor(medians.length / 2)],
+    min: Math.min(...samples.map((s) => s.min)),
+    max: Math.max(...samples.map((s) => s.max)),
+    iterations: samples.reduce((sum, s) => sum + s.iterations, 0),
+    total: samples.reduce((sum, s) => sum + s.total, 0),
+    work: samples[0].work,
+  };
 }
