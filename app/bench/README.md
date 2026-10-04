@@ -342,32 +342,6 @@ node bench/scripts/measure-noise.mjs --iterations 20 --warmup 5 --runs 9 --json 
 `*` が付かない測定項目だけが判定対象。
 表を読むときはこの点に注意。
 
-### 手元で 2 回測って比べる
-
-CI と同じことを手元で再現する。
-`base` は自分の bench で自分の `app/src` をビルドする。
-
-```bash
-# 変更前のコミットを一時ディレクトリに切り出して、そこに対して計測する
-git worktree add /tmp/base HEAD~1
-
-export OSM_CACHE_DIR=/tmp/procon-osm-cache
-
-# head を測る
-cd app
-node bench/build.mjs
-node bench/.build/bench.mjs --iterations 20 --warmup 5 --quiet --json /tmp/head.json
-
-# base を測る
-cd /tmp/base/app
-node bench/build.mjs
-node bench/.build/bench.mjs --iterations 20 --warmup 5 --quiet --json /tmp/base.json
-
-# 比較する（head の compare.mjs が両方の JSON を測定項目 ID で突き合わせる）
-cd -
-node app/bench/compare.mjs --base /tmp/base.json --head /tmp/head.json --format markdown
-```
-
 ## フィクスチャ
 
 フィクスチャは**本番の OSM キャッシュと同じディレクトリ**を直接読む。
