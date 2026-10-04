@@ -402,6 +402,7 @@ OSM_CACHE_DIR=/tmp/procon-osm-cache node bench/.build/fetch-fixture.mjs
 bench/
 ├── README.md
 ├── build.mjs                      # esbuild でバンドルする
+├── compare-modes.ts               # エントリ。5 モードの経路差を比べる（時間は測らない）
 ├── compare.mjs                    # 2 つの結果を ID で突き合わせる（回帰チェック）
 ├── env-stub.ts                    # $env/dynamic/private の差し替え
 ├── run.ts                         # エントリ。引数解析・出力・回帰チェック
@@ -419,6 +420,46 @@ bench/
     ├── fetch-fixture.ts           # OSM_CACHE_DIR にフィクスチャを用意する
     └── measure-noise.mjs          # 同じコードを N 回測ってばらつきを採取する
 ```
+
+## モードごとの経路差の比較
+
+`compare-modes.ts` は時間の代わりに**経路の中身**をモードごとに比べる CLI である。
+Issue #85（モードごとのスコアの見直し）の検証手段として作った。
+
+```bash
+cd app
+pnpm bench:modes                                    # 既定の始点・終点で 5 モードを探索
+pnpm bench:modes --begin 37.4448,138.8537 --end 37.4326,138.9042
+pnpm bench:modes --modes walk,bicycle,truck         # 比較するモードを選ぶ
+pnpm bench:modes --reference walk                   # 一致率の基準にするモード（既定 car）
+pnpm bench:modes --no-gsi                           # 国土地理院の幅員を使わずに探索する
+pnpm bench:modes --json /tmp/modes.json             # 経路が使う way id ごと保存する
+```
+
+`SCENARIOS` には含めない。
+理由は 2 つある。
+
+- 時間計測の回帰ゲートは base と head の**時間**を比べる。
+  経路の差は時間ではないので、段として採ると比較の単位が時間ではなく経路の重なり方になる。
+- 比較には 5 モードを**1 プロセスで**走らせる必要がある。
+  `pnpm bench` の `--mode` は 1 回に 1 値を渡す形なので、`SCENARIOS` に置くと 5 回走らせた結果を手作業で突き合わせることになる。
+
+測定項目 ID は出さない。
+`{シナリオ}/{モード}/{段}` の規約は時間を採る段のためのもので、この CLI は段を持たない。
+
+一致率は「経路が使う FoldedEdge（= OSM の way）の集合が、基準モードの経路と何割一致するか」。
+way の id はモードをまたいで同じなのでこれで比べられる。
+`MapVCrossEdge` は隣接ノードがそのモードのグラフに含まれるかどうかで id が変わるため数えない。
+
+国土地理院の幅員は本番と同じく、始点・終点と経路の周りのタイルを順に足しながら
+`MAX_GSI_PASSES` 回まで探索し直す。
+取得したタイルは `bench/.build/gsi-cache/gsi/` に保存されるので、2 回目以降はネットワークに出ない。
+このキャッシュは `.gitignore` 済みで、国土地理院が更新されたら差分は記録に含まれない。
+数値を再現するときは、このディレクトリを保存して `--gsi-cache-dir` で渡す。
+
+実測した数値と、その読み方は
+[`docs/設計/04-スコアリングと経路探索.md`](../../docs/設計/04-スコアリングと経路探索.md)
+の「モードごとのスコア」に書いてある。
 
 ## 正しさの検証について
 

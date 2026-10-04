@@ -47,9 +47,10 @@ const common = {
   },
 };
 
-// フィクスチャ取得もアプリの OSM キャッシュ層を import するので同じ設定でバンドルする
+// モード比較もフィクスチャ取得もアプリのソースを import するので同じ設定でバンドルする
 const ENTRY_POINTS = [
   { entry: join(HERE, "run.ts"), out: join(OUT_DIR, "bench.mjs") },
+  { entry: join(HERE, "compare-modes.ts"), out: join(OUT_DIR, "compare-modes.mjs") },
   { entry: join(HERE, "scripts", "fetch-fixture.ts"), out: join(OUT_DIR, "fetch-fixture.mjs") },
 ];
 
