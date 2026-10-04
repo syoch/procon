@@ -112,21 +112,61 @@ nohup python3 delegate.py ... > /tmp/opencode/agent-<N>.log 2>&1 &
 
 これで元のセッションを閉じて作業を進められる。
 
-## 監視しない。通知させる
+## 監視しない。呼び戻させる
 
-**完了を待つためにポーリングし続けない。**
-委任先のセッションに完了通知を送らせ、自分は作業をつづける。
-
+**完了を待つためにポーリングしない。**
+委任先のセッションから自分へ完了通知を送らせる。
+待つ側は何もしなくてよいです。
+通知が届いたら次の作業に移ります。
 ```bash
-# 委任先のセッションで、完了時にこれを実行させる
-python3 <skill>/scripts/delegate.py --notify-done <宛先セッションID> <マーカーjson>
+# 委任先のセッションで、完了時にこれを実行する
+python3 .agents/skills/opencode-session-delegation/scripts/delegate.py \
+  --notify-done <宛先セッションID> /tmp/opencode/done-<something>.json
 ```
 
 マーカー JSON には `summary` と `checks` を書く。
-すると`<宛先>` 側のセッションに完了内容が届いて、向こうが次の作業へ進める。
+`<宛先>` 側のセッションに完了内容が届くので、向こうが次の作業へ進める。
 
 通知が失敗しても成果は失われない。
-マーカーファイルが残っていれば後から通知できるので、**push と commit のあとに**書く。
+マーカーファイルが残っていれば後から送れるので、**push と commit のあとに**書く。
+
+### ポーリングが自己デッドロックする
+
+**待つために `pgrep` や `sleep` のループを書かない。**
+実際にハングして、成果が出ていない例があります。
+
+```bash
+# ❌ 永久に終わらない。pgrep が自分のコマンドラインにもマッチする
+for i in $(seq 1 10); do
+  sleep 60
+  if ! pgrep -f send_prompt2.py >/dev/null; then break; fi
+done
+```
+
+`pgrep -f` は**自分自身のコマンドライン**にもマッチする。
+上のループは `pgrep` が自分自身を見つけ続けるので `break` に到達せず、
+10 分間 `sleep` するだけでした。
+成果は何も進んでいませんでした。
+
+プロセスは目印にすぎない。
+サーバに問い合わせます。
+python3 .agents/skills/opencode-session-delegation/scripts/session_state.py \
+  <セッションID> /tmp/opencode/procon/wt-<Issue 番号>
+```
+
+判定材料:
+
+| 出力 | 意味 |
+|---|---|
+| 実行中のツールがある | 動いている |
+| ツール 0 個 / 完了あり | 一段落している |
+| `/session/status` が空 | 動いているセッションが無い |
+| サーバーが応答しない | opencode.service を確認する |
+
+**1 回の観測で「停止」と判断しない。** コールドスタートの空白はこれと区別できない。
+
+通知の仕組みは `delegate.py --notify-done` を使う。
+これは監視ではなく呼び戻しなので、待つ側に負担がない。
 
 ## プロンプトに書くこと
 
@@ -171,6 +211,7 @@ mutation($id: ID!) { resolveReviewThread(input: { threadId: $id }) { thread { id
 - **不正な body はハングする。** プロバイダを切り替えても直らない
 - **`noReply: true` は run を起動しない。**
 - **1 回の観測で「停止」と言わない。** コールドスタートは非決定的
+- **`pgrep` / `sleep` のループで待たない。** 上の「ポーリングが自己デッドロックする」を読む
 - **通知は 1 回だけ。** 作業中に繰り返さない
 - **`AGENTS.md` と `.agents/` を共有すると巻き込む。**
   他の作業と併存するときは相手側の作業と衝突する。
