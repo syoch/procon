@@ -90,12 +90,8 @@ function printUsage() {
   pnpm bench --iterations 30 --warmup 5 --scenario pipeline
   pnpm bench --iterations 20 --warmup 5 --json /tmp/bench.json --quiet
 
-実測回数と暖機回数には既定値を置いていない。何回で測ったかは成果物から読めるように
-CI が毎回明示して渡している。
-
 回帰チェックはここでは行わない。CI が「base と head を同じランナー上で 2 回測って比べる」
 ので、compare.mjs に結果 JSON を渡して判定する。比較は測定項目 ID 単位で行う。
-machine ごとに違う値をリポジトリに保存しないため、記録用の基準ファイルは要らない。
 
 校正ワークロードは開始時と各シナリオの直前に測り、JSON の calibration と
 scenarioCalibration に入れておく。compare.mjs がこれを比べることで「機械の速度が
