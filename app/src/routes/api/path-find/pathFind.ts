@@ -192,20 +192,25 @@ export async function doPathFind(
     const startedAt = Date.now();
     const tiles = new Map<string, GsiTile>();
     const addTiles = (list: GsiTile[]) => list.forEach((tile) => tiles.set(tileKey(tile), tile));
-    addTiles(tilesAlongPath([begin]));
-    addTiles(tilesAlongPath([end]));
+    addTiles(reqCtx.measure("tilesAlong", () => tilesAlongPath([begin])));
+    addTiles(reqCtx.measure("tilesAlong", () => tilesAlongPath([end])));
     const deadline = Date.now() + GSI_FETCH_BUDGET_MS;
 
     let result: PathFindResult;
     let pass = 1;
     for (; ; pass++) {
-        const gsiSegments = await requireGsiRoadSegmentsForTiles([...tiles.values()], gsiCacheManager, fetchGsiRoadTile, {
-            budgetMs: Math.max(0, deadline - Date.now()),
-        });
+        const gsiSegments = await reqCtx.measureAsync("gsiFetch", () =>
+            requireGsiRoadSegmentsForTiles([...tiles.values()], gsiCacheManager, fetchGsiRoadTile, {
+                budgetMs: Math.max(0, deadline - Date.now()),
+            }),
+        );
         result = searchWithWidths(reqCtx, { begin, end, parameters, profile, osmData, rawOsmData, bbox }, gsiSegments);
         if (!result.found) break;
 
-        const newTiles = tilesAlongPath(result.coords).filter((tile) => !tiles.has(tileKey(tile)));
+        const coords = result.coords;
+        const newTiles = reqCtx
+            .measure("tilesAlong", () => tilesAlongPath(coords))
+            .filter((tile) => !tiles.has(tileKey(tile)));
         if (newTiles.length === 0) break;
         if (pass >= MAX_GSI_PASSES) {
             console.warn(
@@ -265,13 +270,14 @@ function searchWithWidths(
     { begin, end, parameters, profile, osmData, rawOsmData, bbox }: SearchContext,
     gsiSegments: GsiRoadSegment[],
 ): PathFindResult {
-    const osmGraph = transformOSMMapToOSMGraph(osmData);
+    const osmGraph = reqCtx.measure("transform", () => transformOSMMapToOSMGraph(osmData));
 
     // 国土地理院の幅員区分で、幅が分からない車道の幅を補う (取得できなかったタイルは幅なしのまま続行する)
-    applyGsiWidths(osmGraph, new GsiRoadIndex(gsiSegments));
+    reqCtx.measure("gsiWidths", () => applyGsiWidths(osmGraph, new GsiRoadIndex(gsiSegments)));
     // 大型トラックなど、幅の下限があるモードでは狭すぎる道を取り除く (幅が分からない道は残す)
-    if (profile?.minRoadWidth) {
-        removeNarrowEdges(osmGraph, profile.minRoadWidth);
+    const minRoadWidth = profile?.minRoadWidth;
+    if (minRoadWidth) {
+        reqCtx.measure("narrowEdges", () => removeNarrowEdges(osmGraph, minRoadWidth));
     }
 
     const ccGraph = reqCtx.measure("crossConvert", () => CrossConvert(osmGraph));
@@ -288,9 +294,11 @@ function searchWithWidths(
 
     // 孤立した小さな道路網 (敷地内の道など) に吸着すると経路が見つからないため、
     // 最大連結成分のエッジだけを吸着の候補にする
-    const mainEdges = largestComponentEdges(mapData);
-    const beginNodeId = transientSplit(mapData, begin, mainEdges);
-    const endNodeId = transientSplit(mapData, end, mainEdges);
+    const mainEdges = reqCtx.measure("component", () => largestComponentEdges(mapData));
+    const { beginNodeId, endNodeId } = reqCtx.measure("split", () => ({
+        beginNodeId: transientSplit(mapData, begin, mainEdges),
+        endNodeId: transientSplit(mapData, end, mainEdges),
+    }));
 
     // 吸着先が遠すぎる場合 (近くの道が道路網から切り離されている場合など) は、間違った経路を返さず「到達できない」とする
     const snapDistance = {

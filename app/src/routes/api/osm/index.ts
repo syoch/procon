@@ -42,11 +42,18 @@ export async function requireOSMData(
 
     const saveCacheMeasurement = reqCtx.begin("saveCache");
     const splittedGrids = SplitOSMData(fetchedData);
-    for (const b of boundariesToGet) {
-      const subData = splittedGrids[`${b.minLat},${b.minLng}`] ?? { elements: [] };
-      await saveCache(b, subData);
-      cachedChunks.push(subData);
+    // セルを並列に書き込む。saveCache は tmp ファイル名が pid と連番で一意なので衝突しない
+    const subDatas = boundariesToGet.map((b) => splittedGrids[`${b.minLat},${b.minLng}`] ?? { elements: [] });
+    const saved = await Promise.allSettled(
+      boundariesToGet.map((b, i) => saveCache(b, subDatas[i])),
+    );
+    // 書込みが終わる前に throw すると、書きかけの tmp ファイルが残る
+    const failed = saved.find((r): r is PromiseRejectedResult => r.status === "rejected");
+    if (failed !== undefined) {
+      throw failed.reason;
     }
+    // cachedChunks は後続の merge に spread で渡すため、並列化しても boundariesToGet の順に積む
+    cachedChunks.push(...subDatas);
     saveCacheMeasurement();
   }
 
