@@ -21,7 +21,7 @@
 	import turnleftLogo from "$lib/assets/turnleft-logo.svg"
 	import startpointLogo from "$lib/assets/startpoint-logo.svg";
 	import finishpointLogo from "$lib/assets/finishpoint-logo.svg";
-	import uturnLogo from "$lib/assets/uturn-logo.svg";
+	import uturnLogo from "$lib/assets/Uturn-logo.svg";
 	import {
 		MainAppContext,
 		type ParameterVariant,
@@ -331,7 +331,7 @@
 					</div>
 
 						<div class="slider-group">
-	{@render scoreSliders()}
+					{@render scoreSliders()}
 					</div>
 
 				{:else}
