@@ -393,6 +393,7 @@
 	</div>
 {/if}
 
+{#if informationGraph && informationGraph.type && informationGraph.type.length > 0}
 			<div class="route-scroll-container">
         <div class="text-title">経路案内</div>
 
@@ -417,10 +418,15 @@
                     const d = informationGraph.distance[i];
 
                     accumDist += d;
+					if (t === "start" || t === "segments") {
+        				continue;
+    				}
 
                     if (t === "straight") {
                         accumCross++;
                     }else if (t === "right" || t === "left"|| t === "uturn") {
+						// transientSplit が長さ0のエッジを拒否するため、現実の道路網データではここに到達しない。
+    					// 万が一到達した場合は意図的に無視する（UIに距離0の案内を出さないため）。
 						 if (Math.round(accumDist) > 0) {
                          	aggregated.push({
                             	type: "straight",
@@ -513,6 +519,7 @@
 			</div>
 		</div>
 	</div>
+	{/if}
 			{/if}
 			{/snippet}
 		</DetailPanel>
