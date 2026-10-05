@@ -199,7 +199,7 @@ function getValidNextVector(
 function judgeTurnTypeWithCache(
   vectorCache: { x: number; y: number; isZero: boolean }[],
   currentIndex: number,
-): string {
+): "straight" | "left" | "right" | "uturn" {
   const vIn = getValidPrevVector(vectorCache, currentIndex);
   const vOut = getValidNextVector(vectorCache, currentIndex);
 
@@ -227,100 +227,82 @@ function judgeTurnTypeWithCache(
   }
 }
 
+/** buildInformationGraph の内部の作業用タグ (API には出さない) */
+type EdgeKind = "segments" | "turn";
+
 export function buildInformationGraph(
-  mapData: App.SearchGraph,
-  edgeIds: App.EdgeId[],
-  beginNodeId: App.NodeId,
+    mapData: App.SearchGraph,
+    edgeIds: App.EdgeId[],
+    beginNodeId: App.NodeId,
 ): App.InformationGraph {
-  let current: App.NodeId = beginNodeId;
-  if (!mapData.nodes[beginNodeId]) {
-    throw new Error(`Node ${beginNodeId} not found in mapData`);
-  }
-
-  const graphData: App.InformationGraph = {
-    type: [],
-    distance: [],
-  };
-
-  graphData.type.push("start");
-  graphData.distance.push(0);
-
-  // ★ 1. 各エッジを通ったときの「正しい向きのベクトル」を全エッジ分あらかじめ記録するキャッシュ
-  const vectorCache: { x: number; y: number; isZero: boolean }[] = [];
-  const stepDataList: { edgeType: string; dist: number; isCross: boolean }[] =
-    [];
-
-  let crossCount = 0;
-
-  for (let i = 0; i < edgeIds.length; i++) {
-    const edgeId = edgeIds[i];
-    const edge = mapData.edges[edgeId];
-    const nodeType = mapData.nodes[current]?.type;
-    const reversed = current === edge.end;
-    const nextNodeId = reversed ? edge.begin : edge.end;
-
-    if (!mapData.nodes[nextNodeId]) {
-      throw new Error(`Node ${nextNodeId} not found in mapData`);
+    let current: App.NodeId = beginNodeId;
+    if (!mapData.nodes[beginNodeId]) {
+        throw new Error(`Node ${beginNodeId} not found in mapData`);
     }
 
-    const beginCoord = mapData.nodes[current].coordinate;
-    const endCoord = mapData.nodes[nextNodeId].coordinate;
+    const graphData: App.InformationGraph = {
+        type: [],
+        distance: [],
+    };
 
-    // ★ 2. 進行方向（reversed）を考慮した正しいベクトルを作る
-    // （逆向きなら end -> begin、正方向なら begin -> end になるようにする）
-    const dx = endCoord.lng - beginCoord.lng;
-    const dy = endCoord.lat - beginCoord.lat;
-    const length = Math.sqrt(dx * dx + dy * dy);
+    graphData.type.push("start");
+    graphData.distance.push(0);
 
-    vectorCache.push({
-      x: dx,
-      y: dy,
-      isZero: length < 0.000001, // ほぼ長さがゼロの交差点エッジかどうか
-    });
+    // ★ 1. 各エッジを通ったときの「進行方向のベクトル」を全エッジ分あらかじめ記録するキャッシュ
+    const vectorCache: { x: number; y: number; isZero: boolean }[] = [];
+    const stepDataList: { edgeType: EdgeKind; dist: number }[] = [];
 
-    const dist = getEdgeDistance(mapData, edge, reversed, current, nextNodeId);
-    const isCrossNode = mapData.nodes[nextNodeId]?.type === "MapVCrossNode";
+    for (let i = 0; i < edgeIds.length; i++) {
+        const edgeId = edgeIds[i];
+        const edge = mapData.edges[edgeId];
+        const reversed = current === edge.end;
+        const nextNodeId = reversed ? edge.begin : edge.end;
 
-    let edgeType = "segments";
-    if (nodeType === "MapVCrossNode" || isCrossNode) {
-      if (crossCount === 1) {
-        edgeType = "TURN_JUDGE"; // 後でまとめて判定する目印
-        crossCount = 0;
-      } else if (crossCount === 0) {
-        edgeType = "segments";
-        crossCount += 1;
-      }
-    } else {
-      edgeType = "segments";
-      crossCount = 0;
+        if (!mapData.nodes[nextNodeId]) {
+            throw new Error(`Node ${nextNodeId} not found in mapData`);
+        }
+
+        const beginCoord = mapData.nodes[current].coordinate;
+        const endCoord = mapData.nodes[nextNodeId].coordinate;
+
+        // ★ 2. 進行方向のベクトルを作る
+        // (beginCoord は今いるノード、endCoord は次のノードなので、reversed でも current -> next の向きになる)
+        const dx = endCoord.lng - beginCoord.lng;
+        const dy = endCoord.lat - beginCoord.lat;
+        const length = Math.sqrt(dx * dx + dy * dy);
+
+        vectorCache.push({
+            x: dx,
+            y: dy,
+            isZero: length < 0.000001, // ほぼ長さがゼロの交差点エッジかどうか
+        });
+
+        const dist = getEdgeDistance(mapData, edge, reversed, current, nextNodeId);
+
+        // 交差点の中の辺 (長さ 0 の MapVCrossEdge) は、交差点 1 個につき 1 本。ここを判定位置とする
+        const edgeType: EdgeKind = edge.type === "MapVCrossEdge" ? "turn" : "segments";
+
+        stepDataList.push({ edgeType, dist });
+        current = nextNodeId;
     }
 
-    stepDataList.push({
-      edgeType,
-      dist,
-      isCross: nodeType === "MapVCrossNode" && edgeType === "TURN_JUDGE",
-    });
-    current = nextNodeId;
-  }
+    // ★ 3. キャッシュされたベクトルを使って、交差点の辺の部分で角度・左右判定を行う
+    for (let i = 0; i < stepDataList.length; i++) {
+        const step = stepDataList[i];
 
-  // ★ 3. キャッシュされたベクトルを使って、TURN_JUDGE の部分で正しい角度・左右判定を行う
-  for (let i = 0; i < stepDataList.length; i++) {
-    const step = stepDataList[i];
-
-    if (step.edgeType === "TURN_JUDGE") {
-      const turnType = judgeTurnTypeWithCache(vectorCache, i);
-      graphData.type.push(turnType as "straight" | "left" | "right" | "uturn");
-      graphData.distance.push(step.dist);
-    } else {
-      graphData.type.push(step.edgeType as "segments");
-      graphData.distance.push(step.dist);
+        if (step.edgeType === "turn") {
+            graphData.type.push(judgeTurnTypeWithCache(vectorCache, i));
+            graphData.distance.push(0);
+        } else {
+            graphData.type.push("segments");
+            graphData.distance.push(step.dist);
+        }
     }
-  }
 
-  graphData.type.push("finish");
-  graphData.distance.push(0);
+    graphData.type.push("finish");
+    graphData.distance.push(0);
 
-  return graphData;
+    return graphData;
 }
 /**
  * 始点・終点を囲む範囲に足す余白 (格子のマス数)

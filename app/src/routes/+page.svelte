@@ -464,55 +464,55 @@
                 <div class="route-row">
                     <img 
                         src={
-                            step.type === "right" ? turnrightLogo :
-                            step.type === "left" ? turnleftLogo : 
+							step.type === "right" ? turnrightLogo :
+							step.type === "left" ? turnleftLogo : 
 							step.type === "uturn" ? uturnLogo : straightLogo
-                        } 
-                        alt={step.type} 
-                    />
+						} 
+						alt={step.type} 
+					/>
 
-                    <div class="route-info">
-                        <div class="text-title">
-                            {#if step.type === "straight"}
-                                道なり
-                            {:else if step.type === "finish"}
-                                道なり
-                            {:else if step.type === "right"}
-                                右折
-                            {:else if step.type === "left"}
-                                左折
+					<div class="route-info">
+						<div class="text-title">
+							{#if step.type === "straight"}
+								道なり
+							{:else if step.type === "finish"}
+								道なり
+							{:else if step.type === "right"}
+								右折
+							{:else if step.type === "left"}
+								左折
 							{:else if step.type === "uturn"}
 								Uターン
-                            {/if}
-                        </div>
+							{/if}
+						</div>
 
-                        <div class="text-sub">
-                            {#if step.type === "straight"}
-                                {step.distance}m道なり
-                            {:else if step.type === "finish"}
-                                {step.distance}m道なり
-                            {:else if step.type === "right"}
-                                {step.cross}個目の交差点を右折
-                            {:else if step.type === "left"}
-                                {step.cross}個目の交差点を左折
-                            {:else if step.type === "uturn"}
-                                {step.cross}個目の交差点をUターン
-                            {/if}
-                        </div>
-                    </div>
-                </div>
-            {/each}
-        {/if}
+						<div class="text-sub">
+							{#if step.type === "straight"}
+								{step.distance}m道なり
+							{:else if step.type === "finish"}
+								{step.distance}m道なり
+							{:else if step.type === "right"}
+								{step.cross}個目の交差点を右折
+							{:else if step.type === "left"}
+								{step.cross}個目の交差点を左折
+							{:else if step.type === "uturn"}
+								{step.cross}個目の交差点をUターン
+							{/if}
+						</div>
+					</div>
+				</div>
+			{/each}
+		{/if}
 
-        <!-- 終点 -->
-        <div class="route-row">
-            <img src={finishpointLogo} alt="終点" />
-            <div class="route-info">
-                <div class="text-title">目的地</div>
-                <div class="text-sub">{ctx.state.end.query}</div>
-            </div>
-        </div>
-    </div>
+		<!-- 終点 -->
+		<div class="route-row">
+			<img src={finishpointLogo} alt="終点" />
+			<div class="route-info">
+				<div class="text-title">目的地</div>
+				<div class="text-sub">{ctx.state.end.query}</div>
+			</div>
+		</div>
+	</div>
 			{/if}
 			{/snippet}
 		</DetailPanel>
