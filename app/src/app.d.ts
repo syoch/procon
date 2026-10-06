@@ -251,10 +251,11 @@ declare global {
 		type OSMData = {
 			elements: (OSMRawWay | OSMRawNode)[]
 		};
-    type InformationGraph = {
-      type: ("start" | "finish" | "straight" | "left" | "right" | "uturn" | "segments")[];
-      distance: number[]; // 曲がるまでの累積距離
-    };
+    	type InformationGraph = {
+    		type: ("start" | "finish" | "straight" | "left" | "right" | "uturn" | "segments")[];
+    		distance: number[]; // 曲がるまでの累積距離
+			tags: (Record<string, string> | null)[];
+    	};
 	}
 }
 

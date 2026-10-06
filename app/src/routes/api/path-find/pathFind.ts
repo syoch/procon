@@ -243,10 +243,12 @@ export function buildInformationGraph(
     const graphData: App.InformationGraph = {
         type: [],
         distance: [],
+        tags: [],
     };
 
     graphData.type.push("start");
     graphData.distance.push(0);
+    graphData.tags.push(null);
 
     // ★ 1. 各エッジを通ったときの「進行方向のベクトル」を全エッジ分あらかじめ記録するキャッシュ
     const vectorCache: { x: number; y: number; isZero: boolean }[] = [];
@@ -319,18 +321,22 @@ export function buildInformationGraph(
     // ★ 3. キャッシュされたベクトルを使って、交差点の辺の部分で角度・左右判定を行う
     for (let i = 0; i < stepDataList.length; i++) {
         const step = stepDataList[i];
+        let currentTags: Record<string, string> | null = null;
 
         if (step.edgeType === "turn") {
             graphData.type.push(judgeTurnTypeWithCache(vectorCache, i));
             graphData.distance.push(0);
+            graphData.tags.push(currentTags);
         } else {
             graphData.type.push("segments");
             graphData.distance.push(step.dist);
+            graphData.tags.push(currentTags);
         }
     }
 
     graphData.type.push("finish");
     graphData.distance.push(0);
+    graphData.tags.push(null);
 
     return graphData;
 }

@@ -44,7 +44,7 @@
 	let totalIntersections = $state<number | undefined>(undefined);
 	/** 手動・自動を問わず検索を実行済みか（$state ではない） */
 	let hasSearched = false;
-	let informationGraph=$state<App.InformationGraph>({ type: [], distance: [] });
+	let informationGraph=$state<App.InformationGraph>({ type: [], distance: [], tags: [] });
 
 	// 移動モード (徒歩・自転車・車・バイク・大型トラック) ごとのプリセット。
 	// 表示名と重みは mode_profiles.ts を唯一の定義元とし、ここでは並べるだけにする
@@ -113,7 +113,7 @@
 		totalDistance = 0;
 		totalIntersections = 0;
 		sharpTurns = [];
-		informationGraph = { type: [], distance: [] };
+		informationGraph = { type: [], distance: [], tags: [] };
 
 		const totalSlider = slider1 + slider2 + slider3;
 
@@ -411,10 +411,14 @@
 				const aggregated = [];
 				let accumDist = 0;
 				let accumCross = 0;
+				/*Uターン判定用*/
+				let isUTurn = 0;
+				let prev_n = "";
 
 				for (let i = 0; i < informationGraph.type.length; i++) {
 					const t = informationGraph.type[i];
 					const d = informationGraph.distance[i];
+					const next_n = informationGraph.tags[i + 1]?.name ?? "";
 
 					accumDist += d;
 					if (t === "start" || t === "segments") {
@@ -423,11 +427,75 @@
 
 					if (t === "straight") {
 						accumCross++;
-					}else if (t === "right" || t === "left"|| t === "uturn") {
+					}else if(t==="right"){
+						if(isUTurn===0){/*1回目の右折は通常と同じ判定*/
+							if (Math.round(accumDist) > 0) {
+						 		aggregated.push({
+									type: "straight",
+									distance: Math.round(accumDist),
+									cross: accumCross
+								});
+
+								aggregated.push({
+									type: t,
+									distance: 0,
+									cross: accumCross + 1
+								});
+							} else if (Math.round(accumDist) === 0) {//0mだったとき
+								aggregated.push({ 
+								type: t,
+								distance: 0,
+								cross: accumCross+1
+								});				
+							}
+							accumDist = 0;
+							accumCross = 0;
+							isUTurn++;
+							prev_n=informationGraph.tags[i - 1]?.name ?? "";
+						}else if(isUTurn===1){
+							/*同じ名前の交差点で2回右折かつ距離が短い場合はUターンと判定*/
+							if(prev_n===next_n&&accumDist<21){
+								/*前に入れた右折を削除*/
+								aggregated.pop();
+								/*Uターンとして追加*/
+								aggregated.push({
+									type: "uturn",
+									distance: 0,
+									cross: accumCross + 1
+								});
+								accumDist = 0;
+								accumCross = 0;
+								isUTurn=0;
+							}else{
+								/*Uターンではない場合は通常の右折として追加*/
+								if (Math.round(accumDist) > 0) {
+							 		aggregated.push({
+										type: "straight",
+										distance: Math.round(accumDist),
+										cross: accumCross
+									});
+									aggregated.push({
+										type: t,
+										distance: 0,
+										cross: accumCross + 1
+									});
+								} else if (Math.round(accumDist) === 0) {//0mだったとき
+									aggregated.push({ 
+									type: t,
+									distance: 0,
+									cross: accumCross+1
+									});
+								} 
+							}
+							accumDist = 0;
+							accumCross = 0;
+							isUTurn=0;
+						}
+					}else if (t === "left"|| t === "uturn") {
 						// transientSplit が長さ0のエッジを拒否するため、現実の道路網データではここに到達しない。
 						// 万が一到達した場合は意図的に無視する（UIに距離0の案内を出さないため）。
-						 if (Math.round(accumDist) > 0) {
-						 	aggregated.push({
+						if (Math.round(accumDist) > 0) {
+					 		aggregated.push({
 								type: "straight",
 								distance: Math.round(accumDist),
 								cross: accumCross
@@ -438,18 +506,18 @@
 								distance: 0,
 								cross: accumCross + 1
 							});
-
 							accumDist = 0;
 							accumCross = 0;
-						
+							isUTurn=0;
 						} else if (Math.round(accumDist) === 0) {//0mだったとき
-								aggregated.push({ 
+							aggregated.push({ 
 								type: t,
 								distance: 0,
 								cross: accumCross+1
-								});
+							});
 							accumDist = 0;
 							accumCross = 0;
+							isUTurn=0;
 						}
 					}else if (i === informationGraph.type.length - 1) {
 						if (accumDist > 0 || accumCross > 0) {
@@ -460,7 +528,7 @@
 							});
 						}
 					}
-				}	
+				}
 				return aggregated;
 				})()}
 
