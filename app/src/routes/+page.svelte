@@ -358,12 +358,12 @@
 						>{ctx.state.end.displayName ?? ""}</span
 					>
 					<div class="divider" style="top: 350px;"></div>
-					<span style="position: absolute; white-space: nowrap; left: 32.8px; top: 360px;">
+					<span style="position: absolute; white-space: nowrap; left: 32.8px; top: 375px;">
 						総走行距離: {((totalDistance ?? 0) / 1000).toFixed(2)} km
 					</span>
-					<span style="position: absolute; white-space: nowrap; left: 32.8px; top: 390px;">
+					<!--<span style="position: absolute; white-space: nowrap; left: 32.8px; top: 390px;">
 						総通過交差点数: {totalIntersections ?? 0} 個
-					</span>
+					</span>-->
 					<div class="divider" style="top: 425.5px;"></div>
 					<div
 						style="position: absolute; top: 454.5px; display: flex;"
@@ -406,8 +406,9 @@
 		</div>
 
 		{#if informationGraph && informationGraph.type.length > 0}
-			<!-- 累積用の変数とステップ分割ロジック -->
+			<!-- 累積用の変数とステップ分割ロジック -->	
 			{@const steps = (() => {
+				/*交差点数のカウントは，前回曲がった交差点から何個目の交差点かを示している。*/
 				const aggregated = [];
 				let accumDist = 0;
 				let accumCross = 0;
@@ -418,6 +419,7 @@
 				for (let i = 0; i < informationGraph.type.length; i++) {
 					const t = informationGraph.type[i];
 					const d = informationGraph.distance[i];
+					const n = informationGraph.tags[i-1]?.name ?? "";
 					const next_n = informationGraph.tags[i + 1]?.name ?? "";
 
 					accumDist += d;
@@ -433,19 +435,22 @@
 						 		aggregated.push({
 									type: "straight",
 									distance: Math.round(accumDist),
-									cross: accumCross
+									cross: accumCross,
+									name: n
 								});
 
 								aggregated.push({
 									type: t,
 									distance: 0,
-									cross: accumCross + 1
+									cross: accumCross + 1,
+									name: n
 								});
 							} else if (Math.round(accumDist) === 0) {//0mだったとき
 								aggregated.push({ 
 								type: t,
 								distance: 0,
-								cross: accumCross+1
+								cross: accumCross+1,
+								name: n
 								});				
 							}
 							accumDist = 0;
@@ -461,7 +466,8 @@
 								aggregated.push({
 									type: "uturn",
 									distance: 0,
-									cross: accumCross + 1
+									cross: accumCross + 1,
+									name: n
 								});
 								accumDist = 0;
 								accumCross = 0;
@@ -472,18 +478,21 @@
 							 		aggregated.push({
 										type: "straight",
 										distance: Math.round(accumDist),
-										cross: accumCross
+										cross: accumCross,
+										name: n
 									});
 									aggregated.push({
 										type: t,
 										distance: 0,
-										cross: accumCross + 1
+										cross: accumCross + 1,
+										name: n
 									});
 								} else if (Math.round(accumDist) === 0) {//0mだったとき
 									aggregated.push({ 
 									type: t,
 									distance: 0,
-									cross: accumCross+1
+									cross: accumCross+1,
+									name: n
 									});
 								} 
 							}
@@ -498,13 +507,15 @@
 					 		aggregated.push({
 								type: "straight",
 								distance: Math.round(accumDist),
-								cross: accumCross
+								cross: accumCross,
+								name: n
 							});
 
 							aggregated.push({
 								type: t,
 								distance: 0,
-								cross: accumCross + 1
+								cross: accumCross + 1,
+								name: n
 							});
 							accumDist = 0;
 							accumCross = 0;
@@ -513,7 +524,8 @@
 							aggregated.push({ 
 								type: t,
 								distance: 0,
-								cross: accumCross+1
+								cross: accumCross+1,
+								name: n
 							});
 							accumDist = 0;
 							accumCross = 0;
@@ -524,7 +536,8 @@
 							aggregated.push({
 								type: "finish",
 								distance: Math.round(accumDist),
-								cross: accumCross
+								cross: accumCross,
+								name: n
 							});
 						}
 					}
@@ -547,20 +560,6 @@
 					<div class="route-info">
 						<div class="text-title">
 							{#if step.type === "straight"}
-								道なり
-							{:else if step.type === "finish"}
-								道なり
-							{:else if step.type === "right"}
-								右折
-							{:else if step.type === "left"}
-								左折
-							{:else if step.type === "uturn"}
-								Uターン
-							{/if}
-						</div>
-
-						<div class="text-sub">
-							{#if step.type === "straight"}
 								{step.distance}m道なり
 							{:else if step.type === "finish"}
 								{step.distance}m道なり
@@ -572,6 +571,22 @@
 								{step.cross}個目の交差点をUターン
 							{/if}
 						</div>
+
+
+						<!--後で道路名を表示させるかも-->
+						<!--<div class="text-sub">
+							{#if step.type === "straight"}
+								{step.name}m道なり
+							{:else if step.type === "finish"}
+								{step.name}m道なり
+							{:else if step.type === "right"}
+								{step.name}個目の交差点を右折
+							{:else if step.type === "left"}
+								{step.name}個目の交差点を左折
+							{:else if step.type === "uturn"}
+								{step.name}個目の交差点をUターン
+							{/if}
+						</div>-->
 					</div>
 				</div>
 			{/each}
