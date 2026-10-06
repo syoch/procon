@@ -117,10 +117,10 @@
 		const totalSlider = slider1 + slider2 + slider3;
 
 		const params: App.SearchParameters = {
-    		...ctx.searchParameters,
-    		mix_score_weight: totalSlider === 0 ? 0 : slider1 / totalSlider,
-    		view_score_weight: totalSlider === 0 ? 0 : slider2 / totalSlider,
-    		width_score_weight: totalSlider === 0 ? 0 : slider3 / totalSlider,
+			...ctx.searchParameters,
+			mix_score_weight: totalSlider === 0 ? 0 : slider1 / totalSlider,
+			view_score_weight: totalSlider === 0 ? 0 : slider2 / totalSlider,
+			width_score_weight: totalSlider === 0 ? 0 : slider3 / totalSlider,
 		};
 
 
@@ -192,14 +192,14 @@
 
 		try {
 			await fetch("/api/preload-osm", {
-    		method: "POST",
-    		headers: { "Content-Type": "application/json" },
-    		body: JSON.stringify({
-    		  minLat,
-    		  minLng,
-    		  maxLat,
-    		  maxLng
-    		}),
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({
+			  minLat,
+			  minLng,
+			  maxLat,
+			  maxLng
+			}),
   		});
 
 		} catch (e) {
@@ -248,13 +248,13 @@
 	let showSliders = $state(false);
 	//スライダー初期値
 	let slider1 = $state(50);
-    let slider2 = $state(50);
-    let slider3 = $state(50);
+	let slider2 = $state(50);
+	let slider3 = $state(50);
 
 	$effect(()=> { 
 		const params = ctx.state.parameterVariants[
-      		ctx.state.selectedVariantIndex
-    	];
+	  		ctx.state.selectedVariantIndex
+		];
 		slider1 = params.mix_score_weight * 100;
 		slider2 = params.view_score_weight * 100;
 		slider3 = params.width_score_weight * 100;
@@ -392,82 +392,82 @@
 
 
 {#if informationGraph && informationGraph.type && informationGraph.type.length > 0}
-			<div class="route-scroll-container">
-        <div class="text-title">経路案内</div>
+		<div class="route-scroll-container">
+		<div class="text-title">経路案内</div>
 
-        <!-- 開始地点 -->
-        <div class="route-row">
-            <img src={startpointLogo} alt="" />
-            <div class="route-info">
-                <div class="text-title">始点</div>
-                <div class="text-sub">{ctx.state.begin.query}</div>
-            </div>
-        </div>
+		<!-- 開始地点 -->
+		<div class="route-row">
+			<img src={startpointLogo} alt="" />
+			<div class="route-info">
+				<div class="text-title">始点</div>
+				<div class="text-sub">{ctx.state.begin.query}</div>
+			</div>
+		</div>
 
-        {#if informationGraph && informationGraph.type.length > 0}
-            <!-- 累積用の変数とステップ分割ロジック -->
-            {@const steps = (() => {
-                const aggregated = [];
-                let accumDist = 0;
-                let accumCross = 0;
+		{#if informationGraph && informationGraph.type.length > 0}
+			<!-- 累積用の変数とステップ分割ロジック -->
+			{@const steps = (() => {
+				const aggregated = [];
+				let accumDist = 0;
+				let accumCross = 0;
 
-                for (let i = 0; i < informationGraph.type.length; i++) {
-                    const t = informationGraph.type[i];
-                    const d = informationGraph.distance[i];
+				for (let i = 0; i < informationGraph.type.length; i++) {
+					const t = informationGraph.type[i];
+					const d = informationGraph.distance[i];
 
-                    accumDist += d;
+					accumDist += d;
 					if (t === "start" || t === "segments") {
-        				continue;
-    				}
+						continue;
+					}
 
-                    if (t === "straight") {
-                        accumCross++;
-                    }else if (t === "right" || t === "left"|| t === "uturn") {
+					if (t === "straight") {
+						accumCross++;
+					}else if (t === "right" || t === "left"|| t === "uturn") {
 						// transientSplit が長さ0のエッジを拒否するため、現実の道路網データではここに到達しない。
-    					// 万が一到達した場合は意図的に無視する（UIに距離0の案内を出さないため）。
+						// 万が一到達した場合は意図的に無視する（UIに距離0の案内を出さないため）。
 						 if (Math.round(accumDist) > 0) {
-                         	aggregated.push({
-                            	type: "straight",
-                            	distance: Math.round(accumDist),
-                            	cross: accumCross
-                        	});
+						 	aggregated.push({
+								type: "straight",
+								distance: Math.round(accumDist),
+								cross: accumCross
+							});
 
-                        	aggregated.push({
-                            	type: t,
-                        		distance: 0,
-                            	cross: accumCross + 1
-                        	});
+							aggregated.push({
+								type: t,
+								distance: 0,
+								cross: accumCross + 1
+							});
 
-                        	accumDist = 0;
-                        	accumCross = 0;
+							accumDist = 0;
+							accumCross = 0;
 						
-                    	} else if (Math.round(accumDist) === 0) {//0mだったとき
-        						aggregated.push({ 
+						} else if (Math.round(accumDist) === 0) {//0mだったとき
+								aggregated.push({ 
 								type: t,
 								distance: 0,
 								cross: accumCross+1
 								});
 							accumDist = 0;
-                        	accumCross = 0;
-    					}
+							accumCross = 0;
+						}
 					}else if (i === informationGraph.type.length - 1) {
-                        if (accumDist > 0 || accumCross > 0) {
-                            aggregated.push({
-                            	type: "finish",
-                            	distance: Math.round(accumDist),
-                            	cross: accumCross
-                        	});
-                    	}
-                    }
-                }	
-            	return aggregated;
+						if (accumDist > 0 || accumCross > 0) {
+							aggregated.push({
+								type: "finish",
+								distance: Math.round(accumDist),
+								cross: accumCross
+							});
+						}
+					}
+				}	
+				return aggregated;
 				})()}
 
-            <!-- まとめたステップをループして表示 -->
-            {#each steps as step}
-                <div class="route-row">
-                    <img 
-                        src={
+			<!-- まとめたステップをループして表示 -->
+			{#each steps as step}
+				<div class="route-row">
+					<img 
+						src={
 							step.type === "right" ? turnrightLogo :
 							step.type === "left" ? turnleftLogo : 
 							step.type === "uturn" ? uturnLogo : straightLogo
@@ -611,12 +611,12 @@
 	/*経路探索結果のスクロール可能なコンテナ*/
 		.route-scroll-container {
 		position: absolute;
-        top: 550px; /* 上部の出発点・終着点情報が収まる位置より下に配置 */
-        left: 10px; /* 左側の余白を調整 */
-        width: 95%;
-        height: calc(100% - 550px); /* パネルの残り全体の高さに合わせる */
-        overflow-y: auto;
-        overflow-x: hidden;
+		top: 550px; /* 上部の出発点・終着点情報が収まる位置より下に配置 */
+		left: 10px; /* 左側の余白を調整 */
+		width: 95%;
+		height: calc(100% - 550px); /* パネルの残り全体の高さに合わせる */
+		overflow-y: auto;
+		overflow-x: hidden;
 }
 /* 長い住所の表示。約2行分の高さに収め、はみ出した分はホイールでスクロールして読む */
 .addr-scroll {
@@ -633,62 +633,62 @@
 }
 
 .route-scroll-container::-webkit-scrollbar {
-    width: 6px;
+	width: 6px;
 }
 .route-scroll-container::-webkit-scrollbar-thumb {
-    background: rgba(0, 0, 0, 0.2);
-    border-radius: 3px;
+	background: rgba(0, 0, 0, 0.2);
+	border-radius: 3px;
 }
 
 .route-row {
-        display: flex;
-        align-items: center;
-        gap: 16px;
-        padding: 12px 16px;
-        background-color: var(--wn-white);
-        border-bottom: 1px solid var(--wn-spinner-gray);
-    }
+		display: flex;
+		align-items: center;
+		gap: 16px;
+		padding: 12px 16px;
+		background-color: var(--wn-white);
+		border-bottom: 1px solid var(--wn-spinner-gray);
+	}
 
-    .route-info {
-        display: flex;
-        flex-direction: column;
-        gap: 4px;
-    }
+	.route-info {
+		display: flex;
+		flex-direction: column;
+		gap: 4px;
+	}
 
-    .text-title {
-        font-size: 20px;
-        font-weight: 500;
-        color: var(--wn-ink);
-    }
+	.text-title {
+		font-size: 20px;
+		font-weight: 500;
+		color: var(--wn-ink);
+	}
 
-    .text-sub {
-        font-size: 16px;
-        color: var(--wn-spinner-gray);
-    }
+	.text-sub {
+		font-size: 16px;
+		color: var(--wn-spinner-gray);
+	}
 
 
 	/* スライダーグループのスタイル */
 	.slider-group {
-        display: flex;
-        flex-direction: column; /* 縦向きに並べる */
-        gap: 15px;              /* スライダー同士の隙間をあける */
-        padding: 15px;
-        background: white;
-        border-radius: 8px;
+		display: flex;
+		flex-direction: column; /* 縦向きに並べる */
+		gap: 15px;              /* スライダー同士の隙間をあける */
+		padding: 15px;
+		background: white;
+		border-radius: 8px;
 		position: absolute;
-        top: 400px; /* 画面の下から30pxの位置に配置 */
-        left: 50px;   /* 画面の左から50pxの位置に配置 */
-        z-index: 1000; /* 地図などの手前に表示させる */
-    }
-    .slider-item {
-        display: flex;
-        flex-direction: column;
-        gap: 5px;
-    }
+		top: 400px; /* 画面の下から30pxの位置に配置 */
+		left: 50px;   /* 画面の左から50pxの位置に配置 */
+		z-index: 1000; /* 地図などの手前に表示させる */
+	}
+	.slider-item {
+		display: flex;
+		flex-direction: column;
+		gap: 5px;
+	}
 	.custom-slider {
-        accent-color: #2f7731; /* 緑色にする例（好きなカラーコードや色名） */
+		accent-color: #2f7731; /* 緑色にする例（好きなカラーコードや色名） */
 		width: 250px;
-    }
+	}
 	.slider-popover {
 		top: 535px;                      /* 開閉ボタン (500px) のすぐ下 */
 		max-height: calc(100% - 550px);  /* 低い画面では、はみ出さずスクロールにする */
