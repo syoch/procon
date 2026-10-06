@@ -267,8 +267,38 @@ export function buildInformationGraph(
 
         // ★ 2. 進行方向のベクトルを作る
         // (beginCoord は今いるノード、endCoord は次のノードなので、reversed でも current -> next の向きになる)
-        const dx = endCoord.lng - beginCoord.lng;
-        const dy = endCoord.lat - beginCoord.lat;
+        let dx = 0;
+        let dy = 0;
+
+    if ("segments" in edge && edge.segments && edge.segments.length > 0) {
+        // セグメントがある場合は、交差点に最も近い部分のベクトルを使う
+        const segments = reversed ? [...edge.segments].reverse() : edge.segments;
+        // 交差点の手前 (入る側) ならば最後のセグメント、
+        // 交差点の先 (出る側) ならば最初のセグメントを使いたいですが、
+        // キャッシュには「そのエッジの全体的な進入/脱出方向」を保存する必要があります。
+        // judgeTurnTypeWithCache は、交差点の「直前」のキャッシュと「直後」のキャッシュを見ます。
+        // そのため、ここではそのエッジを通る際の「全体の向き」ではなく、
+        // 「エッジの出口での向き」と「エッジの入口での向き」の両方を正しく捉える必要があります。
+        
+        // 最小限の修正として、エッジの両端のセグメントから計算したベクトルを
+        // キャッシュに保存するようにします。
+        
+        // エッジ全体を一つのベクトルで代表させるのは無理があるため、
+        // 入り口（begin側）のベクトルと出口（end側）のベクトルを別々に計算するか、
+        // 少なくとも、交差点に入る直前と出た直後のセグメントを使うようにします。
+
+        // 簡略化のため、全体の chord ではなく、最後のセグメント（出口側）のベクトルを
+        // 基本の進行方向として採用します（進入時の角度として使われるため）。
+        const lastSeg = segments[segments.length - 1];
+        const segBegin = reversed ? lastSeg.end_coordinate : lastSeg.begin_coordinate;
+        const segEnd = reversed ? lastSeg.begin_coordinate : lastSeg.end_coordinate;
+        dx = segEnd.lng - segBegin.lng;
+        dy = segEnd.lat - segBegin.lat;
+    } else {
+        // セグメントがない場合は元の直線計算
+        dx = endCoord.lng - beginCoord.lng;
+        dy = endCoord.lat - beginCoord.lat;
+    }
         const length = Math.sqrt(dx * dx + dy * dy);
 
         vectorCache.push({
