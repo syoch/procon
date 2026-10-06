@@ -79,6 +79,7 @@
 				: ctx.state.end;
 		locationState.state = "confirmed";
 		locationState.query = `${lat}, ${lng}`;
+		locationState.displayName = undefined;
 		ctx.state.setCoordinate(ctx.state.locationSelection, {lat, lng});
 	}
 	$effect(() => {
