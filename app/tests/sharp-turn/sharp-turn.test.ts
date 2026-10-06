@@ -20,6 +20,7 @@ function road(points: number[][], highway = "residential"): App.Segment[] {
       highway,
       width: 4,
       sidewalk: "no",
+      tags: {}
     });
   }
   return segs;

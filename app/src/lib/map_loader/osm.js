@@ -247,6 +247,7 @@ function buildGraphFromWays(rawNodes, rawWays) {
         width,
         sidewalk: tags.sidewalk ?? null,
         direction,
+        tags
       };
 
       edges[edgeId] = edge;

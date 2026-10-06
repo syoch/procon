@@ -63,6 +63,8 @@ declare global {
 			width: number | null;
 			/** OSM 上の歩道情報 */
 			sidewalk: string | null;
+			/** OSM 上の tags */
+			tags: Record<string, string>;
 			/** 通行可能な向き */
 			direction: TravelDirection;
 		};
@@ -116,6 +118,8 @@ declare global {
 			width: number | null,
 			/** OSM 上の歩道情報 */
 			sidewalk: string | null,
+			/** OSM 上の tags */
+			tags: Record<string, string>
 		}
 
 		/**

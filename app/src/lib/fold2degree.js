@@ -43,6 +43,7 @@ export function fold2DegreeEdges(graph) {
             highway: edge.highway,
             width: edge.width,
             sidewalk: edge.sidewalk,
+            tags: edge.tags,
           },
         ],
       };

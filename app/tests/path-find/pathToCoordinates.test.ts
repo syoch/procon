@@ -47,6 +47,7 @@ function compEdge(
 			highway: "residential",
 			width: 3,
 			sidewalk: "both",
+			tags: {}
 		})),
 		width_score: 0,
 		view_score: 0,
@@ -381,7 +382,7 @@ function osmEdge(
   end: string,
   direction: App.TravelDirection = "both",
 ): App.OSMEdge {
-  return { type: "OSMEdge", id, begin, end, direction, highway: "residential", width: 3, sidewalk: "both" };
+  return { type: "OSMEdge", id, begin, end, direction, highway: "residential", width: 3, sidewalk: "both", tags: {} };
 }
 
 function buildSearchGraph(edgeList: App.OSMEdge[]): App.SearchGraph {

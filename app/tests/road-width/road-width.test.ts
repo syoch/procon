@@ -59,9 +59,9 @@ describe("applyGsiWidths / removeNarrowEdges", () => {
       b: { type: "MapNode", id: "b", coordinate: { lat: 37.45, lng: 138.852 }, edges: ["e1", "e2", "e3"] },
     },
     edges: {
-      e1: { type: "OSMEdge", id: "e1", begin: "a", end: "b", highway: "residential", width: null, sidewalk: null, direction: "both" },
-      e2: { type: "OSMEdge", id: "e2", begin: "a", end: "b", highway: "residential", width: 12, sidewalk: null, direction: "both" },
-      e3: { type: "OSMEdge", id: "e3", begin: "a", end: "b", highway: "footway", width: null, sidewalk: null, direction: "both" },
+      e1: { type: "OSMEdge", id: "e1", begin: "a", end: "b", highway: "residential", width: null, sidewalk: null, direction: "both", tags: {} },
+      e2: { type: "OSMEdge", id: "e2", begin: "a", end: "b", highway: "residential", width: 12, sidewalk: null, direction: "both", tags: {} },
+      e3: { type: "OSMEdge", id: "e3", begin: "a", end: "b", highway: "footway", width: null, sidewalk: null, direction: "both", tags: {} },
     },
   });
   const index = new GsiRoadIndex([{ begin: { lat: 37.45, lng: 138.85 }, end: { lat: 37.45, lng: 138.86 }, width: 4 }]);
