@@ -330,34 +330,37 @@
 						/>
 					</div>
 
-						<div class="slider-group">
-					{@render scoreSliders()}
-					</div>
-
 				{:else}
 					<span
-						style="position: absolute; white-space: nowrap; left: 18.3px; top: 104px;"
+						style="position: absolute; white-space: nowrap; left: 18.3px; top: 100px;"
 						>出発点</span
 					>
 					<span
-						style="position: absolute; white-space: nowrap; left: 30.7px; top: 146px;"
-						>地名</span
+						style="position: absolute; white-space: nowrap; left: 30.7px; top: 140px;"
+						>{ctx.state.begin.query}</span
 					>
 					<span
-						style="position: absolute; white-space: nowrap; left: 32.8px; top: 196px;"
-						>詳細等</span
+						class="addr-scroll" style="top:180px;"
+						>{ctx.state.begin.displayName ?? ""}</span
 					>
-					<div class="divider" style="top: 253px;"></div>
+					<div class="divider" style="top: 220px;"></div>
 					<span
-						style="position: absolute; white-space: nowrap; left: 18.5px; top: 278.6px;"
+						style="position: absolute; white-space: nowrap; left: 18.5px; top: 230px;"
 						>終着点</span
 					>
 					<span
-						style="position: absolute; white-space: nowrap; left: 32.7px; top: 320.2px;"
-						>地点</span
+						style="position: absolute; white-space: nowrap; left: 32.7px; top: 270px;"
+						>{ctx.state.end.query}</span
 					>
-					<span style="position: absolute; white-space: nowrap; left: 34.8px; top: 367.6px;">
-						総走行距離: {((totalDistance ?? 0) / 1000).toFixed(2)} km <br>
+					<span
+						class="addr-scroll" style="top: 310px;"
+						>{ctx.state.end.displayName ?? ""}</span
+					>
+					<div class="divider" style="top: 350px;"></div>
+					<span style="position: absolute; white-space: nowrap; left: 32.8px; top: 360px;">
+						総走行距離: {((totalDistance ?? 0) / 1000).toFixed(2)} km
+					</span>
+					<span style="position: absolute; white-space: nowrap; left: 32.8px; top: 390px;">
 						総通過交差点数: {totalIntersections ?? 0} 個
 					</span>
 					<div class="divider" style="top: 425.5px;"></div>
@@ -387,11 +390,6 @@
 	</button>
 </div>
 
-{#if showSliders}
-	<div class="slider-group slider-popover">
-		{@render scoreSliders()}
-	</div>
-{/if}
 
 {#if informationGraph && informationGraph.type && informationGraph.type.length > 0}
 			<div class="route-scroll-container">
@@ -521,6 +519,11 @@
 	</div>
 	{/if}
 			{/if}
+						{#if ctx.state.appState === "menu-detail" || showSliders}
+			<div class="slider-group" class:slider-popover={ctx.state.appState === "menu-result"}>
+				{@render scoreSliders()}
+			</div>
+			{/if}
 			{/snippet}
 		</DetailPanel>
 	</div>
@@ -614,6 +617,19 @@
         height: calc(100% - 550px); /* パネルの残り全体の高さに合わせる */
         overflow-y: auto;
         overflow-x: hidden;
+}
+/* 長い住所の表示。約2行分の高さに収め、はみ出した分はホイールでスクロールして読む */
+.addr-scroll {
+	position: absolute;
+	left: 32px;
+	width: 340px;
+	font-size: 14px;
+	line-height: 1.4;
+	max-height: 2.8em;          /* 2行分。超えたらスクロールになる */
+	overflow-y: auto;
+	overflow-wrap: anywhere;    /* 区切りのない長い文字列も折り返す */
+	overscroll-behavior: contain; /* 端まで行っても、外側の画面にスクロールが伝わらない */
+	scrollbar-width: thin;
 }
 
 .route-scroll-container::-webkit-scrollbar {
