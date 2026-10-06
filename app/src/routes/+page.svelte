@@ -7,10 +7,9 @@
 	import { CrossConvert } from "$lib/cross_transform";
 	import { fold2DegreeEdges } from "$lib/fold2degree";
 	import { assertGraph } from "$lib/utils/graph";
-	import { loadOSMMap } from "$lib/map_loader/osm";
 	import MapViewer from "$lib/components/MapViewer.svelte";
 	import type { SharpTurn } from "$lib/sharp_turn";
-	import type { PathFindResult } from "./api/path-find/pathFind";
+	import type { PathFindResult } from "$lib/api/path-find";
 	import DetailButton from "$lib/components/figma/DetailButton.svelte";
 	import DetailPanel from "$lib/components/figma/DetailPanel.svelte";
 	import TitleScreen from "$lib/components/figma/TitleScreen.svelte";

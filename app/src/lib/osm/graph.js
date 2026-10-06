@@ -1,22 +1,9 @@
 /**
- * @file osm.js
- * @brief OSM(Overpass API)からデータを読み込み、OSM Graph を構築する
+ * @file graph.js
+ * @brief Overpass API の返答を OSM Graph へ変換する
  */
 
 import { canTraverseBackward, canTraverseForward, flipDirection } from "../utils/direction";
-
-/**
- * @brief OSM データを読み込み、OSM Graph を作成する
- * @param {number} minLat - 最小緯度
- * @param {number} minLon - 最小経度
- * @param {number} maxLat - 最大緯度
- * @param {number} maxLon - 最大経度
- * @returns {Promise<App.OSMGraph>} OSM Graph
- */
-export async function loadOSMMap(minLat, minLon, maxLat, maxLon) {
-  const data = await fetchOverpassData(minLat, minLon, maxLat, maxLon);
-  return transformOSMMapToOSMGraph(data);
-}
 
 /**
  * @brief OSM の返答情報を OSMGraph 型へ変換する
@@ -25,42 +12,6 @@ export async function loadOSMMap(minLat, minLon, maxLat, maxLon) {
 export function transformOSMMapToOSMGraph(osmMap) {
   const { rawNodes, rawWays } = splitElements(osmMap);
   return buildGraphFromWays(rawNodes, rawWays);
-}
-
-/**
- * @brief Overpass API へ bbox 内の highway 付き way を問い合わせる
- * @param {number} minLat
- * @param {number} minLon
- * @param {number} maxLat
- * @param {number} maxLon
- * @returns {Promise<App.OSMData>}
- */
-async function fetchOverpassData(minLat, minLon, maxLat, maxLon) {
-  const res = await fetch("/api/osm", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      minLat,
-      minLng: minLon,
-      maxLat,
-      maxLng: maxLon,
-      wayHighway: [
-        "motorway",
-        "trunk",
-        "primary",
-        "secondary",
-        "tertiary",
-        "unclassified",
-        "residential",
-      ]
-    }),
-  });
-
-  if (!res.ok) {
-    throw new Error(`/api/osm API エラー: ${res.status}`);
-  }
-
-  return res.json();
 }
 
 /**

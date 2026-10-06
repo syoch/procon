@@ -2,12 +2,12 @@ import { expect, test, beforeEach, afterEach, vi } from "vitest";
 import { chmod, mkdtemp, mkdir, readdir, readFile, rm, writeFile, utimes } from "fs/promises";
 import { join } from "path";
 import { tmpdir } from "os";
-import type { Boundary } from "../../src/routes/api/osm/boundary";
-import { divideBoundary } from "../../src/routes/api/osm/boundary";
+import type { Boundary } from "../../src/lib/osm/boundary";
+import { divideBoundary } from "../../src/lib/osm/boundary";
 
 /** OSM_CACHE_DIR を一時ディレクトリに向けてからキャッシュマネージャを読み込む */
 let cacheDir: string;
-let mod: typeof import("../../src/routes/api/osm/fs-cache-manager");
+let mod: typeof import("../../src/lib/osm/fs-cache-manager");
 
 vi.mock("$env/dynamic/private", () => ({
   env: {
@@ -21,7 +21,7 @@ beforeEach(async () => {
   cacheDir = await mkdtemp(join(tmpdir(), "osm-cache-test-"));
   process.env.TEST_OSM_CACHE_DIR = cacheDir;
   vi.resetModules();
-  mod = await import("../../src/routes/api/osm/fs-cache-manager");
+  mod = await import("../../src/lib/osm/fs-cache-manager");
 });
 
 afterEach(async () => {
@@ -74,7 +74,7 @@ test("saveCache はキャッシュディレクトリが無ければ作る", asyn
   const nested = join(cacheDir, "deep", "path");
   process.env.TEST_OSM_CACHE_DIR = nested;
   vi.resetModules();
-  const m = await import("../../src/routes/api/osm/fs-cache-manager");
+  const m = await import("../../src/lib/osm/fs-cache-manager");
   await m.cacheManager.saveCache(cell(0, 0), SAMPLE);
   expect(await m.cacheManager.readCache(cell(0, 0))).toEqual(SAMPLE);
 });
@@ -111,7 +111,7 @@ test.runIf(process.getuid?.() !== 0)(
     await chmod(readOnly, 0o500);
     process.env.TEST_OSM_CACHE_DIR = readOnly;
     vi.resetModules();
-    const m = await import("../../src/routes/api/osm/fs-cache-manager");
+    const m = await import("../../src/lib/osm/fs-cache-manager");
 
     await expect(m.cacheManager.saveCache(cell(0, 0), SAMPLE)).rejects.toThrow();
 
@@ -183,7 +183,7 @@ test("listCachedOSMCells: ディレクトリが無ければ空配列", async () 
   const missing = join(cacheDir, "not-created-yet");
   process.env.TEST_OSM_CACHE_DIR = missing;
   vi.resetModules();
-  const m = await import("../../src/routes/api/osm/fs-cache-manager");
+  const m = await import("../../src/lib/osm/fs-cache-manager");
   expect(await m.listCachedOSMCells()).toEqual([]);
 });
 
@@ -257,7 +257,7 @@ test("cleanupStaleTempFiles は古い一時ファイルを削除し、新しい�
 test("cleanupStaleTempFiles はディレクトリが無ければ 0", async () => {
   process.env.TEST_OSM_CACHE_DIR = join(cacheDir, "not-created");
   vi.resetModules();
-  const m = await import("../../src/routes/api/osm/fs-cache-manager");
+  const m = await import("../../src/lib/osm/fs-cache-manager");
   expect(await m.cleanupStaleTempFiles()).toBe(0);
 });
 

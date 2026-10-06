@@ -1,6 +1,6 @@
 import { expect, test, vi } from "vitest";
-import type { Boundary } from "../../src/routes/api/osm/boundary";
-import { requireOSMData } from "../../src/routes/api/osm";
+import type { Boundary } from "../../src/lib/osm/boundary";
+import { requireOSMData } from "../../src/lib/osm";
 import { RequestContext } from "$lib/tracing/requestContext";
 
 const BOUNDARY: Boundary = {

@@ -21,7 +21,7 @@ import { fileURLToPath } from "node:url";
 
 import { CrossConvert } from "../src/lib/cross_transform";
 import { fold2DegreeEdges } from "../src/lib/fold2degree";
-import { transformOSMMapToOSMGraph } from "../src/lib/map_loader/osm";
+import { transformOSMMapToOSMGraph } from "../src/lib/osm/graph";
 import { pathFind } from "../src/lib/path_finder";
 import { largestComponentEdges } from "../src/lib/utils/graph";
 import { transientSplit } from "../src/lib/transient-split";
@@ -30,20 +30,21 @@ import {
   GsiRoadIndex,
   measureSegmentsWidthCoverage,
   removeNarrowEdges,
-  type GsiRoadSegment,
   type WidthCoverage,
 } from "../src/lib/road_width";
+import type { GsiRoadSegment } from "../src/lib/gsi/parse";
 import { distanceOf } from "../src/lib/utils/haversine";
-import { MODE_IDS, MODE_PROFILES, type ModeId, type ModeProfile } from "../src/lib/mode_profiles";
-import { trimOSMDataByMode } from "../src/routes/api/osm/osm-data";
+import { MODE_IDS, MODE_PROFILES } from "../src/lib/mode_profiles";
+import type { ModeId, ModeProfile } from "../src/lib/mode_rules";
+import { trimOSMDataByMode } from "../src/lib/osm/osm-data";
 import {
   requireGsiRoadSegmentsForTiles,
   tileKey,
   tilesAlongPath,
   type GsiTile,
-} from "../src/routes/api/gsi";
-import { gsiCacheManager } from "../src/routes/api/gsi/fs-cache-manager";
-import { fetchGsiRoadTile } from "../src/routes/api/gsi/gsi-fetcher";
+} from "../src/lib/gsi";
+import { gsiCacheManager } from "../src/lib/gsi/fs-cache-manager";
+import { fetchGsiRoadTile } from "../src/lib/gsi/gsi-fetcher";
 import {
   MAX_GSI_PASSES,
   MAX_SNAP_DISTANCE_M,

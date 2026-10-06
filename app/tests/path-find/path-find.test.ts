@@ -2,27 +2,27 @@ import { describe, expect, test, vi } from "vitest";
 
 // 地図データの取得 (キャッシュ・Overpass) はモックし、テストごとに用意した地図を返す
 let mapData: App.OSMData = { elements: [] };
-vi.mock("../../src/routes/api/osm", () => ({ requireOSMData: vi.fn(async () => structuredClone(mapData)) }));
-vi.mock("../../src/routes/api/osm/fs-cache-manager", () => ({ cacheManager: {} }));
-vi.mock("../../src/routes/api/osm/osm-fetcher", () => ({ fetchOverpassData: vi.fn() }));
+vi.mock("../../src/lib/osm", () => ({ requireOSMData: vi.fn(async () => structuredClone(mapData)) }));
+vi.mock("../../src/lib/osm/fs-cache-manager", () => ({ cacheManager: {} }));
+vi.mock("../../src/lib/osm/osm-fetcher", () => ({ fetchOverpassData: vi.fn() }));
 // 国土地理院の幅員も同様にモックし、テストごとに用意した区間を返す
 let gsiSegments: GsiRoadSegment[] = [];
 // (タイルの選び方 (tilesAlongPath など) は本物を使い、取得だけを差し替える。requestedTiles に要求されたタイルを記録する)
 let requestedTiles: { x: number; y: number }[][] = [];
-vi.mock("../../src/routes/api/gsi", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("../../src/routes/api/gsi")>()),
+vi.mock("../../src/lib/gsi", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../src/lib/gsi")>()),
   requireGsiRoadSegmentsForTiles: vi.fn(async (tiles: { x: number; y: number }[]) => {
     requestedTiles.push(tiles);
     return gsiSegments;
   }),
 }));
-vi.mock("../../src/routes/api/gsi/fs-cache-manager", () => ({ gsiCacheManager: {} }));
-vi.mock("../../src/routes/api/gsi/gsi-fetcher", () => ({ fetchGsiRoadTile: vi.fn() }));
+vi.mock("../../src/lib/gsi/fs-cache-manager", () => ({ gsiCacheManager: {} }));
+vi.mock("../../src/lib/gsi/gsi-fetcher", () => ({ fetchGsiRoadTile: vi.fn() }));
 
 import { doPathFind, getBoundaryBox, MAX_SNAP_DISTANCE_M } from "../../src/routes/api/path-find/pathFind";
-import { tilesAlongPath, tilesForBoundary } from "../../src/routes/api/gsi";
+import { tilesAlongPath, tilesForBoundary } from "../../src/lib/gsi";
 import { MODE_PROFILES } from "../../src/lib/mode_profiles";
-import type { GsiRoadSegment } from "../../src/lib/road_width";
+import type { GsiRoadSegment } from "../../src/lib/gsi/parse";
 import { RequestContext } from "$lib/tracing/requestContext";
 
 const CELL = 0.015625;

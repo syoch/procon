@@ -53,7 +53,7 @@ EOF
 ### キャッシュ更新の手動実行
 
 `procon-cache-refresh.timer` が OSM キャッシュの失効セルを毎日取り直す。
-内部の動作は [`osm/README.md`](../app/src/routes/api/osm/README.md#定期更新) を参照。
+内部の動作は [`osm/README.md`](../app/src/lib/osm/README.md#定期更新) を参照。
 
 ```shell
 [procon@vm20025:~]$ sudo systemctl start procon-cache-refresh.service
@@ -71,7 +71,7 @@ Overpass API のエンドポイント
 
 ### `OSM_CACHE_TTL_DAYS` (任意)
 
-OSM キャッシュの有効期間（日数）。未設定なら 30 日、`0` で失効させない。解釈規則は [`osm/README.md`](../app/src/routes/api/osm/README.md#取得時刻と-ttl) を参照
+OSM キャッシュの有効期間（日数）。未設定なら 30 日、`0` で失効させない。解釈規則は [`osm/README.md`](../app/src/lib/osm/README.md#取得時刻と-ttl) を参照
 
 ### `PROCON_HEAD_HASH` (任意)
 

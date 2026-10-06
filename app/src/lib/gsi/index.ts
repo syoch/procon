@@ -1,5 +1,5 @@
 import type { Boundary } from "../osm/boundary";
-import { parseGsiRoadTile, type GsiRoadSegment } from "$lib/road_width";
+import { parseGsiRoadTile, type GsiRoadSegment } from "./parse";
 
 /** 国土地理院の道路中心線タイルのズームレベル (提供されているのは 16 のみ) */
 export const GSI_TILE_ZOOM = 16;

@@ -2,7 +2,7 @@ import { getContext, setContext } from "svelte";
 import L from "leaflet";
 import { queryParameters, ssp } from "sveltekit-search-params";
 import type { Readable, Writable } from "svelte/store";
-import type { ModeId } from "$lib/mode_profiles";
+import type { ModeId } from "$lib/mode_rules";
 
 export interface LocationCandidate {
   /** 短い表示名(例: "長岡駅") */
@@ -43,7 +43,7 @@ export type ParameterVariant = {
   /** 道幅スコアの重み */
   width_score_weight: number;
   /**
-   * 移動モード (mode_profiles.ts)。指定すると、通れる道・一方通行・急カーブの基準がサーバー側でモードごとに決まる。
+   * 移動モード (mode_rules.ts)。指定すると、通れる道・一方通行・急カーブの基準がサーバー側でモードごとに決まる。
    * 未指定のプリセットは従来どおり wayHighway で探索する
    */
   mode?: ModeId;
