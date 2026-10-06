@@ -38,6 +38,10 @@ function calculateEdgeCost(edge: App.ComputedEdge | App.MapVCrossEdge, params: A
   // そのため重み付きで足し合わせ、score が高いほどコストが下がる。
   let score = a1 * view_score + a2 * width_score + a3 * mix_score;
   let cost = distance * (1 + lambda * (1 - score));
+
+  if (cost < 0) {
+    return 0;
+  }
   return cost;
 }
 

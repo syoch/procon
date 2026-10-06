@@ -41,6 +41,7 @@
 
 	function select(c: LocationCandidate) {
 		loc.query = c.name;
+		loc.displayName = c.displayName;
 		appCtx.state.setCoordinate(target, { lat: c.lat, lng: c.lon });
 		loc.state = "confirmed";
 		appCtx.state.locationCandidates = null;

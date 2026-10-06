@@ -50,6 +50,311 @@ jobs:
           pnpm install --frozen-lockfile
           pnpm test
 
+  # 1 検索にかかる時間の回帰を見るのが目的のジョブ。
+  #
+  # 設計の詳細は [`app/bench/README.md`](../../app/bench/README.md) に書いてある。
+  # 判断の根拠になる要点は 2 つだけ。
+  #
+  # 1. base と head を同じランナー上で 2 回測って比べる。
+  #    2 つの計測は**測定項目 ID**（`{シナリオ}[/{モード}]/{段}`）で突き合わせる。
+  # 2. ジョブの結論は compare.mjs の終了コードだけで決まる。
+  #    exit 0 は緑、exit 1 は赤、exit 2 は緑 + 警告、exit 3 は赤（bench 自身のバグ）にする。
+  #    不成立の理由は job summary の先頭とログに両方残す。
+  # 3. base を測れなかった場合も赤にする（緑に見えるのに回帰を検出していない状態を避ける）。
+  bench:
+    runs-on: ubuntu-latest
+    # 計測条件の値はここ 1 箇所に集約する。base と head に同じ値を渡す
+    env:
+      BENCH_ITERATIONS: "20"
+      BENCH_WARMUP: "5"
+      OSM_CACHE_DIR: ${{ github.workspace }}/osm-cache
+    steps:
+      # 比較する 2 つの作業ディレクトリを用意する
+      - uses: actions/checkout@v4
+        with:
+          path: head
+
+      - uses: actions/checkout@v4
+        with:
+          path: base
+          ref: ${{ github.event.pull_request.base.sha || github.event.before }}
+
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 11.27.0
+          package_json_file: head/app/package.json
+          cache_dependency_path: head/app/pnpm-lock.yaml
+          cache: true
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 26
+
+      - name: 依存関係をインストール
+        working-directory: head/app
+        run: pnpm install --frozen-lockfile
+
+      - name: base 側にも依存関係を入れる
+        working-directory: base/app
+        run: |
+          pnpm install --frozen-lockfile --ignore-scripts
+          # bench は jsconfig.json が extends している .svelte-kit/tsconfig.json を参照する。
+          # install を --ignore-scripts にしたので svelte-kit sync が走らないので、明示的に実行する。
+          pnpm exec svelte-kit sync
+
+      # OSM キャッシュは key を固定するので、1 度取得したものがそのまま使い回される。
+      # キャッシュが無いときだけ Overpass から取り直して保存する。
+      - name: OSM キャッシュを復元する
+        id: osm_cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ env.OSM_CACHE_DIR }}
+          key: bench-osm-cache-v2
+
+      # アプリのキャッシュ層（requireOSMData / cacheManager / fetchOverpassData）を通すので、
+      # セルファイル名と中身の形式は本番のキャッシュと同じになる。
+      - name: フィクスチャを用意する
+        working-directory: head/app
+        run: |
+          set -o pipefail
+          node bench/build.mjs
+          node bench/.build/fetch-fixture.mjs | tee "$RUNNER_TEMP/bench-fixture.txt"
+
+      - name: OSM キャッシュを保存する
+        if: steps.osm_cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ env.OSM_CACHE_DIR }}
+          key: bench-osm-cache-v2
+
+      # bench が main にあるかどうかで 2 通りに分かれる。
+      #   A. base に bench が無い -> この PR で bench を入れたので比較しない（正常）
+      #   B. base に bench がある -> 必ず base を測り、測定項目 ID で突き合わせる
+      - name: base に bench があるか確認する
+        id: base_has_bench
+        run: |
+          if [ -f base/app/bench/compare.mjs ]; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      # 計測ハーネスは両側とも各 checkout が持つものを使う。
+      # ハーネスの同一性は求めない。比較は**測定項目 ID 単位**で行う。
+      #
+      # ただし測定項目 ID を持つのは新しい方の bench だけなので、
+      # base を測定した bench が measurements を持たない場合は比較が成立しない。
+      # それは bench の出力契約を変えた PR のときだけ当てになり、
+      # その PR が merge されたあとは両側とも新しい契約になるので自然に解決する。
+      - name: 基準となる sha を控える
+        id: refs
+        run: |
+          {
+            echo "base_sha=${{ github.event.pull_request.base.sha || github.event.before }}"
+            echo "head_sha=${{ github.event.pull_request.head.sha || github.sha }}"
+          } >> "$GITHUB_OUTPUT"
+
+      # base を bench で計測できないのは、base に bench が無いときだけ。
+      # 落ちた場合は比較不成立（緑 + 警告）として扱い、理由は次の表示ステップが出す。
+      - name: base を計測
+        id: base_bench
+        if: steps.base_has_bench.outputs.exists == 'true'
+        working-directory: base/app
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          node bench/build.mjs
+          # --quiet を付けると tee する本文が空になり、job summary に数値が出なくなる。
+          # 計測中の console 出力は run.ts が要約済みなので、そのまま出しても読みやすい。
+          node bench/.build/bench.mjs \
+            --iterations "$BENCH_ITERATIONS" \
+            --warmup "$BENCH_WARMUP" \
+            --json "$RUNNER_TEMP/bench-base.json" \
+            | tee "$RUNNER_TEMP/bench-base.txt"
+
+      - name: head を計測
+        working-directory: head/app
+        run: |
+          set -o pipefail
+          node bench/build.mjs
+          node bench/.build/bench.mjs \
+            --iterations "$BENCH_ITERATIONS" \
+            --warmup "$BENCH_WARMUP" \
+            --json "$RUNNER_TEMP/bench-head.json" \
+            | tee "$RUNNER_TEMP/bench-head.txt"
+
+      # 終了コードはジョブの結論そのものなので、後続のステップが使えるように
+      # 必ず GITHUB_OUTPUT に出してから次のステップへ進む。
+      # 標準出力を tee しつつ PIPESTATUS で compare.mjs 自身の終了コードを取る。
+      - name: 結果を比較
+        id: cmp
+        if: steps.base_has_bench.outputs.exists == 'true' && steps.base_bench.outcome == 'success'
+        continue-on-error: true
+        working-directory: head/app
+        run: |
+          set +e
+          set -o pipefail
+          node bench/compare.mjs \
+            --base "$RUNNER_TEMP/bench-base.json" \
+            --head "$RUNNER_TEMP/bench-head.json" \
+            --tolerance "${{ vars.BENCH_TOLERANCE || '1.5' }}" \
+            --format markdown \
+            2> "$RUNNER_TEMP/bench-compare.err" \
+            | tee "$RUNNER_TEMP/bench-compare.md"
+          code=${PIPESTATUS[0]}
+          set -e
+          echo "exit_code=$code" >> "$GITHUB_OUTPUT"
+          cat "$RUNNER_TEMP/bench-compare.err" >&2
+
+      # 結論を job summary の先頭に出す。
+      # 「比較できなかった」を緑で黙って済ませないために、
+      # 比較不成立のときは理由（校正・ID・版）を表より前に並べる。
+      - name: 結果をサマリーに貼る
+        if: always()
+        env:
+          CMP_EXIT: ${{ steps.cmp.outputs.exit_code }}
+          BASE_HAS_BENCH: ${{ steps.base_has_bench.outputs.exists }}
+          BASE_OUTCOME: ${{ steps.base_bench.outcome }}
+        run: |
+          {
+            echo '## bench'
+            echo
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if [ "$BASE_HAS_BENCH" != "true" ]; then
+            {
+              echo '> [!WARNING]'
+              echo '> base（main）に bench がまだ無いため、比較しませんでした。'
+              echo '> この PR が bench を追加している場合の最初の 1 回だけです。'
+              echo
+              echo 'head の計測値:'
+              echo
+              echo '```'
+              cat "$RUNNER_TEMP/bench-head.txt" 2>/dev/null || echo '(出力なし)'
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "::notice::base に bench がまだ無い（この PR で追加）ため、性能の比較はしませんでした"
+          elif [ "$BASE_OUTCOME" != "success" ]; then
+            {
+              echo '> [!CAUTION]'
+              echo '> base 側の計測に失敗したため、比較が成立しませんでした（ジョブは失敗します）。'
+              echo
+              echo 'base は自分の bench を自分の `app/src` でビルドしています。'
+              echo 'そのため base の計測失敗は base 自身の破損か、依存関係の解決失敗を意味します。'
+              echo
+              echo "- base の依存関係が解決できていない"
+              echo "- base（main）側がそれ自体が壊れている"
+              echo
+              echo '<details><summary>base の計測出力</summary>'
+              echo
+              echo '```'
+              cat "$RUNNER_TEMP/bench-base.txt" 2>/dev/null || echo '(出力なし)'
+              echo '```'
+              echo
+              echo '</details>'
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "::error::base 側の計測に失敗したため、性能の比較が成立しませんでした"
+          elif [ "$CMP_EXIT" = "2" ]; then
+            # 出力契約を変えた PR では、merge するまで base が測定項目 ID を持たない。
+            # その警告は「その PR でしか出ない」ので、毎回 ::warning:: を上げると
+            # 誰も読まなくなる。契約の過渡期は注記（::notice::）にして区別する。
+            # compare.mjs は exit 2 のときに必ずこの 1 行を出す。
+            # 出なかった場合は原因不明なので、contract 以外と同じ扱いにはしない。
+            REASON=$(sed -n 's/^bench-compare: \([a-z]*\):.*/\1/p' "$RUNNER_TEMP/bench-compare.err" | head -1)
+            case "$REASON" in
+              contract)
+                {
+                  echo '> [!NOTE]'
+                  echo '> 性能の比較は成立しませんでした（回帰の判定はしていません）。'
+                  echo '> この PR で bench の出力契約を変えたため、merge するまで base 側が測定項目 ID を持たない状態です。'
+                } >> "$GITHUB_STEP_SUMMARY"
+                echo "::notice::bench の出力契約の過渡期なので、性能の比較は成立しません（merge 後は解消します）"
+                ;;
+              ids|work|machine)
+                {
+                  echo '> [!WARNING]'
+                  echo '> 性能の比較は成立しませんでした（回帰の判定はしていません）。'
+                  while IFS= read -r line; do
+                    echo "> $line"
+                  done < "$RUNNER_TEMP/bench-compare.err"
+                  echo
+                } >> "$GITHUB_STEP_SUMMARY"
+                echo "::warning::性能の比較が成立しませんでした（原因は $REASON。理由は job summary を参照）"
+                ;;
+              *)
+                {
+                  echo '> [!WARNING]'
+                  echo '> 性能の比較は成立しませんでした（回帰の判定はしていません）。'
+                  echo "> 原因を判定できませんでした（bench-compare.err を確認してください）"
+                } >> "$GITHUB_STEP_SUMMARY"
+                echo "::warning::性能の比較が成立しませんでした（原因を判定できませんでした）"
+                ;;
+            esac
+          fi
+
+          if [ -s "$RUNNER_TEMP/bench-compare.md" ]; then
+            {
+              echo '```'
+              cat "$RUNNER_TEMP/bench-compare.md"
+              echo '```'
+              echo
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+          {
+            echo "<details><summary>計測したジョブの sha</summary>"
+            echo ""
+            echo "- base: \`${{ steps.refs.outputs.base_sha }}\`"
+            echo "- head: \`${{ steps.refs.outputs.head_sha }}\`"
+            echo ""
+            echo "</details>"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # 回帰と契約違反だけが compare を落とす。比較不成立（exit 2）は緑 + 警告で終える
+      - name: bench 自身のバグを報告する
+        if: always() && steps.cmp.outputs.exit_code == '3'
+        run: |
+          # exit 1 と区別するのは、結果 JSON の問題ではなく bench のコードの問題だから。
+          # 直すべきは bench のコードで、結果 JSON ではない。
+          echo "::error::bench 自身のバグで比較が処理できませんでした（詳細は job summary を参照）"
+          {
+            echo '> [!CAUTION]'
+            echo '> bench 自身のバグで比較が処理できませんでした。'
+            echo '> 結果 JSON の問題ではなく bench のコードの問題です。'
+            echo
+            echo '```'
+            cat "$RUNNER_TEMP/bench-compare.err" 2>/dev/null || echo '(出力なし)'
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit 1
+
+      - name: 回帰を報告する
+        if: always() && steps.cmp.outputs.exit_code == '1'
+        run: |
+          echo "::error::許容倍率（${{ vars.BENCH_TOLERANCE || '1.5' }} 倍）を超える測定項目があるか、結果 JSON が契約を守っていません。job summary を確認してください"
+          exit 1
+
+      # base を測れなかった場合はジョブを落とす。
+      # 緑に見えるのに回帰を検出していない状態は、検証されていないより悪いため。
+      - name: base の計測失敗を報告する
+        if: always() && steps.base_has_bench.outputs.exists == 'true' && steps.base_bench.outcome != 'success'
+        run: |
+          echo "::error::base 側の計測に失敗したため、性能の比較が成立しませんでした（詳細は job summary を参照）"
+          exit 1
+
+      - name: 結果をアーティファクトとして保存
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bench-results
+          path: |
+            ${{ runner.temp }}/bench-base.json
+            ${{ runner.temp }}/bench-head.json
+            ${{ runner.temp }}/bench-compare.md
+            ${{ runner.temp }}/bench-compare.err
+          if-no-files-found: warn
+          retention-days: 30
+
   # 最大限キャッシュを活用するために、pnpm check/test の結果によらず nix ビルドは行う
   build:
     runs-on: ubuntu-latest

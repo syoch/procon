@@ -24,6 +24,7 @@ export interface LocationCandidate {
 export type LocationState = {
   state: "uninitialized" | "selected" | "confirmed";
   query: string;
+  displayName?: string;
 };
 
 /**

@@ -17,6 +17,8 @@ import { applyGsiWidths, GsiRoadIndex, measureSegmentsWidthCoverage, removeNarro
 import { GSI_FETCH_BUDGET_MS, MAX_GSI_TILES, requireGsiRoadSegmentsForTiles, tileKey, tilesAlongPath, type GsiTile } from '../gsi';
 import { gsiCacheManager } from '../gsi/fs-cache-manager';
 import { fetchGsiRoadTile } from '../gsi/gsi-fetcher';
+import type { RequestContext } from '$lib/tracing/requestContext';
+import { deltaLatitude, deltaLongitude } from '../osm/grid';
 
 /**
  * 経路の辺列から、始点を含むノード列を走行順に復元する。
@@ -104,8 +106,205 @@ function calcTotalDistance(path: App.Coordinate[]) {
     return distance;
 }
 
-const deltaLatitude = 0.015625; // 1/64
-const deltaLongitude = 0.015625; // 1/64
+/**
+ * 指定されたエッジの実際の距離（セグメントがある場合はその総和）を測定する関数
+ */
+function getEdgeDistance(
+  mapData: App.SearchGraph,
+  edge: App.SearchGraph['edges'][App.EdgeId],
+  reversed: boolean,
+  current: App.NodeId,
+  nextNodeId: App.NodeId,
+): number {
+  let segmentDist = 0;
+
+  if ("segments" in edge && edge.segments.length > 0) {
+    let prevCoord = mapData.nodes[reversed ? edge.end : edge.begin].coordinate;
+    const segments = reversed ? [...edge.segments].reverse() : edge.segments;
+
+    for (const seg of segments) {
+      const targetCoord = reversed ? seg.begin_coordinate : seg.end_coordinate;
+      segmentDist += distanceOf(prevCoord, targetCoord);
+      prevCoord = targetCoord;
+    }
+
+    const endCoord = mapData.nodes[nextNodeId].coordinate;
+    segmentDist += distanceOf(prevCoord, endCoord);
+  } else {
+    const beginCoord = mapData.nodes[current].coordinate;
+    const endCoord = mapData.nodes[nextNodeId].coordinate;
+    segmentDist = distanceOf(beginCoord, endCoord);
+  }
+
+  return segmentDist;
+}
+
+function getVectorAngle(
+  v1: { x: number; y: number },
+  v2: { x: number; y: number },
+): number {
+  const dot = v1.x * v2.x + v1.y * v2.y;
+  const len1 = Math.sqrt(v1.x * v1.x + v1.y * v1.y);
+  const len2 = Math.sqrt(v2.x * v2.x + v2.y * v2.y);
+  if (len1 === 0 || len2 === 0) return 0;
+
+  let cosTheta = dot / (len1 * len2);
+  cosTheta = Math.max(-1, Math.min(1, cosTheta));
+  return (Math.acos(cosTheta) * 180) / Math.PI;
+}
+
+function getCrossProduct2D(
+  v1: { x: number; y: number },
+  v2: { x: number; y: number },
+): number {
+  return v1.x * v2.y - v1.y * v2.x;
+}
+
+/**
+ * キャッシュされたベクトルの中から、長さが十分にある手前の有効なベクトルを探す関数
+ */
+function getValidPrevVector(
+  vectorCache: { x: number; y: number; isZero: boolean }[],
+  currentIndex: number,
+) {
+  let k = currentIndex - 1;
+  while (k >= 0) {
+    if (!vectorCache[k].isZero) {
+      return vectorCache[k];
+    }
+    k--;
+  }
+  return null;
+}
+
+/**
+ * キャッシュされたベクトルの中から、長さが十分にある先の有効なベクトルを探す関数
+ */
+function getValidNextVector(
+  vectorCache: { x: number; y: number; isZero: boolean }[],
+  currentIndex: number,
+) {
+  let k = currentIndex;
+  while (k < vectorCache.length) {
+    if (!vectorCache[k].isZero) {
+      return vectorCache[k];
+    }
+    k++;
+  }
+  return null;
+}
+
+/**
+ * 修正版：交差点での右折・左折・直進を判定する関数（キャッシュを使用）
+ */
+function judgeTurnTypeWithCache(
+  vectorCache: { x: number; y: number; isZero: boolean }[],
+  currentIndex: number,
+): "straight" | "left" | "right" | "uturn" {
+  const vIn = getValidPrevVector(vectorCache, currentIndex);
+  const vOut = getValidNextVector(vectorCache, currentIndex);
+
+  if (!vIn || !vOut) {
+    return "straight";
+  }
+
+  const angle = getVectorAngle(vIn, vOut);
+  const cross = getCrossProduct2D(vIn, vOut);
+
+// 1. まず直進（20度未満）を弾く
+  if (angle < 20) {
+    return "straight";
+  } 
+  // 2. 次にUターン（160度以上）を弾く
+  else if (angle > 160) {
+    return "uturn";
+  }
+
+  // 3. 残ったもの（20度〜160度）は外積で右左折判定
+  if (cross > 0) {
+    return "left";
+  } else {
+    return "right";
+  }
+}
+
+/** buildInformationGraph の内部の作業用タグ (API には出さない) */
+type EdgeKind = "segments" | "turn";
+
+export function buildInformationGraph(
+    mapData: App.SearchGraph,
+    edgeIds: App.EdgeId[],
+    beginNodeId: App.NodeId,
+): App.InformationGraph {
+    let current: App.NodeId = beginNodeId;
+    if (!mapData.nodes[beginNodeId]) {
+        throw new Error(`Node ${beginNodeId} not found in mapData`);
+    }
+
+    const graphData: App.InformationGraph = {
+        type: [],
+        distance: [],
+    };
+
+    graphData.type.push("start");
+    graphData.distance.push(0);
+
+    // ★ 1. 各エッジを通ったときの「進行方向のベクトル」を全エッジ分あらかじめ記録するキャッシュ
+    const vectorCache: { x: number; y: number; isZero: boolean }[] = [];
+    const stepDataList: { edgeType: EdgeKind; dist: number }[] = [];
+
+    for (let i = 0; i < edgeIds.length; i++) {
+        const edgeId = edgeIds[i];
+        const edge = mapData.edges[edgeId];
+        const reversed = current === edge.end;
+        const nextNodeId = reversed ? edge.begin : edge.end;
+
+        if (!mapData.nodes[nextNodeId]) {
+            throw new Error(`Node ${nextNodeId} not found in mapData`);
+        }
+
+        const beginCoord = mapData.nodes[current].coordinate;
+        const endCoord = mapData.nodes[nextNodeId].coordinate;
+
+        // ★ 2. 進行方向のベクトルを作る
+        // (beginCoord は今いるノード、endCoord は次のノードなので、reversed でも current -> next の向きになる)
+        const dx = endCoord.lng - beginCoord.lng;
+        const dy = endCoord.lat - beginCoord.lat;
+        const length = Math.sqrt(dx * dx + dy * dy);
+
+        vectorCache.push({
+            x: dx,
+            y: dy,
+            isZero: length < 0.000001, // ほぼ長さがゼロの交差点エッジかどうか
+        });
+
+        const dist = getEdgeDistance(mapData, edge, reversed, current, nextNodeId);
+
+        // 交差点の中の辺 (長さ 0 の MapVCrossEdge) は、交差点 1 個につき 1 本。ここを判定位置とする
+        const edgeType: EdgeKind = edge.type === "MapVCrossEdge" ? "turn" : "segments";
+
+        stepDataList.push({ edgeType, dist });
+        current = nextNodeId;
+    }
+
+    // ★ 3. キャッシュされたベクトルを使って、交差点の辺の部分で角度・左右判定を行う
+    for (let i = 0; i < stepDataList.length; i++) {
+        const step = stepDataList[i];
+
+        if (step.edgeType === "turn") {
+            graphData.type.push(judgeTurnTypeWithCache(vectorCache, i));
+            graphData.distance.push(0);
+        } else {
+            graphData.type.push("segments");
+            graphData.distance.push(step.dist);
+        }
+    }
+
+    graphData.type.push("finish");
+    graphData.distance.push(0);
+
+    return graphData;
+}
 /**
  * 始点・終点を囲む範囲に足す余白 (格子のマス数)
  * 余白が無いと、範囲の外を回る道 (山道など) が切れて道路網から切り離されたり、
@@ -113,7 +312,7 @@ const deltaLongitude = 0.015625; // 1/64
  */
 const BOUNDARY_MARGIN_CELLS = 1;
 /**
- * 経路探索に使う地図データの範囲を求める (1/64° の格子に合わせ、周りに余白を足す)
+ * 経路探索に使う地図データの範囲を求める
  */
 export function getBoundaryBox(begin: App.Coordinate, end: App.Coordinate): {
     minLat: number;
@@ -163,6 +362,7 @@ export type PathFindResult =
          * 想定速度は maxspeed タグか法定速度 (travel_speed.ts)。信号・交差点の待ち時間や渋滞は含まない
          */
         totalTime: number | null;
+        infoGraph: App.InformationGraph;
     };
 
 /**
@@ -170,6 +370,7 @@ export type PathFindResult =
  * @param mode 移動モード。指定した場合、通行可否・一方通行の扱いは mode_profiles.ts のルールで決まる
  */
 export async function doPathFind(
+    reqCtx: RequestContext,
     begin: App.Coordinate,
     end: App.Coordinate,
     parameters: App.SearchParameters,
@@ -181,12 +382,12 @@ export async function doPathFind(
     }
 
     const bbox = getBoundaryBox(begin, end);
-    const rawOsmData = await requireOSMData(bbox, cacheManager, fetchOverpassData);
+    const rawOsmData = await requireOSMData(reqCtx, bbox, cacheManager, fetchOverpassData);
     const profile = mode ? MODE_PROFILES[mode] : undefined;
     // mode 指定時はモードのルールで、未指定時は従来どおり highway 種別だけで絞り込む
     const osmData = profile
-        ? trimOSMDataByMode(rawOsmData, profile)
-        : trimOSMDataByWayHighway(rawOsmData, wayHighway);
+        ? reqCtx.measure("trim", () => trimOSMDataByMode(rawOsmData, profile))
+        : reqCtx.measure("trim", () => trimOSMDataByWayHighway(rawOsmData, wayHighway));
     // 国土地理院の幅員は、探索範囲全体ではなく経路の周りのタイルだけ使う (長い経路でタイル数の上限を超えないようにするため)。
     // 1. 始点・終点の周りのタイルで探索する
     // 2. 見つかった経路の周りのタイルを足して、もう一度探索する (経路が変わったら、その周りのタイルも足して繰り返す)
@@ -207,7 +408,7 @@ export async function doPathFind(
         const gsiSegments = await requireGsiRoadSegmentsForTiles([...tiles.values()], gsiCacheManager, fetchGsiRoadTile, {
             budgetMs: Math.max(0, deadline - Date.now()),
         });
-        result = searchWithWidths({ begin, end, parameters, profile, osmData, rawOsmData, bbox }, gsiSegments);
+        result = searchWithWidths(reqCtx, { begin, end, parameters, profile, osmData, rawOsmData, bbox }, gsiSegments);
         if (!result.found) break;
 
         const newTiles = tilesAlongPath(result.coords).filter((tile) => !tiles.has(tileKey(tile)));
@@ -266,6 +467,7 @@ type SearchContext = {
  * (幅員の補完・狭い道の除去でグラフを書き換えるため、毎回 osmData からグラフを作り直す)
  */
 function searchWithWidths(
+    reqCtx: RequestContext,
     { begin, end, parameters, profile, osmData, rawOsmData, bbox }: SearchContext,
     gsiSegments: GsiRoadSegment[],
 ): PathFindResult {
@@ -278,11 +480,11 @@ function searchWithWidths(
         removeNarrowEdges(osmGraph, profile.minRoadWidth);
     }
 
-    const ccGraph = CrossConvert(osmGraph);
+    const ccGraph = reqCtx.measure("crossConvert", () => CrossConvert(osmGraph));
     if (ccGraph instanceof Error) {
         throw ccGraph;
     }
-    const mapData = fold2DegreeEdges(ccGraph);
+    const mapData = reqCtx.measure("fold2deg", () => fold2DegreeEdges(ccGraph));
     if (mapData instanceof Error) {
         throw mapData;
     }
@@ -316,12 +518,13 @@ function searchWithWidths(
         };
     }
 
-    const pathEdges = pathFind(mapData, parameters, [beginNodeId], [endNodeId], {
+    const searchOptions = {
         ignoreOneway: profile?.ignoreOneway,
         highwayCostFactor: profile?.highwayCostFactor,
         scoring: profile?.scoring,
         speed: profile?.speed,
-    });
+    };
+    const pathEdges = reqCtx.measure("pathFind", () => pathFind(mapData, parameters, [beginNodeId], [endNodeId], searchOptions));
     if (pathEdges.length <= 0) {
         return {
             found: false,
@@ -331,6 +534,7 @@ function searchWithWidths(
     }
     const pathCoords = pathToCoordinates(mapData, pathEdges, beginNodeId);
     const pathNodes = pathToNodeIds(mapData, pathEdges, beginNodeId);
+    const infoGraph = buildInformationGraph(mapData, pathEdges, beginNodeId);
 
     // 急カーブの検出 (mode 未指定時は車と同じ基準 (道の基準値のみ) で検出する)
     // 交差点は絞り込む前のデータで判定する (モードで外れた道との交差点も区切るため)
@@ -360,5 +564,6 @@ function searchWithWidths(
         totalTime: profile
             ? travelTimeSeconds(profile.speed, pathSegments.map((s) => ({ ...s, distance: distanceOf(s.begin_coordinate, s.end_coordinate) })))
             : null,
+        infoGraph,
     };
 }

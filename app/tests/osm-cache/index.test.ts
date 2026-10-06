@@ -1,6 +1,7 @@
 import { expect, test, vi } from "vitest";
 import type { Boundary } from "../../src/routes/api/osm/boundary";
 import { requireOSMData } from "../../src/routes/api/osm";
+import { RequestContext } from "$lib/tracing/requestContext";
 
 const BOUNDARY: Boundary = {
   minLat: 0 / 64,
@@ -59,7 +60,7 @@ const saveCache = vi.fn();
 const fetchOSM = vi.fn().mockImplementation(async _ => ({ elements: [] }));
 
 test("requireOSMData", async () => {
-  await requireOSMData(BOUNDARY, { readCache, saveCache }, fetchOSM);
+  await requireOSMData(new RequestContext(), BOUNDARY, { readCache, saveCache }, fetchOSM);
   expect(readCache).toHaveBeenCalledTimes(4);
   expect(readCache).toHaveBeenCalledWith(CACHED_BOUNDARY[0]);
   expect(readCache).toHaveBeenCalledWith(CACHED_BOUNDARY[1]);
