@@ -3,10 +3,6 @@ import L from "leaflet";
 import { queryParameters, ssp } from "sveltekit-search-params";
 import type { Readable, Writable } from "svelte/store";
 import type { ModeId } from "$lib/mode_rules";
-import { debounce } from "$lib/utils/debounce";
-
-/** 先読みを出してから実行するまでの待ち時間 [ms] */
-const PRELOAD_DEBOUNCE_MS = 500;
 
 export interface LocationCandidate {
   /** 短い表示名(例: "長岡駅") */
@@ -193,13 +189,9 @@ export class AppState {
    *
    * 書き戻しは Leaflet のイベントハンドラから呼ぶため、この effect が
    * URL 状態に依存しても連鎖しない。
-   * 戻り値は listener と未実行の先読みを破棄する。
+   * 戻り値は listener を破棄する。
    */
-  bindMap(map: L.Map, onMoveEnd: () => void): () => void {
-    // 地図が動き続けている間は先読みを出さず、最後の移動から 500ms 静まったら出す。
-    // URL への書き戻しは即時のままにする。
-    const requestPreload = debounce(onMoveEnd, PRELOAD_DEBOUNCE_MS);
-
+  bindMap(map: L.Map): () => void {
     // 復元（共有リンク・リロード・戻る/進む）
     $effect(() => {
       const center = this.#url.viewport.c;
@@ -227,19 +219,10 @@ export class AppState {
         this.#url.viewport.c = { lat: center.lat, lng: center.lng };
         this.#url.viewport.z = zoom;
       }
-      requestPreload();
     };
-    // whenReady には書き戻さない。地図が既に ready なら同期実行され、
-    // 復元 effect より先に URL を既定値で上書きし、さらに呼び出し元
-    // の effect に URL 状態を依存させてしまう。初期の書き戻しは復元
-    // effect の setView/setZoom が moveend を発火して起こる。
-    map.whenReady(requestPreload);
     map.on("moveend", save);
 
     return () => {
-      requestPreload.cancel();
-      // whenReady は未ロード時に内部で load listener を登録するため、それも外す
-      map.off("load", requestPreload);
       map.off("moveend", save);
     };
   }

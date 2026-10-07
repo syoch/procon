@@ -27,6 +27,28 @@ function isTimeoutError(e: unknown): boolean {
 }
 
 /**
+ * 同じ boundaries への同時 fetch を 1 回にまとめる。
+ * 端点先読みと経路探索が重なったときの Overpass 二重取得を防ぐ。
+ * プロセス内のメモリで共有する (adapter-node は 1 プロセス)。
+ */
+const inFlightFetches = new Map<string, Promise<App.OSMData>>();
+
+function fetchKey(boundaries: Boundary[]): string {
+  return boundaries.map((b) => `${b.minLat},${b.minLng},${b.maxLat},${b.maxLng}`).join("|");
+}
+
+function fetchCoalesced(boundaries: Boundary[], fetchOSM: OSMFetcher): Promise<App.OSMData> {
+  const key = fetchKey(boundaries);
+  const existing = inFlightFetches.get(key);
+  if (existing !== undefined) return existing;
+
+  // 失敗しても entry を残さない。finally は reject 時も走る
+  const promise = fetchOSM(boundaries).finally(() => inFlightFetches.delete(key));
+  inFlightFetches.set(key, promise);
+  return promise;
+}
+
+/**
  * キャッシュを参照しつつ、OSM データを取得する。
  * @param boundary 取得対象の領域の境界情報
  * @param param1 OSMCache を直接扱う下位レイヤー
@@ -79,7 +101,7 @@ export async function requireOSMData(
 
     let fetchedData: App.OSMData | null = null;
     try {
-      fetchedData = await reqCtx.measureAsync("fetch", () => fetchOSM(boundariesToQuery));
+      fetchedData = await reqCtx.measureAsync("fetch", () => fetchCoalesced(boundariesToQuery, fetchOSM));
     } catch (e) {
       // 時間予算で切れただけなら、キャッシュ済みの分だけで続行する
       if (!isTimeoutError(e)) throw e;

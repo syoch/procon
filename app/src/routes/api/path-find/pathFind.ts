@@ -19,7 +19,7 @@ import { GSI_FETCH_BUDGET_MS, MAX_GSI_TILES, requireGsiRoadSegmentsForTiles, til
 import { gsiCacheManager } from '$lib/gsi/fs-cache-manager';
 import { fetchGsiRoadTile } from '$lib/gsi/gsi-fetcher';
 import type { RequestContext } from '$lib/tracing/requestContext';
-import { deltaLatitude, deltaLongitude } from '$lib/osm/grid';
+import { getBoundaryBox } from '$lib/osm/path-boundary';
 import type { PathFindResult } from '$lib/api/path-find';
 
 /**
@@ -306,28 +306,6 @@ export function buildInformationGraph(
     graphData.distance.push(0);
 
     return graphData;
-}
-/**
- * 始点・終点を囲む範囲に足す余白 (格子のマス数)
- * 余白が無いと、範囲の外を回る道 (山道など) が切れて道路網から切り離されたり、
- * 範囲の外で交わる道が見えず交差点をカーブと誤判定したりするため
- */
-const BOUNDARY_MARGIN_CELLS = 1;
-/**
- * 経路探索に使う地図データの範囲を求める
- */
-export function getBoundaryBox(begin: App.Coordinate, end: App.Coordinate): {
-    minLat: number;
-    minLng: number;
-    maxLat: number;
-    maxLng: number;
-} {
-    return {
-        minLat: (Math.floor(Math.min(begin.lat, end.lat) / deltaLatitude) - BOUNDARY_MARGIN_CELLS) * deltaLatitude,
-        minLng: (Math.floor(Math.min(begin.lng, end.lng) / deltaLongitude) - BOUNDARY_MARGIN_CELLS) * deltaLongitude,
-        maxLat: (Math.ceil(Math.max(begin.lat, end.lat) / deltaLatitude) + BOUNDARY_MARGIN_CELLS) * deltaLatitude,
-        maxLng: (Math.ceil(Math.max(begin.lng, end.lng) / deltaLongitude) + BOUNDARY_MARGIN_CELLS) * deltaLongitude,
-    }
 }
 
 /**

@@ -157,3 +157,23 @@ test("取得対象セルが上限以内なら Overpass を叩く (#117)", async 
 
   expect(fetchOSM).toHaveBeenCalledTimes(1);
 });
+
+test("同じ範囲の同時 fetch は 1 回にまとめる (#115)", async () => {
+  const boundary: Boundary = { minLat: 0 / 64, minLng: 0 / 64, maxLat: 2 / 64, maxLng: 2 / 64 };
+  let resolveFetch!: (data: App.OSMData) => void;
+  const fetchOSM = vi.fn(() => new Promise<App.OSMData>((resolve) => { resolveFetch = resolve; }));
+  const readCache = vi.fn().mockResolvedValue(null);
+  const saveCache = vi.fn().mockResolvedValue(undefined);
+  const cache = { readCache, saveCache };
+
+  const first = requireOSMData(new RequestContext(), boundary, cache, fetchOSM);
+  const second = requireOSMData(new RequestContext(), boundary, cache, fetchOSM);
+
+  // 両方の呼び出しが fetch に到達するまで待つ (readCache の await を流す)
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  expect(fetchOSM).toHaveBeenCalledTimes(1);
+
+  resolveFetch({ elements: [] });
+  await Promise.all([first, second]);
+  expect(readCache).toHaveBeenCalledTimes(8);
+});
