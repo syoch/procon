@@ -46,6 +46,28 @@ const TEMP_FILE_RE = /-tmp\.\d+\.\d+\.json$/;
 
 let saveSeq = 0;
 
+/** Windows は同じセルへの並行 rename で一時的に EPERM を返す。待機して再試行する */
+const RENAME_EPERM_MAX_RETRY = 5;
+const RENAME_EPERM_BASE_DELAY_MS = 10;
+
+function isEPERM(e: unknown): boolean {
+    return (e as { code?: string }).code === "EPERM";
+}
+
+async function renameWithRetry(from: string, to: string): Promise<void> {
+    for (let attempt = 0; ; attempt++) {
+        try {
+            await rename(from, to);
+            return;
+        } catch (e) {
+            if (attempt >= RENAME_EPERM_MAX_RETRY || isEPERM(e) === false) {
+                throw e;
+            }
+            await new Promise((resolve) => setTimeout(resolve, RENAME_EPERM_BASE_DELAY_MS * 2 ** attempt));
+        }
+    }
+}
+
 async function saveCache(bound: Boundary, map: App.OSMData) {
     const CACHE_DIR = getCacheDir();
     if (existsSync(CACHE_DIR) === false) {
@@ -58,7 +80,7 @@ async function saveCache(bound: Boundary, map: App.OSMData) {
     const tmpFileName = join(CACHE_DIR, `${base}-tmp.${process.pid}.${saveSeq++}.json`);
     try {
         await writeFile(tmpFileName, JSON.stringify(map));
-        await rename(tmpFileName, join(CACHE_DIR, `${base}.json`));
+        await renameWithRetry(tmpFileName, join(CACHE_DIR, `${base}.json`));
     } catch (e) {
         await rm(tmpFileName, { force: true }).catch(() => { }); // 掃除が失敗しても原因を隠さない
         throw e;
