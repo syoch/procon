@@ -72,3 +72,14 @@ test("requireOSMData", async () => {
   expect(fetchOSM).toHaveBeenCalledTimes(1);
   expect(fetchOSM).toHaveBeenCalledWith(QUERY_BOUNDARY);
 });
+
+test("readCache が reject しても cache スパンを記録する", async () => {
+  const ctx = new RequestContext();
+  const failingReadCache = vi.fn().mockRejectedValue(new Error("boom"));
+
+  await expect(
+    requireOSMData(ctx, BOUNDARY, { readCache: failingReadCache, saveCache }, fetchOSM),
+  ).rejects.toThrow("boom");
+
+  expect(ctx.measuredEntries.some((entry) => entry.name === "cache")).toBe(true);
+});
