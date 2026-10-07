@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
-import { type RawBootRecord, type PerfMeasurement, type RawRequestRecord, isRawBootRecord, isRawRequestRecord } from ".";
+import { type RawBootRecord, type PerfMeasurement, type RawRequestRecord, type LogLine, isRawBootRecord, isRawRequestRecord, isLogLine } from ".";
 import { env } from "$env/dynamic/private";
 
 function getDatabaseLocator(): string | undefined {
@@ -119,6 +119,8 @@ export function getRequests(bootId?: string, sort?: "asc" | "desc") {
         ? database.prepare(`${queryStmt} WHERE boot_id == ? ${sortClause}`).all(bootId)
         : database.prepare(`${queryStmt} ${sortClause}`).all();
 
+    const logsByRequest = getLogsByRequest(database, bootId);
+
     let result: RawRequestRecord[] = [];
 
     for (const rawRow of res) {
@@ -129,6 +131,7 @@ export function getRequests(bootId?: string, sort?: "asc" | "desc") {
             method: rawRow.method,
             url: rawRow.url,
             perf: rawRow.perf,
+            logs: logsByRequest.get(String(rawRow.id)) ?? [],
         }
 
         if (typeof row.perf !== "string") {
@@ -146,11 +149,35 @@ export function getRequests(bootId?: string, sort?: "asc" | "desc") {
     return result
 }
 
+function getLogsByRequest(database: DatabaseSync, bootId?: string) {
+    const logsByRequest = new Map<string, LogLine[]>();
+
+    const query = bootId
+        ? database.prepare("SELECT l.request_id, l.logged_at, l.log FROM log_lines l JOIN requests r ON r.id = l.request_id WHERE r.boot_id == ? ORDER BY l.logged_at ASC").all(bootId)
+        : database.prepare("SELECT request_id, logged_at, log FROM log_lines ORDER BY logged_at ASC").all();
+    for (const rawRow of query) {
+        const line = { loggedAt: rawRow.logged_at, log: rawRow.log };
+        if (!isLogLine(line)) {
+            throw new Error("typeof log_lines must be LogLine");
+        }
+        const requestId = String(rawRow.request_id);
+        const lines = logsByRequest.get(requestId);
+        if (lines === undefined) {
+            logsByRequest.set(requestId, [line]);
+        } else {
+            lines.push(line);
+        }
+    }
+
+    return logsByRequest;
+}
+
 export function saveRequest(
     requestedAt: Date,
     method: string,
     url: string,
-    performance: PerfMeasurement
+    performance: PerfMeasurement,
+    logs: LogLine[] = []
 ) {
     const init = ensureDatabaseInitialized();
     if (!init) return []
@@ -158,6 +185,18 @@ export function saveRequest(
 
     const id = randomUUID();
 
-    const query = database.prepare("INSERT INTO requests (id, requested_at, boot_id, method, url, performance) VALUES (?, ?, ?, ?, ?, jsonb(?))");
-    query.run(id, Math.floor(requestedAt.getTime()), bootId, method, url, JSON.stringify(performance));
+    const insertRequest = database.prepare("INSERT INTO requests (id, requested_at, boot_id, method, url, performance) VALUES (?, ?, ?, ?, ?, jsonb(?))");
+    const insertLog = database.prepare("INSERT INTO log_lines (id, logged_at, request_id, log) VALUES (?, ?, ?, ?)");
+
+    database.exec("BEGIN");
+    try {
+        insertRequest.run(id, Math.floor(requestedAt.getTime()), bootId, method, url, JSON.stringify(performance));
+        for (const line of logs) {
+            insertLog.run(randomUUID(), line.loggedAt, id, line.log);
+        }
+        database.exec("COMMIT");
+    } catch (error) {
+        database.exec("ROLLBACK");
+        throw error;
+    }
 }

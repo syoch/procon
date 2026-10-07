@@ -22,12 +22,14 @@ export const POST: RequestHandler = async ({ request }) => {
     if (!query.success) {
       return json({ error: 'Invalid request body', details: query.error.issues }, { status: 400 });
     }
+    reqCtx.log(`boundary: ${JSON.stringify(query.data)}`);
 
     // preload を目的としたリクエストなので、結果を無視する
     await requireOSMData(reqCtx, query.data, cacheManager, fetchOverpassData, true);
 
     return json({ success: true });
   } catch (error) {
+    reqCtx.logError(error);
     console.error(error);
     return json({ error: 'Failed to fetch OSM data' }, { status: 500 });
   } finally {

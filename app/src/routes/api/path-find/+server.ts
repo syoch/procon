@@ -47,6 +47,7 @@ export const POST: RequestHandler = async ({ request }) => {
             return json({ error: 'Invalid request body', details: query.error.issues }, { status: 400 });
         }
         const req = query.data;
+        perfCtx.log(`request: ${JSON.stringify(req)}`);
 
         const res = "mode" in req
             ? await doPathFind(perfCtx, req.begin, req.end, req.parameters ?? MODE_PROFILES[req.mode].defaultParameters, [], req.mode)
@@ -54,6 +55,9 @@ export const POST: RequestHandler = async ({ request }) => {
 
 
         return json(res)
+    } catch (error) {
+        perfCtx.logError(error);
+        throw error;
     } finally {
         perfCtx.endMeasurement(requestedAt, "POST", request.url);
     }
