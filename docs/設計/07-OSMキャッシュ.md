@@ -61,17 +61,18 @@ Issue #60 / PR #61 で実装（2026-09-18）。
 - 端点は連続で変わりうるので 400ms デバウンスする。
 - 検索は先読みを待たない。検索開始時に未実行の先読みは捨てる。
 - 閲覧中の pan/zoom では先読みを出さない。
-- 先読みと経路探索が重なったときは `requireOSMData` が同じ範囲の fetch を 1 回にまとめる。
+- 先読みと経路探索が重なったときは `requireOSMData` が進行中の取得を共有する。
 
 ## 同時取得とレート制限
 
 `preload-osm` と `path-find` は別リクエストだが同一プロセスで動く。
-`requireOSMData` は同じ boundaries への in-flight の fetch を 1 つにまとめる (`index.ts` の `inFlightFetches`)。
-無効キャッシュのセルが同じなら、まとめのキー (`simplifyBoundaries` の出力) が一致し、Overpass は 1 回だけ叩かれる。
+`requireOSMData` は進行中の取得をセル (1/64° 格子) 単位で共有する (`index.ts` の `inFlightFetches`)。
+要求セルのうち進行中の取得が覆う分はその promise を await し、欠けたセルだけを 1 クエリで取得する。
+範囲が少し違っても重なるセルは 1 回の取得で賄う。
 まとめた結果は両方の呼び出しがそれぞれキャッシュへ書く (同じ内容を書くだけなので壊れない)。
 
 - まとめはプロセス内のメモリで持つ。複数プロセスに分けると Overpass はプロセスごとに 1 回になる。
-- 同一範囲の同時 fetch が 1 回になることは `tests/osm-cache/index.test.ts` で検証している。
+- 完全一致・覆う範囲・重なる範囲の同時 fetch が重複しないことは `tests/osm-cache/index.test.ts` で検証している。
 - fetch がハングすると `finally` が走らず entry が残る。undici の header / body timeout はそれぞれ 300 秒なので、長くても 5 分で外れる。
 - その間その範囲を再取得できないのを避けるため、entry は 60 秒で外す (`IN_FLIGHT_TTL_MS`)。fetch 自体は中断しない。
 - Overpass への同時接続数の上限は設けていない。範囲が異なる取得はそれぞれ独立に走る。

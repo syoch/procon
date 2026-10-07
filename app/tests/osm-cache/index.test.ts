@@ -158,6 +158,49 @@ test("同じ範囲の同時 fetch は 1 回にまとめる (#115)", async () => 
   expect(readCache).toHaveBeenCalledTimes(8);
 });
 
+test("進行中の取得が覆うセルは再 fetch しない (#117)", async () => {
+  const outer: Boundary = { minLat: 0, minLng: 0, maxLat: 2 / 64, maxLng: 2 / 64 };
+  const inner: Boundary = { minLat: 0, minLng: 0, maxLat: 1 / 64, maxLng: 1 / 64 };
+  let resolveFetch!: (data: App.OSMData) => void;
+  const fetchOSM = vi.fn(() => new Promise<App.OSMData>((resolve) => { resolveFetch = resolve; }));
+  const cache = { readCache: vi.fn().mockResolvedValue(null), saveCache: vi.fn().mockResolvedValue(undefined) };
+
+  const outerRun = requireOSMData(context(), outer, cache, fetchOSM);
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  expect(fetchOSM).toHaveBeenCalledTimes(1);
+
+  // inner のセルは outer の進行中の取得が覆うので join する
+  const innerRun = requireOSMData(context(), inner, cache, fetchOSM);
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  expect(fetchOSM).toHaveBeenCalledTimes(1);
+
+  resolveFetch({ elements: [] });
+  await Promise.all([outerRun, innerRun]);
+});
+
+test("重なる範囲でも重複セルは 1 回しか fetch しない (#117)", async () => {
+  // lat: セル (0,0) と (1,0)、lng: セル (0,0) と (0,1) で (0,0) だけ重なる
+  const lat: Boundary = { minLat: 0, minLng: 0, maxLat: 2 / 64, maxLng: 1 / 64 };
+  const lng: Boundary = { minLat: 0, minLng: 0, maxLat: 1 / 64, maxLng: 2 / 64 };
+  const resolvers: ((data: App.OSMData) => void)[] = [];
+  const fetchOSM = vi.fn((_boundaries: Boundary[]) => new Promise<App.OSMData>((resolve) => { resolvers.push(resolve); }));
+  const cache = { readCache: vi.fn().mockResolvedValue(null), saveCache: vi.fn().mockResolvedValue(undefined) };
+
+  const first = requireOSMData(context(), lat, cache, fetchOSM);
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  const second = requireOSMData(context(), lng, cache, fetchOSM);
+  await new Promise((resolve) => setTimeout(resolve, 0));
+
+  expect(fetchOSM).toHaveBeenCalledTimes(2);
+  // 2 回目は重複する (0,0) を除き、(0,1) だけを要求する
+  expect(fetchOSM.mock.calls[1][0]).toEqual([
+    { minLat: 0, minLng: 1 / 64, maxLat: 1 / 64, maxLng: 2 / 64 },
+  ]);
+
+  resolvers.forEach((resolve) => resolve({ elements: [] }));
+  await Promise.all([first, second]);
+});
+
 test("fetch が応答しなくても in-flight entry を TTL で解放する", async () => {
   vi.useFakeTimers();
   // 他のテストと重ならない境界を使う
