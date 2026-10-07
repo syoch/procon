@@ -174,40 +174,42 @@ function getLogsByRequest(database: DatabaseSync, bootId?: string) {
     return logsByRequest;
 }
 
-export function saveRequest(
+/**
+ * requests の行を先に作る。
+ * log_lines の request_id がこの id を参照するため、log の保存より先に必要になる。
+ * performance は計測中のプレースホルダーで、finishRequest が上書きする。
+ */
+export function insertRequest(
     requestedAt: Date,
     method: string,
     url: string,
-    performance: PerfMeasurement,
-    logs: LogLine[] = []
-) {
+    start: number
+): string | undefined {
     const init = ensureDatabaseInitialized();
-    if (!init) return []
+    if (!init) return undefined;
     const { database, bootId } = init;
 
     const id = randomUUID();
+    const query = database.prepare("INSERT INTO requests (id, requested_at, boot_id, method, url, performance) VALUES (?, ?, ?, ?, ?, jsonb(?))");
+    query.run(id, Math.floor(requestedAt.getTime()), bootId, method, url, JSON.stringify({ entries: [], start, end: start }));
 
-    const insertRequest = database.prepare("INSERT INTO requests (id, requested_at, boot_id, method, url, performance) VALUES (?, ?, ?, ?, ?, jsonb(?))");
-    const insertLog = database.prepare("INSERT INTO log_lines (id, logged_at, request_id, log) VALUES (?, ?, ?, ?)");
+    return id;
+}
 
-    let transactionStarted = false;
-    try {
-        database.exec("BEGIN");
-        transactionStarted = true;
-        insertRequest.run(id, Math.floor(requestedAt.getTime()), bootId, method, url, JSON.stringify(performance));
-        for (const line of logs) {
-            insertLog.run(randomUUID(), line.loggedAt, id, line.log);
-        }
-        database.exec("COMMIT");
-        transactionStarted = false;
-    } catch (error) {
-        if (transactionStarted) {
-            try {
-                database.exec("ROLLBACK");
-            } catch (rollbackError) {
-                console.error("Failed to rollback log_lines transaction:", rollbackError);
-            }
-        }
-        throw error;
-    }
+export function insertLogLine(requestId: string, log: string) {
+    const init = ensureDatabaseInitialized();
+    if (!init) return;
+    const { database } = init;
+
+    const query = database.prepare("INSERT INTO log_lines (id, logged_at, request_id, log) VALUES (?, ?, ?, ?)");
+    query.run(randomUUID(), Date.now(), requestId, log);
+}
+
+export function finishRequest(requestId: string, performance: PerfMeasurement) {
+    const init = ensureDatabaseInitialized();
+    if (!init) return;
+    const { database } = init;
+
+    const query = database.prepare("UPDATE requests SET performance = jsonb(?) WHERE id = ?");
+    query.run(JSON.stringify(performance), requestId);
 }

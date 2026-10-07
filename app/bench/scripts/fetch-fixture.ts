@@ -66,7 +66,7 @@ async function missingCells(cells: Boundary[]): Promise<Boundary[]> {
 async function fetchFixture(cells: Boundary[]): Promise<void> {
   for (let attempt = 1; ; attempt++) {
     try {
-      await requireOSMData(new RequestContext(), BOUNDARY, cacheManager, fetchOverpassData);
+      await requireOSMData(new RequestContext(new Date(), "POST", "/bench"), BOUNDARY, cacheManager, fetchOverpassData);
       return;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);

@@ -1,5 +1,4 @@
-import type { LogLine } from ".";
-import { isTracingEnabled, saveRequest } from "./database.server";
+import { finishRequest, insertLogLine, insertRequest, isTracingEnabled } from "./database.server";
 
 export class RequestContext {
   startTime: number | undefined;
@@ -8,34 +7,50 @@ export class RequestContext {
     startTime: number;
     endTime: number;
   }[];
-  logs: LogLine[];
-  constructor() {
+  requestId: string | undefined;
+  constructor(requestedAt: Date, method: string, url: string) {
     this.startTime = performance.now();
     this.measuredEntries = [];
-    this.logs = [];
-  }
-
-  endMeasurement(requestedAt: Date, method: string, url: string) {
-    if (this.startTime === undefined) {
-      throw new Error("Performance measurement has not been started.");
-    }
 
     if (isTracingEnabled()) {
       try {
-        saveRequest(requestedAt, method, url, {
-          entries: this.measuredEntries,
-          start: this.startTime,
-          end: performance.now()
-        }, this.logs);
+        this.requestId = insertRequest(requestedAt, method, url, this.startTime);
       } catch (error) {
-        console.error("Failed to save request performance data:", error);
+        console.error("Failed to insert request record:", error);
       }
+    }
+  }
+
+  endMeasurement() {
+    if (this.startTime === undefined) {
+      throw new Error("Performance measurement has not been started.");
+    }
+    if (this.requestId === undefined) {
+      return;
+    }
+
+    try {
+      finishRequest(this.requestId, {
+        entries: this.measuredEntries,
+        start: this.startTime,
+        end: performance.now()
+      });
+    } catch (error) {
+      console.error("Failed to save request performance data:", error);
     }
 
   }
 
   log(log: string) {
-    this.logs.push({ loggedAt: Date.now(), log });
+    if (this.requestId === undefined) {
+      return;
+    }
+
+    try {
+      insertLogLine(this.requestId, log);
+    } catch (error) {
+      console.error("Failed to save log line:", error);
+    }
   }
 
   logError(error: unknown) {

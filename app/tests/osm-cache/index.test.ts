@@ -60,7 +60,7 @@ const saveCache = vi.fn();
 const fetchOSM = vi.fn().mockImplementation(async _ => ({ elements: [] }));
 
 test("requireOSMData", async () => {
-  await requireOSMData(new RequestContext(), BOUNDARY, { readCache, saveCache }, fetchOSM);
+  await requireOSMData(new RequestContext(new Date(), "POST", "/test"), BOUNDARY, { readCache, saveCache }, fetchOSM);
   expect(readCache).toHaveBeenCalledTimes(4);
   expect(readCache).toHaveBeenCalledWith(CACHED_BOUNDARY[0]);
   expect(readCache).toHaveBeenCalledWith(CACHED_BOUNDARY[1]);

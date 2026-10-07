@@ -55,7 +55,7 @@ function describeRequest(req: z.infer<typeof requestSchema>): string {
 
 export const POST: RequestHandler = async ({ request }) => {
     const requestedAt = new Date();
-    const perfCtx = new RequestContext();
+    const perfCtx = new RequestContext(requestedAt, "POST", request.url);
     try {
         const body = await request.json();
         const query = requestSchema.safeParse(body);
@@ -75,6 +75,6 @@ export const POST: RequestHandler = async ({ request }) => {
         perfCtx.logError(error);
         throw error;
     } finally {
-        perfCtx.endMeasurement(requestedAt, "POST", request.url);
+        perfCtx.endMeasurement();
     }
 };

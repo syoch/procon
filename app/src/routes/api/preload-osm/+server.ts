@@ -15,7 +15,7 @@ const requestSchema = z.object({
 });
 export const POST: RequestHandler = async ({ request }) => {
   const requestedAt = new Date();
-  const reqCtx = new RequestContext();
+  const reqCtx = new RequestContext(requestedAt, "POST", request.url);
   try {
     const body = await request.json();
     const query = requestSchema.safeParse(body);
@@ -34,6 +34,6 @@ export const POST: RequestHandler = async ({ request }) => {
     console.error(error);
     return json({ error: 'Failed to fetch OSM data' }, { status: 500 });
   } finally {
-    reqCtx.endMeasurement(requestedAt, "POST", request.url);
+    reqCtx.endMeasurement();
   }
 };
