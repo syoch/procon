@@ -469,10 +469,17 @@ export OSM_CACHE_DIR=/var/cache/procon/osm  # サーバと同じ場所を指す
 node bench/.build/preload-osm-regions.mjs              # 見積もりのみ
 node bench/.build/preload-osm-regions.mjs --run        # 両領域を取得する
 node bench/.build/preload-osm-regions.mjs --run --region=tokyo
+node bench/.build/preload-osm-regions.mjs --run --cache-dir=/tmp/procon/osm-cache
 ```
+
+`--cache-dir=` を渡すと `OSM_CACHE_DIR` を上書きします。
+シェルを介さず実行できます。
 
 引数の既定は全領域の見積もりです。
 **`--run` を付けないと Overpass を叩きません。**
+
+キャッシュ済みセルは `readCache` が飛ばすので、
+途中まで取得して中断しても同じコマンドで再開できます。
 
 ### 1 クエリのセル数
 

@@ -158,7 +158,11 @@ function parseArgs(argv: string[]): { names: string[]; shouldRun: boolean } {
         if (arg === "--run") shouldRun = true;
         else if (arg === "--all") names.push(...regionNames());
         else if (arg.startsWith("--region=")) names.push(arg.slice("--region=".length));
-        else throw new Error(`不明な引数です: ${arg}`);
+        // 出力先は環境変数でも引数でも指定できるようにする。
+        // このマシンの正のキャッシュは `OSM_CACHE_DIR` が既に指している
+        else if (arg.startsWith("--cache-dir=")) {
+            process.env.OSM_CACHE_DIR = arg.slice("--cache-dir=".length);
+        } else throw new Error(`不明な引数です: ${arg}`);
     }
     if (names.length === 0) names.push(...regionNames());
     return { names, shouldRun };
