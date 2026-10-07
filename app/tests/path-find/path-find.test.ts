@@ -2,7 +2,7 @@ import { describe, expect, test, vi } from "vitest";
 
 // 地図データの取得 (キャッシュ・Overpass) はモックし、テストごとに用意した地図を返す
 let mapData: App.OSMData = { elements: [] };
-vi.mock("../../src/lib/osm", () => ({ requireOSMData: vi.fn(async () => structuredClone(mapData)) }));
+vi.mock("../../src/lib/osm", () => ({ requireOSMData: vi.fn(async () => ({ data: structuredClone(mapData), partial: false })) }));
 vi.mock("../../src/lib/osm/fs-cache-manager", () => ({ cacheManager: {} }));
 vi.mock("../../src/lib/osm/osm-fetcher", () => ({ fetchOverpassData: vi.fn() }));
 // 国土地理院の幅員も同様にモックし、テストごとに用意した区間を返す

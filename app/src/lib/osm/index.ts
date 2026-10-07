@@ -7,6 +7,18 @@ import { MAX_OSM_CELLS, OSM_FETCH_BUDGET_MS } from './limits';
 
 export { MAX_OSM_CELLS } from './limits';
 
+/** 取得を打ち切った理由 */
+export type OSMFetchLimitReason = "cell-limit" | "fetch-timeout";
+
+/** `requireOSMData` の結果。取り切れたかどうかを呼び出し元へ伝える。 */
+export type OSMDataResult = {
+  data: App.OSMData;
+  /** 上限超過や時間切れで、キャッシュ済みの分だけを返したか */
+  partial: boolean;
+  /** partial のときの理由 */
+  reason?: OSMFetchLimitReason;
+};
+
 /** クライアント側の時間予算で打ち切られた失敗か */
 function isTimeoutError(e: unknown): boolean {
   if (typeof e !== "object" || e === null) return false;
@@ -22,6 +34,7 @@ function isTimeoutError(e: unknown): boolean {
  * @param ignoreResult 結果を無視するかのフラグ
  * @details
  *   ignoreResult フラグはシステムリソースを節約する用途に使われる
+ *   上限超過・時間切れで取り切れなかった場合は `partial` を立てて理由を返す
  */
 export async function requireOSMData(
   reqCtx: RequestContext,
@@ -29,7 +42,7 @@ export async function requireOSMData(
   { readCache, saveCache }: OSMCacheManager,
   fetchOSM: OSMFetcher,
   ignoreResult: boolean = false
-): Promise<App.OSMData> {
+): Promise<OSMDataResult> {
   const dividedBoundaries = reqCtx.measure("divide", () => divideBoundary(boundary));
 
   const cacheReadMeasurement = reqCtx.begin("cache");
@@ -56,7 +69,10 @@ export async function requireOSMData(
   const capped = boundariesToGet.length > MAX_OSM_CELLS;
   reqCtx.log(`osm-cells requested=${dividedBoundaries.length} fetch=${boundariesToGet.length} limit=${MAX_OSM_CELLS} capped=${capped}`);
 
+  let reason: OSMFetchLimitReason | undefined;
+
   if (capped) {
+    reason = "cell-limit";
     console.warn(`OSM の取得対象セルが ${boundariesToGet.length} 枚で上限 ${MAX_OSM_CELLS} 枚を超えるため、キャッシュ済みの分だけで続行します`);
   } else if (boundariesToGet.length > 0) {
     const boundariesToQuery = reqCtx.measure("simplify", () => simplifyBoundaries(boundariesToGet));
@@ -67,6 +83,7 @@ export async function requireOSMData(
     } catch (e) {
       // 時間予算で切れただけなら、キャッシュ済みの分だけで続行する
       if (!isTimeoutError(e)) throw e;
+      reason = "fetch-timeout";
       console.warn(`Overpass の取得が ${OSM_FETCH_BUDGET_MS}ms の時間予算を超えたため、キャッシュ済みの分だけで続行します`, e);
     }
 
@@ -89,12 +106,15 @@ export async function requireOSMData(
     }
   }
 
+  const partial = reason !== undefined;
+
   if (ignoreResult) {
-    return { elements: [] };
+    return { data: { elements: [] }, partial, reason };
   }
 
   const mergedData: App.OSMData = { elements: [] };
   reqCtx.measure("merge", () => mergeOSMData(mergedData, ...cachedChunks));
 
-  return reqCtx.measure("trim", () => trimOSMData(mergedData, boundary));
+  const data = reqCtx.measure("trim", () => trimOSMData(mergedData, boundary));
+  return { data, partial, reason };
 }

@@ -238,6 +238,8 @@ export class AppState {
 
     return () => {
       requestPreload.cancel();
+      // whenReady は未ロード時に内部で load listener を登録するため、それも外す
+      map.off("load", requestPreload);
       map.off("moveend", save);
     };
   }

@@ -26,9 +26,9 @@ export const POST: RequestHandler = async ({ request }) => {
     reqCtx.log(`boundary: minLat=${b.minLat} minLng=${b.minLng} maxLat=${b.maxLat} maxLng=${b.maxLng}`);
 
     // preload を目的としたリクエストなので、結果を無視する
-    await requireOSMData(reqCtx, query.data, cacheManager, fetchOverpassData, true);
+    const { partial, reason } = await requireOSMData(reqCtx, query.data, cacheManager, fetchOverpassData, true);
 
-    return json({ success: true });
+    return json({ success: true, partial, reason });
   } catch (error) {
     reqCtx.logError(error);
     console.error(error);

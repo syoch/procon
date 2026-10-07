@@ -65,7 +65,7 @@ function context(): RequestContext {
 }
 
 test("requireOSMData", async () => {
-  await requireOSMData(context(), BOUNDARY, { readCache, saveCache }, fetchOSM);
+  const result = await requireOSMData(context(), BOUNDARY, { readCache, saveCache }, fetchOSM);
   expect(readCache).toHaveBeenCalledTimes(4);
   expect(readCache).toHaveBeenCalledWith(CACHED_BOUNDARY[0]);
   expect(readCache).toHaveBeenCalledWith(CACHED_BOUNDARY[1]);
@@ -76,6 +76,8 @@ test("requireOSMData", async () => {
   expect(saveCache).toHaveBeenCalledWith(UNCACHED_BOUNDARY[1], { elements: [] });
   expect(fetchOSM).toHaveBeenCalledTimes(1);
   expect(fetchOSM).toHaveBeenCalledWith(QUERY_BOUNDARY);
+  expect(result.partial).toBe(false);
+  expect(result.reason).toBeUndefined();
 });
 
 test("readCache が reject しても cache スパンを記録する", async () => {
@@ -103,7 +105,7 @@ test("時間予算で切れたらキャッシュ済みの分だけで続行す�
 
   const result = await requireOSMData(context(), boundary, { readCache, saveCache }, fetchOSM);
 
-  expect(result).toEqual({ elements: [] });
+  expect(result).toEqual({ data: { elements: [] }, partial: true, reason: "fetch-timeout" });
   expect(fetchOSM).toHaveBeenCalledTimes(1);
   expect(saveCache).not.toHaveBeenCalled();
   expect(warn).toHaveBeenCalled();
@@ -136,7 +138,7 @@ test("取得対象セルが上限を超えたら Overpass を叩かない (#117)
 
   expect(fetchOSM).not.toHaveBeenCalled();
   expect(saveCache).not.toHaveBeenCalled();
-  expect(result).toEqual({ elements: [] });
+  expect(result).toEqual({ data: { elements: [] }, partial: true, reason: "cell-limit" });
   expect(warn).toHaveBeenCalled();
   warn.mockRestore();
 });

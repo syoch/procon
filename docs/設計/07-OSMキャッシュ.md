@@ -40,13 +40,21 @@ Issue #60 / PR #61 で実装（2026-09-18）。
 | 定数 | 既定 | 内容 |
 |---|---|---|
 | `MAX_OSM_CELLS` | 512 | 1 回の取得で扱うセル (1/64° 格子) 数の上限 |
-| `OSM_FETCH_BUDGET_MS` | 35000 | Overpass の fetch にかける時間の上限 [ms] |
+| `OSM_FETCH_BUDGET_MS` | 40000 | Overpass の fetch にかける時間の上限 [ms] |
+
+`MAX_OSM_CELLS` の 512 は 23×23 格子で、37°N ではおよそ 40km×32km に相当する。
+`OSM_FETCH_BUDGET_MS` の 40 秒は、サーバ側の `[timeout:30]` に部分応答の転送ぶん 10 秒を足した値になる。
+どちらも仮の値で、`log_lines` の requested / fetch と取得要素数の実測で見直す。
 
 セル数が上限を超えるときは Overpass を叩かず、キャッシュ済みの分だけで続行する。
 時間予算で切れたときも同じくキャッシュ済みの分で続行する。
+予算は header と本文 (`res.json()`) の両方に効く。
+本文の受信中に切れると `remark` 判定ではなく時間切れとして扱い、キャッシュ済みで続行する。
 このとき取得できなかったセルはキャッシュに載らないので、次の取得で改めて対象になる。
-要求セル数は `log_lines` に記録し、上限値を実測で見直す。
+呼び出し元は戻り値の `partial` と `reason` で取り切れなかったことを知る。
+`/api/path-find` は応答の `osmPartial` に載せ、`/api/preload-osm` は応答の `partial` に載せる。
 定期更新も 1 回に処理する失効セルを `MAX_OSM_CELLS` 枚までにし、残りは次回に回す。
+
 
 ## TTL / eviction / versioning は意図的に未実装
 

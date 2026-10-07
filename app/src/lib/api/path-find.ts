@@ -13,6 +13,8 @@ export type PathFindResult =
         reason: "BEGIN_UNREACHABLE" | "END_UNREACHABLE" | "NO_ROUTE";
         /** ユーザーに表示するメッセージ */
         message: string;
+        /** 地図データを一部しか取得できなかったか (取得量・時間の上限に達した) */
+        osmPartial?: boolean;
     }
     | {
         found: true;
@@ -29,4 +31,6 @@ export type PathFindResult =
          */
         widthCoverage: WidthCoverage;
         infoGraph: App.InformationGraph;
+        /** 地図データを一部しか取得できなかったか (取得量・時間の上限に達した) */
+        osmPartial?: boolean;
     };
