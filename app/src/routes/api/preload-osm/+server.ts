@@ -22,7 +22,8 @@ export const POST: RequestHandler = async ({ request }) => {
     if (!query.success) {
       return json({ error: 'Invalid request body', details: query.error.issues }, { status: 400 });
     }
-    reqCtx.log(`boundary: ${JSON.stringify(query.data)}`);
+    const b = query.data;
+    reqCtx.log(`boundary: minLat=${b.minLat} minLng=${b.minLng} maxLat=${b.maxLat} maxLng=${b.maxLng}`);
 
     // preload を目的としたリクエストなので、結果を無視する
     await requireOSMData(reqCtx, query.data, cacheManager, fetchOverpassData, true);

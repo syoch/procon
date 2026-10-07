@@ -45,6 +45,8 @@ CREATE TABLE IF NOT EXISTS log_lines(
 );
 CREATE INDEX IF NOT EXISTS idx_requests_boot_id ON requests(boot_id);
 CREATE INDEX IF NOT EXISTS idx_requests_requested_at ON requests(requested_at DESC);
+CREATE INDEX IF NOT EXISTS idx_log_lines_request_id ON log_lines(request_id);
+CREATE INDEX IF NOT EXISTS idx_log_lines_logged_at ON log_lines(logged_at);
 `
 
 export function isTracingEnabled(): boolean {
@@ -188,15 +190,24 @@ export function saveRequest(
     const insertRequest = database.prepare("INSERT INTO requests (id, requested_at, boot_id, method, url, performance) VALUES (?, ?, ?, ?, ?, jsonb(?))");
     const insertLog = database.prepare("INSERT INTO log_lines (id, logged_at, request_id, log) VALUES (?, ?, ?, ?)");
 
-    database.exec("BEGIN");
+    let transactionStarted = false;
     try {
+        database.exec("BEGIN");
+        transactionStarted = true;
         insertRequest.run(id, Math.floor(requestedAt.getTime()), bootId, method, url, JSON.stringify(performance));
         for (const line of logs) {
             insertLog.run(randomUUID(), line.loggedAt, id, line.log);
         }
         database.exec("COMMIT");
+        transactionStarted = false;
     } catch (error) {
-        database.exec("ROLLBACK");
+        if (transactionStarted) {
+            try {
+                database.exec("ROLLBACK");
+            } catch (rollbackError) {
+                console.error("Failed to rollback log_lines transaction:", rollbackError);
+            }
+        }
         throw error;
     }
 }

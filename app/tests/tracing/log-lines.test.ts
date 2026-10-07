@@ -52,6 +52,23 @@ test("log_lines が無いリクエストは空配列になる", async () => {
   expect(getRequests()[0].logs).toEqual([]);
 });
 
+test("log_lines の索引が作られる", async () => {
+  const { saveRequest } = await import("$lib/tracing/database.server");
+  const { DatabaseSync } = await import("node:sqlite");
+
+  saveRequest(new Date(1000), "POST", "/api/path-find", { entries: [], start: 0, end: 1 });
+
+  const database = new DatabaseSync(join(dir, "trace.db"));
+  const names = database
+    .prepare("SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'log_lines'")
+    .all()
+    .map((row) => String(row.name));
+  database.close();
+
+  expect(names).toContain("idx_log_lines_request_id");
+  expect(names).toContain("idx_log_lines_logged_at");
+});
+
 test("boot で絞っても log_lines が付く", async () => {
   const { saveRequest, getRequests, getBoots } = await import("$lib/tracing/database.server");
 
