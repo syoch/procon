@@ -25,6 +25,14 @@ describe("scoreMix: 幅員クラス × 歩道の有無", () => {
     const wide = scoreMix(bicycle, undefined, "residential", 8)!;
     expect(wide).toBeLessThan(narrow);
   });
+  test("自転車の 3〜5.5m は 0.6 で、歩道の有無で変わらない", () => {
+    expect(scoreMix(bicycle, undefined, "residential", 4)).toBe(0.6);
+    expect(scoreMix(bicycle, "both", "residential", 4)).toBe(0.6);
+  });
+  test("walk でも、歩道なしと分かる道 (sidewalk=none) は highway 種別にフォールバックする", () => {
+    expect(scoreMix(walk, "none", "residential")).toBe(0.6);
+    expect(scoreMix(walk, "none", "residential", 8)).toBe(0.7);
+  });
   test("車・バイク・トラックにも幅員クラスの定義がある", () => {
     expect(scoreMix(car, undefined, "residential", 8)).toBe(0.8);
     expect(scoreMix(truck, undefined, "residential", 8)).toBe(0.8);

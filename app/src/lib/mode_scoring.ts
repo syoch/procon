@@ -21,8 +21,8 @@
  * 幅員クラスの値は統計ではなく、次の原理から決める。
  * - 幅が広い道ほど歩道が整っている (歩行者・自転車と分離されている)
  * - 狭い道ほど車が遅い (自転車には比較的安全)
- * - 歩道が無い道の値は、下の highway 種別の表の同じ種別の値にそろえる
- * - 歩道がある道は、歩道が無い道より高くする
+ * - 歩道が無い道の値は、下の highway 種別の表の値を目安にする (対応する種別が無い幅員クラスは中間に置く)
+ * - 歩道がある道は、歩道が無い道より高い場合がある (同じ値の行もある)
  * pnpm bench:modes で経路を見ながら調整する。@ref app/bench/README.md の「モードごとの経路差の比較」
  *
  * 参考: 道路構造令 第5条 (車線の幅員) https://laws.e-gov.go.jp/law/345CO0000000320
@@ -101,7 +101,7 @@ function hasSidewalk(sidewalk: string | undefined): boolean {
 
 /**
  * 混在スコアを求める。幅が分かる道は「幅員クラス × 歩道の有無」で決める
- * 幅が分からない道は highway 種別で推定する。歩道タグがある道と、このモードに highway の定義が無い場合は undefined (従来の計算に任せる)
+ * 幅が分からない道は highway 種別で推定する。歩道があると分かる道と、このモードに highway の定義が無い場合は undefined (従来の計算に任せる)
  *
  * @param sidewalk 区間で最も多い sidewalk タグの値
  * @param highway 区間で最も多い highway 種別
@@ -112,7 +112,7 @@ export function scoreMix(profile: ScoringProfile | undefined, sidewalk: string |
     const step = matchWidthStep(profile.mixScoreByWidth, width);
     if (step) return hasSidewalk(sidewalk) ? step.withSidewalk : step.withoutSidewalk;
   }
-  if (!profile?.mixScoreByHighway || sidewalk) return undefined;
+  if (!profile?.mixScoreByHighway || hasSidewalk(sidewalk)) return undefined;
   return profile.mixScoreByHighway[highway ?? ""] ?? profile.mixScoreDefault;
 }
 
@@ -148,8 +148,8 @@ const BICYCLE_MIX_BY_WIDTH: readonly MixScoreWidthStep[] = [
 
 /**
  * 車・バイク・大型トラック: 歩行者・自転車から分かれているほど高い。
- * 幅が広い道は highway 種別の表 (幹線 0.8 / 住宅地 0.3) に合わせ、歩道タグが無くても幹線なみに高くする。
- * 歩道タグがある道は、両側 0.8 / 片側 0.6 に近づける
+ * 歩道が無い道は highway 種別の表 (幹線 0.8 / 住宅地 0.3) を目安にし、3〜5.5m はその中間の 0.5 とする。
+ * 歩道がある道は、両側 0.8 / 片側 0.6 に近づける
  */
 const MOTOR_MIX_BY_WIDTH: readonly MixScoreWidthStep[] = [
   { minWidth: 5.5, withoutSidewalk: 0.8, withSidewalk: 0.8 },
