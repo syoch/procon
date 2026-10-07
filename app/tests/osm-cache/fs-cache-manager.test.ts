@@ -91,6 +91,7 @@ test("readCache は空データもキャッシュヒットとして返す", asyn
 
 // Windows では同一セルへの並行 saveCache が rename で EPERM になる。
 // 本番は Linux で再現しないため、実装は変えず Windows だけ除外する。
+// EPERM リトライは #128 で検討する。
 test.runIf(process.platform !== "win32")("saveCache を並行実行しても一時ファイルが残らない (atomic)", async () => {
   const bounds = Array.from({ length: 20 }, (_, k) => cell(k, 0));
   await Promise.all(bounds.flatMap((b) => [mod.cacheManager.saveCache(b, SAMPLE), mod.cacheManager.saveCache(b, SAMPLE)]));
