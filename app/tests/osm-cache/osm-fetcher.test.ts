@@ -83,3 +83,13 @@ test("HTTP エラーは従来どおり失敗として扱う", async () => {
   await expect(fetchOverpassData([B])).rejects.toThrow(/504/);
   vi.unstubAllGlobals();
 });
+
+test("取得に時間予算 (AbortSignal) を渡す (#116)", async () => {
+  const spy = mockFetch(200, { elements: [] });
+  const { fetchOverpassData } = await import("../../src/lib/osm/osm-fetcher");
+
+  await fetchOverpassData([B]);
+
+  expect(spy.mock.calls[0][1].signal).toBeInstanceOf(AbortSignal);
+  vi.unstubAllGlobals();
+});

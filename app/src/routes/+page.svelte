@@ -223,7 +223,8 @@
 		endMarker = new SelectMarker(map);
 
 		// 地図の viewpoint と URL の同期は状態モジュールが受け持つ
-		ctx.state.bindMap(map, loadMap);
+		const unbindMap = ctx.state.bindMap(map, loadMap);
+		return unbindMap;
 	});
 
 	/**

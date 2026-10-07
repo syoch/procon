@@ -7,6 +7,7 @@ import {
   ttlMs,
   type CachedCell,
 } from "../../src/lib/osm/expired-cache";
+import { MAX_OSM_CELLS } from "../../src/lib/osm/limits";
 
 const D = 1 / 64;
 const NOW = 1_800_000_000_000;
@@ -237,6 +238,7 @@ test("キャッシュが空でも例外にならない", async () => {
     refreshed: 0,
     failed: 0,
     regions: 0,
+    deferred: 0,
   });
   expect(fetchOSM).not.toHaveBeenCalled();
 });
@@ -399,4 +401,25 @@ test("取得応答の要素が null 混在でも走査全体が落ちない", as
   expect(result.failed).toBe(1);
   warn.mockRestore();
 });
+
+
+test("1 回に処理する失効セルは上限までで、残りは次回に回す (#117)", async () => {
+  const all = Array.from({ length: MAX_OSM_CELLS + 1 }, (_, i) => cell(0, i));
+  const fetchOSM = vi.fn().mockResolvedValue(osmDataFor(all));
+  const saveCache = vi.fn().mockResolvedValue(undefined);
+
+  const result = await refreshExpiredOSMCache(
+    async () => all.map((b) => cached(b, 40 * DAY)),
+    fetchOSM,
+    saveCache,
+    { now: NOW, ttlMs: 30 * DAY },
+  );
+
+  expect(result.expired).toBe(MAX_OSM_CELLS + 1);
+  expect(result.deferred).toBe(1);
+  expect(result.refreshed).toBe(MAX_OSM_CELLS);
+  expect(saveCache).toHaveBeenCalledTimes(MAX_OSM_CELLS);
+  expect(fetchOSM).toHaveBeenCalledTimes(1);
+});
+
 

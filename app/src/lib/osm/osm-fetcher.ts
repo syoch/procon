@@ -1,6 +1,7 @@
 import { type Boundary } from "./boundary";
 import { type OSMFetcher } from "./types";
 import { env } from "$env/dynamic/private";
+import { OSM_FETCH_BUDGET_MS } from "./limits";
 
 function getOverpassEndpoint(): string {
   const endpoint = env.OVERPASS_ENDPOINT;
@@ -35,6 +36,8 @@ export const fetchOverpassData: OSMFetcher = async function (boundaries: Boundar
       "User-Agent": "NITNC-widenavi/1.0 (+https://github.com/syoch/procon)"
     },
     body: "data=" + encodeURIComponent(query),
+    // 本文 (res.json()) の受信にもこの予算が効く
+    signal: AbortSignal.timeout(OSM_FETCH_BUDGET_MS),
   });
 
   if (!res.ok) {
