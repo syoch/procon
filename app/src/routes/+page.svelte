@@ -424,12 +424,19 @@
 					const next_n = informationGraph.tags[i + 1]?.name ?? "";
 
 					accumDist += d;
+
+					//走行距離(accumDist)が21m以上になったら、Uターン待ちを解除
+    				if (isUTurn === 1 && accumDist >= 21) {
+						accumCross=0;
+        				isUTurn = 0;
+    				}
+
 					if (t === "start" || t === "segments") {
 						continue;
 					}
 
 					/*中央分離帯のある道路で交差点数が+1されてしまう問題を解決する処理*/
-					if(isUTurn===1&&d<21&&t!=="right"){
+					if(isUTurn===1&&accumDist<21&&t!=="right"){
 						accumCross--;
 						isUTurn=0;
 					}
@@ -467,7 +474,6 @@
 								});				
 							}
 							accumDist = 0;
-							accumCross = 0;
 							isUTurn++;
 							prev_n=informationGraph.tags[i - 1]?.name ?? "";
 						}else if(isUTurn===1){
