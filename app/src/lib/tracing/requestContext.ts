@@ -1,4 +1,4 @@
-import { isTracingEnabled, saveRequest } from "./database.server";
+import { finishRequest, insertLogLine, insertRequest, isTracingEnabled } from "./database.server";
 
 export class RequestContext {
   startTime: number | undefined;
@@ -7,28 +7,68 @@ export class RequestContext {
     startTime: number;
     endTime: number;
   }[];
-  constructor() {
+  requestId: string | undefined;
+  constructor(requestedAt: Date, method: string, url: string) {
     this.startTime = performance.now();
     this.measuredEntries = [];
-  }
-
-  endMeasurement(requestedAt: Date, method: string, url: string) {
-    if (this.startTime === undefined) {
-      throw new Error("Performance measurement has not been started.");
-    }
 
     if (isTracingEnabled()) {
       try {
-        saveRequest(requestedAt, method, url, {
-          entries: this.measuredEntries,
-          start: this.startTime,
-          end: performance.now()
-        });
+        this.requestId = insertRequest(requestedAt, method, url, this.startTime);
       } catch (error) {
-        console.error("Failed to save request performance data:", error);
+        console.error("Failed to insert request record:", error);
       }
     }
+  }
 
+  endMeasurement() {
+    if (this.startTime === undefined) {
+      throw new Error("Performance measurement has not been started.");
+    }
+    if (this.requestId === undefined) {
+      return;
+    }
+
+    try {
+      finishRequest(this.requestId, {
+        entries: this.measuredEntries,
+        start: this.startTime,
+        end: performance.now()
+      });
+    } catch (error) {
+      console.error("Failed to save request performance data:", error);
+    }
+
+  }
+
+  log(log: string) {
+    if (this.requestId === undefined) {
+      return;
+    }
+
+    try {
+      insertLogLine(this.requestId, log);
+    } catch (error) {
+      console.error("Failed to save log line:", error);
+    }
+  }
+
+  logError(error: unknown) {
+    if (!(error instanceof Error)) {
+      this.log(String(error));
+      return;
+    }
+
+    this.log(`${error.name}: ${error.message}`);
+    if (error.stack === undefined) {
+      return;
+    }
+    for (const line of error.stack.split("\n").slice(1, 5)) {
+      const trimmed = line.trim();
+      if (trimmed !== "") {
+        this.log(trimmed);
+      }
+    }
   }
 
   measure<T>(name: string, fn: () => T): T {

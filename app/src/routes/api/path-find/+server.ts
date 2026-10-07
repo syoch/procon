@@ -37,9 +37,25 @@ const legacyRequestSchema = z.strictObject({
 });
 const requestSchema = z.union([modeRequestSchema, legacyRequestSchema]);
 
+// トレースに残すフィールドを明示する。スキーマに機微な値が増えても保存しない。
+function describeRequest(req: z.infer<typeof requestSchema>): string {
+    const fields = [
+        `begin=${JSON.stringify(req.begin)}`,
+        `end=${JSON.stringify(req.end)}`,
+        `parameters=${JSON.stringify(req.parameters)}`,
+    ];
+    if ("mode" in req) {
+        fields.push(`mode=${req.mode}`);
+    }
+    if ("wayHighway" in req) {
+        fields.push(`wayHighway=${JSON.stringify(req.wayHighway)}`);
+    }
+    return fields.join(" ");
+}
+
 export const POST: RequestHandler = async ({ request }) => {
     const requestedAt = new Date();
-    const perfCtx = new RequestContext();
+    const perfCtx = new RequestContext(requestedAt, "POST", request.url);
     try {
         const body = await request.json();
         const query = requestSchema.safeParse(body);
@@ -47,6 +63,7 @@ export const POST: RequestHandler = async ({ request }) => {
             return json({ error: 'Invalid request body', details: query.error.issues }, { status: 400 });
         }
         const req = query.data;
+        perfCtx.log(`request: ${describeRequest(req)}`);
 
         const res = "mode" in req
             ? await doPathFind(perfCtx, req.begin, req.end, req.parameters ?? MODE_PROFILES[req.mode].defaultParameters, [], req.mode)
@@ -54,7 +71,10 @@ export const POST: RequestHandler = async ({ request }) => {
 
 
         return json(res)
+    } catch (error) {
+        perfCtx.logError(error);
+        throw error;
     } finally {
-        perfCtx.endMeasurement(requestedAt, "POST", request.url);
+        perfCtx.endMeasurement();
     }
 };

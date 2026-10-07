@@ -15,22 +15,25 @@ const requestSchema = z.object({
 });
 export const POST: RequestHandler = async ({ request }) => {
   const requestedAt = new Date();
-  const reqCtx = new RequestContext();
+  const reqCtx = new RequestContext(requestedAt, "POST", request.url);
   try {
     const body = await request.json();
     const query = requestSchema.safeParse(body);
     if (!query.success) {
       return json({ error: 'Invalid request body', details: query.error.issues }, { status: 400 });
     }
+    const b = query.data;
+    reqCtx.log(`boundary: minLat=${b.minLat} minLng=${b.minLng} maxLat=${b.maxLat} maxLng=${b.maxLng}`);
 
     // preload を目的としたリクエストなので、結果を無視する
     await requireOSMData(reqCtx, query.data, cacheManager, fetchOverpassData, true);
 
     return json({ success: true });
   } catch (error) {
+    reqCtx.logError(error);
     console.error(error);
     return json({ error: 'Failed to fetch OSM data' }, { status: 500 });
   } finally {
-    reqCtx.endMeasurement(requestedAt, "POST", request.url);
+    reqCtx.endMeasurement();
   }
 };

@@ -60,7 +60,7 @@ const saveCache = vi.fn();
 const fetchOSM = vi.fn().mockImplementation(async _ => ({ elements: [] }));
 
 test("requireOSMData", async () => {
-  await requireOSMData(new RequestContext(), BOUNDARY, { readCache, saveCache }, fetchOSM);
+  await requireOSMData(new RequestContext(new Date(), "POST", "/test"), BOUNDARY, { readCache, saveCache }, fetchOSM);
   expect(readCache).toHaveBeenCalledTimes(4);
   expect(readCache).toHaveBeenCalledWith(CACHED_BOUNDARY[0]);
   expect(readCache).toHaveBeenCalledWith(CACHED_BOUNDARY[1]);
@@ -74,7 +74,7 @@ test("requireOSMData", async () => {
 });
 
 test("readCache が reject しても cache スパンを記録する", async () => {
-  const ctx = new RequestContext();
+  const ctx = new RequestContext(new Date(), "POST", "/test");
   const failingReadCache = vi.fn().mockRejectedValue(new Error("boom"));
 
   await expect(
