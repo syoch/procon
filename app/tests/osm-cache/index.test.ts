@@ -159,6 +159,7 @@ test("取得対象セルが上限以内なら Overpass を叩く (#117)", async 
 });
 
 test("同じ範囲の同時 fetch は 1 回にまとめる (#115)", async () => {
+  // preload-osm と path-find が同じ無効キャッシュ領域を同時に取得する状況を模す
   const boundary: Boundary = { minLat: 0 / 64, minLng: 0 / 64, maxLat: 2 / 64, maxLng: 2 / 64 };
   let resolveFetch!: (data: App.OSMData) => void;
   const fetchOSM = vi.fn(() => new Promise<App.OSMData>((resolve) => { resolveFetch = resolve; }));
@@ -166,14 +167,14 @@ test("同じ範囲の同時 fetch は 1 回にまとめる (#115)", async () => 
   const saveCache = vi.fn().mockResolvedValue(undefined);
   const cache = { readCache, saveCache };
 
-  const first = requireOSMData(context(), boundary, cache, fetchOSM);
-  const second = requireOSMData(context(), boundary, cache, fetchOSM);
+  const preload = requireOSMData(context(), boundary, cache, fetchOSM, true);
+  const pathFind = requireOSMData(context(), boundary, cache, fetchOSM);
 
   // 両方の呼び出しが fetch に到達するまで待つ (readCache の await を流す)
   await new Promise((resolve) => setTimeout(resolve, 0));
   expect(fetchOSM).toHaveBeenCalledTimes(1);
 
   resolveFetch({ elements: [] });
-  await Promise.all([first, second]);
+  await Promise.all([preload, pathFind]);
   expect(readCache).toHaveBeenCalledTimes(8);
 });

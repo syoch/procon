@@ -68,6 +68,19 @@ Issue #60 / PR #61 で実装（2026-09-18）。
 - 閲覧中の pan/zoom では先読みを出さない。
 - 先読みと経路探索が重なったときは `requireOSMData` が同じ範囲の fetch を 1 回にまとめる。
 
+## 同時取得とレート制限
+
+`preload-osm` と `path-find` は別リクエストだが同一プロセスで動く。
+`requireOSMData` は同じ boundaries への in-flight の fetch を 1 つにまとめる (`index.ts` の `inFlightFetches`)。
+無効キャッシュのセルが同じなら、まとめのキー (`simplifyBoundaries` の出力) が一致し、Overpass は 1 回だけ叩かれる。
+まとめた結果は両方の呼び出しがそれぞれキャッシュへ書く (同じ内容を書くだけなので壊れない)。
+
+- まとめはプロセス内のメモリで持つ。複数プロセスに分けると Overpass はプロセスごとに 1 回になる。
+- 同一範囲の同時 fetch が 1 回になることは `tests/osm-cache/index.test.ts` で検証している。
+- Overpass への同時接続数の上限は設けていない。範囲が異なる取得はそれぞれ独立に走る。
+- 429 や 504 は `fetchOverpassData` が throw する。経路探索は 500 を返し、リトライや待機はしない。
+- 端点先読みは 400ms デバウンスと検索開始時の cancel で、連続した取得を抑える。
+
 
 ## TTL / eviction / versioning は意図的に未実装
 
