@@ -353,6 +353,7 @@ export function buildInformationGraph(
 
     graphData.type.push("finish");
     graphData.distance.push(0);
+    graphData.tags.push(null);
 
     return graphData;
 }

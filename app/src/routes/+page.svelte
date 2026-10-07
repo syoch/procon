@@ -420,7 +420,6 @@
 				for (let i = 0; i < informationGraph.type.length; i++) {
 					const t = informationGraph.type[i];
 					const d = informationGraph.distance[i];
-					const prev_d=informationGraph.distance[i-2];
 					const n = informationGraph.tags[i-1]?.name ?? "";
 					const next_n = informationGraph.tags[i + 1]?.name ?? "";
 
@@ -622,12 +621,13 @@
 								{step.name}
 							{/if}
 
-							{#if step.name !== step.nextname && step.name!=="" && step.nextname!==""}
+							{#if (step.type === "right" || step.type === "left") && step.nextname !== ""}
+           							{step.nextname}へ
+							{:else if step.name !== step.nextname && step.name!=="" && step.nextname!==""}
 								{#if step.type === "right" || step.type === "left"}
 									{step.name}から{step.nextname}へ
-								{:else if (step.type === "right" || step.type === "left") && step.nextname !== ""}
-           							{step.nextname}へ
 								{/if}
+
 							{/if}
 						</div>
 					</div>

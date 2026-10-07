@@ -230,6 +230,13 @@ function buildGraphFromWays(rawNodes, rawWays) {
         existing.highway = mergeHighway(existing.highway, tags.highway ?? "");
         existing.width = mergeWidth(existing.width, width);
         existing.sidewalk = mergeSidewalk(existing.sidewalk, tags.sidewalk ?? null);
+
+        for (const [key, value] of Object.entries(tags)) {
+          if (!existing.tags[key]) {
+            existing.tags[key] = value;
+          }
+        }
+        
         continue;
       }
 
