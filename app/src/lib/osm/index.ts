@@ -22,26 +22,17 @@ export class OSMCellLimitError extends Error {
   }
 }
 
-/** 進行中の取得。覆っているセルを持ち、後続の要求はそれを join できる。 */
-type InFlightFetch = {
-  /** クエリ範囲の完全一致に使うキー */
-  key: string;
-  /** この取得が埋めるセル (1/64° 格子) のキー */
-  cellKeys: Set<string>;
-  promise: Promise<App.OSMData>;
-};
-
 /**
- * セル単位で進行中の取得を共有する。
- * 端点先読みと経路探索で範囲が少し違っても、重なるセルは 1 回の取得で賄う。
- * 完全一致は key で、部分一致は cellKeys で再利用する。
+ * セル (1/64° 格子) ごとに進行中の取得の promise を共有する。
+ * 1 回のクエリが覆う各セルに同じ promise を入れ、後続の要求はセルキーで直接引く。
+ * 範囲が少し違っても重なるセルは 1 回の取得で賄う。
  * プロセス内のメモリで共有する (adapter-node は 1 プロセス)。
  */
-const inFlightFetches = new Map<string, InFlightFetch>();
+const inFlightFetches = new Map<string, Promise<App.OSMData>>();
 
 /**
  * in-flight entry を保持する時間 [ms]。
- * fetch がハングしても `.finally` が走らない間、entry を外して同じ範囲の再取得を妨げない。
+ * fetch がハングしても `then` が走らない間、entry を外して同じ範囲の再取得を妨げない。
  * undici の header/body timeout はそれぞれ 300 秒なので、それより早く外す。
  */
 const IN_FLIGHT_TTL_MS = 60_000;
@@ -51,60 +42,52 @@ function cellKey(b: Boundary): string {
   return `${b.minLat},${b.minLng}`;
 }
 
-/** クエリ範囲 (簡約後の矩形) の完全一致キー */
-function fetchKey(boundaries: Boundary[]): string {
-  return boundaries.map((b) => `${b.minLat},${b.minLng},${b.maxLat},${b.maxLng}`).join("|");
-}
-
-/** 指定セルを既に覆っている進行中の取得 (無ければ undefined) */
-function findCoveringFetch(key: string): InFlightFetch | undefined {
-  for (const entry of inFlightFetches.values()) {
-    if (entry.cellKeys.has(key)) return entry;
-  }
-  return undefined;
-}
-
 /**
- * 進行中の取得を await する対象と、まだ覆われていないセルに分ける。
- * ここでは await しない。欠けたセルの取得を先に始められるようにするため。
+ * 要求セルを、既に進行中の取得が覆う分と、まだ無いセルに分ける。
+ * 進行中の取得はセルキーで直接引く (走査しない)。
  */
-function planInFlight(cells: Boundary[]): { joining: InFlightFetch[]; missing: Boundary[] } {
-  const joining: InFlightFetch[] = [];
+function planInFlight(cells: Boundary[]): { joining: Promise<App.OSMData>[]; missing: Boundary[] } {
+  const joining: Promise<App.OSMData>[] = [];
+  const seen = new Set<Promise<App.OSMData>>();
   const missing: Boundary[] = [];
-  const seen = new Set<InFlightFetch>();
   for (const cell of cells) {
-    const entry = findCoveringFetch(cellKey(cell));
-    if (entry === undefined) {
+    const promise = inFlightFetches.get(cellKey(cell));
+    if (promise === undefined) {
       missing.push(cell);
       continue;
     }
-    if (!seen.has(entry)) {
-      seen.add(entry);
-      joining.push(entry);
+    // 同じクエリの promise が複数セルを覆うので、重複して await しない
+    if (!seen.has(promise)) {
+      seen.add(promise);
+      joining.push(promise);
     }
   }
   return { joining, missing };
 }
 
-function fetchCoalesced(queryBoundaries: Boundary[], cells: Boundary[], fetchOSM: OSMFetcher): Promise<App.OSMData> {
-  const key = fetchKey(queryBoundaries);
-  const existing = inFlightFetches.get(key);
-  if (existing !== undefined) return existing.promise;
+/**
+ * クエリを開始し、覆う各セルに同じ promise を登録する。
+ * 取得が終わる (または watchdog が外す) と、その promise を指す全セルキーから外す。
+ */
+function fetchAndRegister(cells: Boundary[], queryBoundaries: Boundary[], fetchOSM: OSMFetcher): Promise<App.OSMData> {
+  const promise = fetchOSM(queryBoundaries);
+  for (const cell of cells) {
+    inFlightFetches.set(cellKey(cell), promise);
+  }
 
-  let entry!: InFlightFetch;
-  const promise = fetchOSM(queryBoundaries).finally(() => {
-    // 自分が今の entry のときだけ消す (watchdog が外した後に新しい fetch が入っていれば残す)
-    if (inFlightFetches.get(key) === entry) inFlightFetches.delete(key);
-  });
-  entry = { key, cellKeys: new Set(cells.map(cellKey)), promise };
-
+  let watchdog: ReturnType<typeof setTimeout> | undefined;
+  const remove = () => {
+    if (watchdog !== undefined) clearTimeout(watchdog);
+    for (const [key, value] of inFlightFetches) {
+      // 同じ promise を指すセルキーだけを外す (watchdog 後に別の取得が入っていれば残す)
+      if (value === promise) inFlightFetches.delete(key);
+    }
+  };
   // fetch は中断しない。entry だけ外して、次の要求が新しい fetch を始められるようにする
-  const watchdog = setTimeout(() => {
-    if (inFlightFetches.get(key) === entry) inFlightFetches.delete(key);
-  }, IN_FLIGHT_TTL_MS);
+  watchdog = setTimeout(remove, IN_FLIGHT_TTL_MS);
   (watchdog as { unref?: () => void }).unref?.();
-
-  inFlightFetches.set(key, entry);
+  // 失敗しても unhandled rejection にしない (元の promise は呼び出し元が await する)
+  promise.then(remove, remove);
   return promise;
 }
 
@@ -151,7 +134,7 @@ export async function requireOSMData(
 
   const capped = boundariesToGet.length > MAX_OSM_CELLS;
 
-  // 進行中の取得が覆っているセルは join する。残りだけ取得する
+  // 進行中の取得が覆っているセルは join し、残りだけ取得する
   const { joining, missing } = planInFlight(boundariesToGet);
   reqCtx.log(`osm-cells requested=${dividedBoundaries.length} fetch=${boundariesToGet.length} missing=${missing.length} joined=${joining.length} limit=${MAX_OSM_CELLS} capped=${capped}`);
 
@@ -164,12 +147,12 @@ export async function requireOSMData(
     ? reqCtx.measure("simplify", () => simplifyBoundaries(missing))
     : [];
   const fetchPromise = missing.length > 0
-    ? reqCtx.measureAsync("fetch", () => fetchCoalesced(boundariesToQuery, missing, fetchOSM))
+    ? reqCtx.measureAsync("fetch", () => fetchAndRegister(missing, boundariesToQuery, fetchOSM))
     : null;
 
   if (joining.length > 0) {
     // 1 つの promise を複数箇所で await できる。join した分は fetch を増やさない
-    const joined = await Promise.all(joining.map((entry) => entry.promise));
+    const joined = await Promise.all(joining);
     cachedChunks.push(...joined);
   }
 
