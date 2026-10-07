@@ -18,8 +18,12 @@
  *   (車両制限令 第5条・第6条の対面通行 5.5m・一方通行 3.0m)。
  *   幅が分からない道は、歩道タグ (sidewalk、付与率は延長の約 0.5%) と highway 種別から推定する
  *
- * 値はすべて仮の値 (統計などの出典は無い)。pnpm bench:modes で経路を見ながら調整する。
- * @ref app/bench/README.md の「モードごとの経路差の比較」
+ * 幅員クラスの値は統計ではなく、次の原理から決める。
+ * - 幅が広い道ほど歩道が整っている (歩行者・自転車と分離されている)
+ * - 狭い道ほど車が遅い (自転車には比較的安全)
+ * - 歩道が無い道の値は、下の highway 種別の表の同じ種別の値にそろえる
+ * - 歩道がある道は、歩道が無い道より高くする
+ * pnpm bench:modes で経路を見ながら調整する。@ref app/bench/README.md の「モードごとの経路差の比較」
  *
  * 参考: 道路構造令 第5条 (車線の幅員) https://laws.e-gov.go.jp/law/345CO0000000320
  * 参考: 車両制限令 第5条・第6条 (幅 2.5m の車両の通れる幅) https://laws.e-gov.go.jp/law/336CO0000000265
@@ -121,8 +125,9 @@ function scoreAll(highways: readonly string[], score: number): Record<string, nu
 }
 
 /**
- * 徒歩: 幅が広い道ほど高い (歩道が整っていることが多い)。
- * 幅が狭く歩道も無い道は、車と同じ空間を共有するため最も低くする
+ * 徒歩: 幅が広い道ほど高い。
+ * 歩道が無い道は highway 種別の表 (幹線 0.7 / tertiary・unclassified 0.5 / 住宅地 0.6) に合わせる。
+ * 3m 未満で歩道も無い道は車と同じ空間を共有するため、住宅地より低くする
  */
 const WALK_MIX_BY_WIDTH: readonly MixScoreWidthStep[] = [
   { minWidth: 5.5, withoutSidewalk: 0.7, withSidewalk: 0.8 },
@@ -132,17 +137,19 @@ const WALK_MIX_BY_WIDTH: readonly MixScoreWidthStep[] = [
 
 /**
  * 自転車: 幅が広い道ほど低い (車が速い)。
- * 狭い道は車が遅いため、歩道が無くても比較的高くする
+ * 歩道が無い道は highway 種別の表 (幹線 0.3 / tertiary 0.4 / unclassified 0.6 / 住宅地 0.7) に合わせる。
+ * 自転車は狭い道ほど車が遅いため、歩道が無くても高い
  */
 const BICYCLE_MIX_BY_WIDTH: readonly MixScoreWidthStep[] = [
   { minWidth: 5.5, withoutSidewalk: 0.3, withSidewalk: 0.4 },
-  { minWidth: 3, withoutSidewalk: 0.5, withSidewalk: 0.6 },
+  { minWidth: 3, withoutSidewalk: 0.6, withSidewalk: 0.6 },
   { minWidth: 0, withoutSidewalk: 0.7, withSidewalk: 0.7 },
 ];
 
 /**
  * 車・バイク・大型トラック: 歩行者・自転車から分かれているほど高い。
- * 幅が広い道は歩道が整っている前提で、歩道タグが無くても高くする
+ * 幅が広い道は highway 種別の表 (幹線 0.8 / 住宅地 0.3) に合わせ、歩道タグが無くても幹線なみに高くする。
+ * 歩道タグがある道は、両側 0.8 / 片側 0.6 に近づける
  */
 const MOTOR_MIX_BY_WIDTH: readonly MixScoreWidthStep[] = [
   { minWidth: 5.5, withoutSidewalk: 0.8, withSidewalk: 0.8 },
