@@ -277,6 +277,16 @@ function judgeTurnTypeWithCache(
   }
 }
 
+/**
+ * 進行方向で見て、辺の最後の区間 (交差点の直前に走っている道) のタグ (道路名など)。
+ * 区間がない辺 (交差点の中の辺) は null
+ */
+function getRoadTags(edge: App.SearchGraph['edges'][App.EdgeId], reversed: boolean): Record<string, string> | null {
+  if (!("segments" in edge) || edge.segments.length === 0) return null;
+  const segments = reversed ? [...edge.segments].reverse() : edge.segments;
+  return segments[segments.length - 1].tags ?? null;
+}
+
 /** buildInformationGraph の内部の作業用タグ (API には出さない) */
 type EdgeKind = "segments" | "turn";
 
@@ -302,7 +312,7 @@ export function buildInformationGraph(
 
     // ★ 1. 各エッジを通ったときの「進行方向のベクトル」を全エッジ分あらかじめ記録するキャッシュ
     const vectorCache: EdgeVectors[] = [];
-    const stepDataList: { edgeType: EdgeKind; dist: number }[] = [];
+    const stepDataList: { edgeType: EdgeKind; dist: number; tags: Record<string, string> | null }[] = [];
 
     for (let i = 0; i < edgeIds.length; i++) {
         const edgeId = edgeIds[i];
@@ -322,23 +332,22 @@ export function buildInformationGraph(
         // 交差点の中の辺 (長さ 0 の MapVCrossEdge) は、交差点 1 個につき 1 本。ここを判定位置とする
         const edgeType: EdgeKind = edge.type === "MapVCrossEdge" ? "turn" : "segments";
 
-        stepDataList.push({ edgeType, dist });
+        stepDataList.push({ edgeType, dist, tags: getRoadTags(edge, reversed) });
         current = nextNodeId;
     }
 
     // ★ 3. キャッシュされたベクトルを使って、交差点の辺の部分で角度・左右判定を行う
     for (let i = 0; i < stepDataList.length; i++) {
         const step = stepDataList[i];
-        let currentTags: Record<string, string> | null = null;
 
         if (step.edgeType === "turn") {
             graphData.type.push(judgeTurnTypeWithCache(vectorCache, i));
             graphData.distance.push(0);
-            graphData.tags.push(currentTags);
+            graphData.tags.push(null);
         } else {
             graphData.type.push("segments");
             graphData.distance.push(step.dist);
-            graphData.tags.push(currentTags);
+            graphData.tags.push(step.tags);
         }
     }
 
