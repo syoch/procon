@@ -1,5 +1,5 @@
 import { boundaryContains, type Boundary } from "./boundary";
-import { isAccessible, resolveModeOneway, type ModeProfile } from "$lib/mode_profiles";
+import { isAccessible, resolveModeOneway, type ModeProfile } from "$lib/mode_rules";
 import { deltaLatitude, deltaLongitude } from "./grid";
 
 /**
@@ -283,9 +283,9 @@ function trimOSMDataByWay(data: App.OSMData, selectWay: (way: App.OSMRawWay) => 
  * 移動モードで通行できる way (と、それが参照するノード) だけを残す
  *
  * trimOSMDataByWayHighway が highway 種別だけで判定するのに対し、
- * こちらは access 系タグ・自動車専用道路・寸法制限なども含めて mode_profiles.ts のルールで判定する。
+ * こちらは access 系タグ・自動車専用道路・寸法制限なども含めて mode_rules.ts のルールで判定する。
  * また、モード専用の一方通行タグ (自転車の oneway:bicycle など) がある way は、そのタグで oneway を置き換える
- * (グラフ構築 (map_loader/osm.js) は oneway タグだけを見て通行方向を決めるため)。
+ * (グラフ構築 (osm/graph.js) は oneway タグだけを見て通行方向を決めるため)。
  *
  * @param data OSM データ
  * @param profile 移動モード

@@ -1,12 +1,12 @@
 import { expect, test, vi } from "vitest";
-import type { Boundary } from "../../src/routes/api/osm/boundary";
-import { divideBoundary, simplifyBoundaries } from "../../src/routes/api/osm/boundary";
+import type { Boundary } from "../../src/lib/osm/boundary";
+import { divideBoundary, simplifyBoundaries } from "../../src/lib/osm/boundary";
 import {
   DEFAULT_TTL_DAYS,
   refreshExpiredOSMCache,
   ttlMs,
   type CachedCell,
-} from "../../src/routes/api/osm/expired-cache";
+} from "../../src/lib/osm/expired-cache";
 
 const D = 1 / 64;
 const NOW = 1_800_000_000_000;

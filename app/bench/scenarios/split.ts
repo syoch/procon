@@ -1,4 +1,4 @@
-import { SplitOSMData } from "../../src/routes/api/osm/osm-data";
+import { SplitOSMData } from "../../src/lib/osm/osm-data";
 import { loadFixture } from "../lib/data";
 import { clone, StageRecorder } from "../lib/harness";
 import type { Scenario, ScenarioResult } from "./types";

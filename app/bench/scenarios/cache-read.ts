@@ -2,10 +2,10 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { requireOSMData } from "../../src/routes/api/osm/index";
-import { cacheManager } from "../../src/routes/api/osm/fs-cache-manager";
+import { requireOSMData } from "../../src/lib/osm/index";
+import { cacheManager } from "../../src/lib/osm/fs-cache-manager";
 import { RequestContext } from "../../src/lib/tracing/requestContext";
-import { divideBoundary } from "../../src/routes/api/osm/boundary";
+import { divideBoundary } from "../../src/lib/osm/boundary";
 import { fixtureBoundary, listFixtureCells, readFixtureCell } from "../lib/data";
 import { StageRecorder } from "../lib/harness";
 import type { Scenario, ScenarioResult } from "./types";

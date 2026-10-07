@@ -1,39 +1,18 @@
 /**
- * 国土地理院「道路中心線」の幅員区分を OSM の道に対応付け、道の幅 (width) を補う
+ * 国土地理院「道路中心線」の幅員を OSM の道に対応付け、道の幅 (width) を補う
  *
  * OSM には幅員の情報がほとんど無い (長岡周辺で width タグの付与率 0.03%) ため、
  * 国土地理院の道路中心線 (電子国土基本図) の幅員区分 rnkWidth を、位置と向きが近い OSM の区間に移す。
  *
- * - 幅員区分は範囲 (例: 3m-5.5m未満) なので、区分の中の代表値 [m] に直して OSMEdge.width に入れる。
- *   代表値は区分の内側にあるので、しきい値 (5.5m・3m など) との大小関係は区分と同じ結果になる
  * - OSM に width タグがある道は、そちらを優先する (上書きしない)
  * - 使うのは種別が「通常部」の線だけ (庭園路・徒歩道の幅員を車道に移さないため)
  * - 国土地理院のデータは 2013〜2016 年のもので、それ以降にできた道には対応する線が無い
  *   (その道は幅不明のまま、highway 種別からの推定にフォールバックする)
  *
- * 出典: 国土地理院 地図情報 (道路中心線) ベクトルタイル提供実験
- *       https://github.com/gsi-cyberjapan/experimental_rdcl
+ * タイルの読み取りは gsi/parse.ts が持つ。
  */
 
-/** 国土地理院の道路中心線の 1 区間 (線を頂点ごとに分解したもの) */
-export type GsiRoadSegment = {
-  begin: App.Coordinate;
-  end: App.Coordinate;
-  /** 幅員区分の代表値 [m] */
-  width: number;
-};
-
-/**
- * 幅員区分 (rnkWidth) → 区分の中の代表値 [m]
- * 区分の境界 (3m / 5.5m / 13m / 19.5m) をまたがない値にしている
- */
-const WIDTH_CLASS_TO_METERS: Record<string, number> = {
-  "3m未満": 2.0,
-  "3m-5.5m未満": 4.0,
-  "5.5m-13m未満": 8.0,
-  "13m-19.5m未満": 15.0,
-  "19.5m以上": 20.0,
-};
+import type { GsiRoadSegment } from "./gsi/parse";
 
 /**
  * 幅が分かっているか (正の数か)
@@ -41,38 +20,6 @@ const WIDTH_CLASS_TO_METERS: Record<string, number> = {
  */
 export function isKnownWidth(width: unknown): width is number {
   return typeof width === "number" && Number.isFinite(width) && width > 0;
-}
-
-/** 幅員区分の文字列を代表値 [m] に直す (不明な区分は undefined) */
-export function widthClassToMeters(rnkWidth: unknown): number | undefined {
-  return typeof rnkWidth === "string" ? WIDTH_CLASS_TO_METERS[rnkWidth] : undefined;
-}
-
-/**
- * 国土地理院の GeoJSON タイルから、幅員の分かる車道の区間を取り出す
- *
- * @param geojson 道路中心線タイル (FeatureCollection)
- */
-export function parseGsiRoadTile(geojson: unknown): GsiRoadSegment[] {
-  const features = (geojson as { features?: unknown[] })?.features ?? [];
-  const result: GsiRoadSegment[] = [];
-  for (const feature of features as { geometry?: { type?: string; coordinates?: number[][] }; properties?: Record<string, unknown> }[]) {
-    // 車道 (通常部) だけを使う。庭園路 (公園・工場内) や徒歩道の幅員は車道に移さない
-    if (feature.properties?.type !== "通常部") continue;
-    if (feature.geometry?.type !== "LineString") continue;
-    const width = widthClassToMeters(feature.properties?.rnkWidth);
-    if (width === undefined) continue;
-
-    const coords = feature.geometry.coordinates ?? [];
-    for (let i = 0; i < coords.length - 1; i++) {
-      result.push({
-        begin: { lat: coords[i][1], lng: coords[i][0] },
-        end: { lat: coords[i + 1][1], lng: coords[i + 1][0] },
-        width,
-      });
-    }
-  }
-  return result;
 }
 
 /** 対応付けの条件: OSM の区間の中点から国土地理院の線までの距離の上限 [m] */

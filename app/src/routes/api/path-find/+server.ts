@@ -3,7 +3,8 @@ import type { RequestHandler } from './$types';
 
 import { z } from 'zod';
 import { doPathFind } from './pathFind';
-import { MODE_IDS, MODE_PROFILES, type ModeId } from '$lib/mode_profiles';
+import { MODE_IDS, MODE_PROFILES } from '$lib/mode_profiles';
+import type { ModeId } from '$lib/mode_rules';
 import { RequestContext } from '$lib/tracing/requestContext';
 
 

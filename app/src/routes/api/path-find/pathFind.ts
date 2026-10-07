@@ -1,23 +1,26 @@
 import { transientSplit } from '$lib/transient-split';
 import { pathFind } from '$lib/path_finder';
 import { largestComponentEdges } from '$lib/utils/graph';
-import { MODE_PROFILES, type ModeId, type ModeProfile } from '$lib/mode_profiles';
-import { collectRoadJunctions, detectSharpTurnsOnPath, type SharpTurn } from '$lib/sharp_turn';
+import { MODE_PROFILES } from '$lib/mode_profiles';
+import type { ModeId, ModeProfile } from '$lib/mode_rules';
+import { collectRoadJunctions, detectSharpTurnsOnPath } from '$lib/sharp_turn';
 import { CrossConvert } from '$lib/cross_transform';
-import { transformOSMMapToOSMGraph } from '$lib/map_loader/osm';
+import { transformOSMMapToOSMGraph } from '$lib/osm/graph';
 import { fold2DegreeEdges } from '$lib/fold2degree';
 
-import { requireOSMData } from '../osm';
-import { cacheManager } from '../osm/fs-cache-manager';
-import { fetchOverpassData } from '../osm/osm-fetcher';
-import { trimOSMDataByMode, trimOSMDataByWayHighway } from '../osm/osm-data';
+import { requireOSMData } from '$lib/osm';
+import { cacheManager } from '$lib/osm/fs-cache-manager';
+import { fetchOverpassData } from '$lib/osm/osm-fetcher';
+import { trimOSMDataByMode, trimOSMDataByWayHighway } from '$lib/osm/osm-data';
 import { distanceOf } from '$lib/utils/haversine';
-import { applyGsiWidths, GsiRoadIndex, measureSegmentsWidthCoverage, removeNarrowEdges, type GsiRoadSegment, type WidthCoverage } from '$lib/road_width';
-import { GSI_FETCH_BUDGET_MS, MAX_GSI_TILES, requireGsiRoadSegmentsForTiles, tileKey, tilesAlongPath, type GsiTile } from '../gsi';
-import { gsiCacheManager } from '../gsi/fs-cache-manager';
-import { fetchGsiRoadTile } from '../gsi/gsi-fetcher';
+import { applyGsiWidths, GsiRoadIndex, measureSegmentsWidthCoverage, removeNarrowEdges } from '$lib/road_width';
+import type { GsiRoadSegment } from '$lib/gsi/parse';
+import { GSI_FETCH_BUDGET_MS, MAX_GSI_TILES, requireGsiRoadSegmentsForTiles, tileKey, tilesAlongPath, type GsiTile } from '$lib/gsi';
+import { gsiCacheManager } from '$lib/gsi/fs-cache-manager';
+import { fetchGsiRoadTile } from '$lib/gsi/gsi-fetcher';
 import type { RequestContext } from '$lib/tracing/requestContext';
-import { deltaLatitude, deltaLongitude } from '../osm/grid';
+import { deltaLatitude, deltaLongitude } from '$lib/osm/grid';
+import type { PathFindResult } from '$lib/api/path-find';
 
 /**
  * 経路の辺列から、始点を含むノード列を走行順に復元する。
@@ -333,35 +336,9 @@ export function getBoundaryBox(begin: App.Coordinate, end: App.Coordinate): {
  */
 export const MAX_SNAP_DISTANCE_M = 200;
 
-/** /api/path-find の応答 */
-export type PathFindResult =
-    | {
-        found: false;
-        /** 見つからなかった理由 */
-        reason: "BEGIN_UNREACHABLE" | "END_UNREACHABLE" | "NO_ROUTE";
-        /** ユーザーに表示するメッセージ */
-        message: string;
-    }
-    | {
-        found: true;
-        coords: App.Coordinate[];
-        totalDistance: number;
-        totalIntersections: number;
-        /** 経路上の急カーブ (道の途中のカーブのみ。検出しないモードでは空) */
-        sharpTurns: SharpTurn[];
-        /** 指定された始点・終点から、吸着した道の上の点までの距離 [m] */
-        snapDistance: { begin: number; end: number };
-        /**
-         * 経路の幅員の網羅率 (経路の区間のうち車両が通る道で、幅が分かっている区間の割合)。
-         * 国土地理院のタイルが取れなかった範囲では幅の制限が効かないため、キャッシュの有無で結果が変わりうることを観測するためのもの
-         */
-        widthCoverage: WidthCoverage;
-        infoGraph: App.InformationGraph;
-    };
-
 /**
  * @param wayHighway 通行できる highway 種別 (mode を指定した場合は使わない)
- * @param mode 移動モード。指定した場合、通行可否・一方通行の扱いは mode_profiles.ts のルールで決まる
+ * @param mode 移動モード。指定した場合、通行可否・一方通行の扱いは mode_rules.ts のルールで決まる
  */
 export async function doPathFind(
     reqCtx: RequestContext,

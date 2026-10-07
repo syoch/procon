@@ -2,9 +2,9 @@ import { json } from '@sveltejs/kit';
 
 import type { RequestHandler } from './$types';
 import { z } from 'zod';
-import { cacheManager } from '../osm/fs-cache-manager';
-import { fetchOverpassData } from '../osm/osm-fetcher';
-import { requireOSMData } from '../osm';
+import { cacheManager } from '$lib/osm/fs-cache-manager';
+import { fetchOverpassData } from '$lib/osm/osm-fetcher';
+import { requireOSMData } from '$lib/osm';
 import { RequestContext } from '$lib/tracing/requestContext';
 
 const requestSchema = z.object({
