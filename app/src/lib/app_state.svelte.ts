@@ -189,8 +189,9 @@ export class AppState {
    *
    * 書き戻しは Leaflet のイベントハンドラから呼ぶため、この effect が
    * URL 状態に依存しても連鎖しない。
+   * 戻り値は listener を破棄する。
    */
-  bindMap(map: L.Map, onMoveEnd: () => void) {
+  bindMap(map: L.Map): () => void {
     // 復元（共有リンク・リロード・戻る/進む）
     $effect(() => {
       const center = this.#url.viewport.c;
@@ -218,14 +219,12 @@ export class AppState {
         this.#url.viewport.c = { lat: center.lat, lng: center.lng };
         this.#url.viewport.z = zoom;
       }
-      onMoveEnd();
     };
-    // whenReady には書き戻さない。地図が既に ready なら同期実行され、
-    // 復元 effect より先に URL を既定値で上書きし、さらに呼び出し元
-    // の effect に URL 状態を依存させてしまう。初期の書き戻しは復元
-    // effect の setView/setZoom が moveend を発火して起こる。
-    map.whenReady(onMoveEnd);
     map.on("moveend", save);
+
+    return () => {
+      map.off("moveend", save);
+    };
   }
 }
 

@@ -30,7 +30,10 @@
 	import VehicleSelect from "$lib/components/figma/VehicleSelect.svelte";
 	import GreenButton from "$lib/components/figma/GreenButton.svelte";
 	import SearchField from "$lib/components/figma/SearchField.svelte";
-	
+	import { debounce } from "$lib/utils/debounce";
+
+	/** 端点の連続変更をまとめてから先読みを出すまでの待ち時間 [ms] */
+	const PRELOAD_DEBOUNCE_MS = 400;
 
 	let map: L.Map | undefined = $state(undefined);
 	let error: string | null = $state(null);
@@ -93,6 +96,35 @@
 		}
 	});
 
+	/**
+	 * 端点を設定してから検索が走るまでの間に、経路探索と同じ範囲を温める。
+	 * 閲覧中の pan/zoom では出さない。端点は連続で変わりうるのでデバウンスする。
+	 */
+	const preloadAroundEndpoints = debounce(() => {
+		const begin = ctx.state.coordinate("begin");
+		const end = ctx.state.coordinate("end");
+		if (!begin && !end) return;
+
+		// 片方だけのときは、その端点の周辺だけを温める。null を送ると 400 になるため片方だけにする
+		const payload = begin && end ? { begin, end } : { begin: begin ?? end };
+		fetch("/api/preload-osm", {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify(payload),
+		}).catch((e) => console.error("Error preloading map:", e));
+	}, PRELOAD_DEBOUNCE_MS);
+
+	$effect(() => {
+		// 端点の変化を依存として読む。先読みの実行は debounce に任せる
+		const begin = ctx.state.coordinate("begin");
+		const end = ctx.state.coordinate("end");
+		if (!begin && !end) return;
+
+		preloadAroundEndpoints();
+		// 破棄時に未実行の先読みタイマーを止める
+		return () => preloadAroundEndpoints.cancel();
+	});
+
 	async function startSearch(): Promise<boolean> {
 		const begin = ctx.state.coordinate("begin");
 		const end = ctx.state.coordinate("end");
@@ -104,6 +136,8 @@
 			error = "終点が指定されていません";
 			return false;
 		}
+		// 検索は先読みを待たない。未実行の先読みは捨て、実行中なら requireOSMData 側で 1 回にまとめる
+		preloadAroundEndpoints.cancel();
 		showSliders = false;
 		error = null;
 		hasSearched = true;
@@ -153,7 +187,9 @@
 		});
 
 		if (!res.ok) {
-			error = `/api/path-find API エラー: ${res.status}`;
+			// 上限超過などは応答の message をそのまま表示する
+			const body: { message?: unknown } = await res.json().catch(() => ({}));
+			error = typeof body.message === "string" ? body.message : `/api/path-find API エラー: ${res.status}`;
 			return false;
 		}
 
@@ -178,35 +214,6 @@
 		}
 		return true;
 	}
-	async function loadMap() {
-		const bounds = map?.getBounds();
-		if (!bounds) {
-			console.error("Failed to load map (bounds is falsy)");
-			return;
-		}
-		const minLat = bounds.getSouth();
-		const minLng = bounds.getWest();
-		const maxLat = bounds.getNorth();
-		const maxLng = bounds.getEast();
-
-		try {
-			await fetch("/api/preload-osm", {
-    		method: "POST",
-    		headers: { "Content-Type": "application/json" },
-    		body: JSON.stringify({
-    		  minLat,
-    		  minLng,
-    		  maxLat,
-    		  maxLng
-    		}),
-  		});
-
-		} catch (e) {
-			console.error("Error loading map:", e);
-		} finally {
-			
-		}
-	}
 
 	// 起動演出。booted が立つまで appState は "boot" を返すので、
 	// テンプレートの分岐順は従来どおりでよい。
@@ -223,7 +230,8 @@
 		endMarker = new SelectMarker(map);
 
 		// 地図の viewpoint と URL の同期は状態モジュールが受け持つ
-		ctx.state.bindMap(map, loadMap);
+		const unbindMap = ctx.state.bindMap(map);
+		return unbindMap;
 	});
 
 	/**

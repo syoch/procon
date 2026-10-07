@@ -19,7 +19,8 @@ vi.mock("../../src/lib/gsi", async (importOriginal) => ({
 vi.mock("../../src/lib/gsi/fs-cache-manager", () => ({ gsiCacheManager: {} }));
 vi.mock("../../src/lib/gsi/gsi-fetcher", () => ({ fetchGsiRoadTile: vi.fn() }));
 
-import { doPathFind, getBoundaryBox, MAX_SNAP_DISTANCE_M } from "../../src/routes/api/path-find/pathFind";
+import { doPathFind, MAX_SNAP_DISTANCE_M } from "../../src/routes/api/path-find/pathFind";
+import { getBoundaryBox } from "../../src/lib/osm/path-boundary";
 import { tilesAlongPath, tilesForBoundary } from "../../src/lib/gsi";
 import { MODE_PROFILES } from "../../src/lib/mode_profiles";
 import type { GsiRoadSegment } from "../../src/lib/gsi/parse";
