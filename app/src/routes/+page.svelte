@@ -121,6 +121,8 @@
 		if (!begin && !end) return;
 
 		preloadAroundEndpoints();
+		// 破棄時に未実行の先読みタイマーを止める
+		return () => preloadAroundEndpoints.cancel();
 	});
 
 	async function startSearch(): Promise<boolean> {

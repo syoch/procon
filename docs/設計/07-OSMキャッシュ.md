@@ -42,6 +42,7 @@ Issue #60 / PR #61 で実装（2026-09-18）。
 | `MAX_OSM_CELLS` | 512 | 1 回の取得で扱うセル (1/64° 格子) 数の上限 |
 
 `MAX_OSM_CELLS` の 512 は 23×23 格子で、37°N ではおよそ 40km×32km に相当する。
+検索できる距離の上限にもなり、対角でおよそ 35km までになる。
 仮の値で、`log_lines` の requested / fetch と取得要素数の実測で見直す。
 
 セル数が上限を超えるときは Overpass を叩かず、`requireOSMData` が `OSMCellLimitError` を throw する。
