@@ -419,12 +419,25 @@
 				for (let i = 0; i < informationGraph.type.length; i++) {
 					const t = informationGraph.type[i];
 					const d = informationGraph.distance[i];
+					const prev_d=informationGraph.distance[i-2];
 					const n = informationGraph.tags[i-1]?.name ?? "";
 					const next_n = informationGraph.tags[i + 1]?.name ?? "";
 
 					accumDist += d;
 					if (t === "start" || t === "segments") {
 						continue;
+					}
+
+					/*中央分離帯のある道路で交差点数が+1されてしまう問題を解決する処理*/
+					if(isUTurn===1&&d<21&&t!=="right"){
+						accumCross--;
+						isUTurn=0;
+					}
+
+					/*名前タグのない道路でd<21mだとUターンにしてしまうのを防ぐ処理*/
+					/*実際に同じ道でUターンする場合は，informationGraphの段階でtype="uturn"となっていることを考慮している*/
+					if(isUTurn===1&&d<21&&t==="right"&&next_n===""){
+						isUTurn=0;
 					}
 
 					if (t === "straight") {
@@ -574,19 +587,19 @@
 
 
 						<!--後で道路名を表示させるかも-->
-						<!--<div class="text-sub">
+						<div class="text-sub">
 							{#if step.type === "straight"}
-								{step.name}m道なり
+								{step.name}
 							{:else if step.type === "finish"}
-								{step.name}m道なり
-							{:else if step.type === "right"}
-								{step.name}個目の交差点を右折
+								{step.name}
+							<!--{:else if step.type === "right"}
+								{step.name}
 							{:else if step.type === "left"}
-								{step.name}個目の交差点を左折
+								{step.name}
 							{:else if step.type === "uturn"}
-								{step.name}個目の交差点をUターン
+								{step.name}-->
 							{/if}
-						</div>-->
+						</div>
 					</div>
 				</div>
 			{/each}
