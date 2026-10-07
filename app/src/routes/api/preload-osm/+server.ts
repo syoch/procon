@@ -26,12 +26,10 @@ export const POST: RequestHandler = async ({ request }) => {
     if (!query.success) {
       return json({ error: 'Invalid request body', details: query.error.issues }, { status: 400 });
     }
-    const b = query.data;
-    reqCtx.log(`boundary: minLat=${b.minLat} minLng=${b.minLng} maxLat=${b.maxLat} maxLng=${b.maxLng}`);
-
     // 経路探索が読む範囲と同じ範囲を温める
     const { begin, end } = query.data;
     const bbox = getBoundaryBox(begin, end ?? begin);
+    reqCtx.log(`boundary: minLat=${bbox.minLat} minLng=${bbox.minLng} maxLat=${bbox.maxLat} maxLng=${bbox.maxLng}`);
     const { partial, reason } = await requireOSMData(reqCtx, bbox, cacheManager, fetchOverpassData, true);
 
     return json({ success: true, partial, reason });

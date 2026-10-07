@@ -166,8 +166,8 @@ test("同じ範囲の同時 fetch は 1 回にまとめる (#115)", async () => 
   const saveCache = vi.fn().mockResolvedValue(undefined);
   const cache = { readCache, saveCache };
 
-  const first = requireOSMData(new RequestContext(), boundary, cache, fetchOSM);
-  const second = requireOSMData(new RequestContext(), boundary, cache, fetchOSM);
+  const first = requireOSMData(context(), boundary, cache, fetchOSM);
+  const second = requireOSMData(context(), boundary, cache, fetchOSM);
 
   // 両方の呼び出しが fetch に到達するまで待つ (readCache の await を流す)
   await new Promise((resolve) => setTimeout(resolve, 0));
