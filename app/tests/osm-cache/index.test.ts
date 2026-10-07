@@ -74,7 +74,7 @@ test("requireOSMData", async () => {
 });
 
 test("readCache が reject しても cache スパンを記録する", async () => {
-  const ctx = new RequestContext();
+  const ctx = new RequestContext(new Date(), "POST", "/test");
   const failingReadCache = vi.fn().mockRejectedValue(new Error("boom"));
 
   await expect(
