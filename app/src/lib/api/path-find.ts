@@ -5,8 +5,8 @@
 import type { SharpTurn } from "$lib/sharp_turn";
 import type { WidthCoverage } from "$lib/road_width";
 
-/** 探索そのものの結果 */
-type PathFindOutcome =
+/** /api/path-find の応答 */
+export type PathFindResult =
     | {
         found: false;
         /** 見つからなかった理由 */
@@ -30,15 +30,3 @@ type PathFindOutcome =
         widthCoverage: WidthCoverage;
         infoGraph: App.InformationGraph;
     };
-
-/**
- * `/api/path-find` の応答。探索結果に、リクエスト単位の地図データの取得状況を足す。
- *
- * `osmPartial` は探索の成否とは別の情報にする。
- * `found: false` の `reason` は「経路が無い理由」の有限の分類で、データ欠損とは独立に決まる。
- * 経路が見つかってもデータは欠けうるので、`reason` / `message` には埋め込まない。
- */
-export type PathFindResult = PathFindOutcome & {
-    /** 地図データを一部しか取得できなかったか (取得量・時間の上限に達した) */
-    osmPartial?: boolean;
-};

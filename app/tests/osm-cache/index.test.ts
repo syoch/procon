@@ -65,7 +65,7 @@ function context(): RequestContext {
 }
 
 test("requireOSMData", async () => {
-  const result = await requireOSMData(context(), BOUNDARY, { readCache, saveCache }, fetchOSM);
+  await requireOSMData(context(), BOUNDARY, { readCache, saveCache }, fetchOSM);
   expect(readCache).toHaveBeenCalledTimes(4);
   expect(readCache).toHaveBeenCalledWith(CACHED_BOUNDARY[0]);
   expect(readCache).toHaveBeenCalledWith(CACHED_BOUNDARY[1]);
@@ -76,8 +76,6 @@ test("requireOSMData", async () => {
   expect(saveCache).toHaveBeenCalledWith(UNCACHED_BOUNDARY[1], { elements: [] });
   expect(fetchOSM).toHaveBeenCalledTimes(1);
   expect(fetchOSM).toHaveBeenCalledWith(QUERY_BOUNDARY);
-  expect(result.partial).toBe(false);
-  expect(result.reason).toBeUndefined();
 });
 
 test("readCache が reject しても cache スパンを記録する", async () => {
@@ -91,28 +89,7 @@ test("readCache が reject しても cache スパンを記録する", async () =
   expect(ctx.measuredEntries.some((entry) => entry.name === "cache")).toBe(true);
 });
 
-/** 時間予算で打ち切られた fetch の失敗 */
-function timeoutError(): Error {
-  return Object.assign(new Error("The operation was aborted due to timeout"), { name: "TimeoutError" });
-}
-
-test("時間予算で切れたらキャッシュ済みの分だけで続行する (#116)", async () => {
-  const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-  const boundary: Boundary = { minLat: 0 / 64, minLng: 0 / 64, maxLat: 2 / 64, maxLng: 2 / 64 };
-  const readCache = vi.fn().mockResolvedValue(null);
-  const saveCache = vi.fn();
-  const fetchOSM = vi.fn().mockRejectedValue(timeoutError());
-
-  const result = await requireOSMData(context(), boundary, { readCache, saveCache }, fetchOSM);
-
-  expect(result).toEqual({ data: { elements: [] }, partial: true, reason: "fetch-timeout" });
-  expect(fetchOSM).toHaveBeenCalledTimes(1);
-  expect(saveCache).not.toHaveBeenCalled();
-  expect(warn).toHaveBeenCalled();
-  warn.mockRestore();
-});
-
-test("時間予算以外の fetch 失敗は今までどおり投げる (#116)", async () => {
+test("fetch の失敗は throw する", async () => {
   const boundary: Boundary = { minLat: 0 / 64, minLng: 0 / 64, maxLat: 2 / 64, maxLng: 2 / 64 };
   const fetchOSM = vi.fn().mockRejectedValue(new Error("Overpass API エラー: 429"));
 
@@ -126,21 +103,19 @@ test("時間予算以外の fetch 失敗は今までどおり投げる (#116)", 
   ).rejects.toThrow("429");
 });
 
-test("取得対象セルが上限を超えたら Overpass を叩かない (#117)", async () => {
-  const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+test("取得対象セルが上限を超えたら throw する (#117)", async () => {
   // 23x23 = 529 セル (上限 512 を超える)
   const boundary: Boundary = { minLat: 0, minLng: 0, maxLat: 23 / 64, maxLng: 23 / 64 };
   const readCache = vi.fn().mockResolvedValue(null);
   const saveCache = vi.fn();
   const fetchOSM = vi.fn();
 
-  const result = await requireOSMData(context(), boundary, { readCache, saveCache }, fetchOSM);
+  await expect(
+    requireOSMData(context(), boundary, { readCache, saveCache }, fetchOSM),
+  ).rejects.toThrow("OSM の取得対象セルが 529 枚で上限 512 枚を超えています");
 
   expect(fetchOSM).not.toHaveBeenCalled();
   expect(saveCache).not.toHaveBeenCalled();
-  expect(result).toEqual({ data: { elements: [] }, partial: true, reason: "cell-limit" });
-  expect(warn).toHaveBeenCalled();
-  warn.mockRestore();
 });
 
 test("取得対象セルが上限以内なら Overpass を叩く (#117)", async () => {

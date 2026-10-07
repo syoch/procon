@@ -30,9 +30,9 @@ export const POST: RequestHandler = async ({ request }) => {
     const { begin, end } = query.data;
     const bbox = getBoundaryBox(begin, end ?? begin);
     reqCtx.log(`boundary: minLat=${bbox.minLat} minLng=${bbox.minLng} maxLat=${bbox.maxLat} maxLng=${bbox.maxLng}`);
-    const { partial, reason } = await requireOSMData(reqCtx, bbox, cacheManager, fetchOverpassData, true);
+    await requireOSMData(reqCtx, bbox, cacheManager, fetchOverpassData, true);
 
-    return json({ success: true, partial, reason });
+    return json({ success: true });
   } catch (error) {
     reqCtx.logError(error);
     console.error(error);

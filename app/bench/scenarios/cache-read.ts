@@ -48,7 +48,7 @@ export const cacheReadScenario: Scenario = {
     const recorder = new StageRecorder({ warmup, iterations });
     const runOnce = async () => {
       const ctx = new RequestContext(new Date(), "POST", "http://localhost/bench");
-      const { data } = await requireOSMData(ctx, boundary, cacheManager, notExpectedToFetch);
+      const data = await requireOSMData(ctx, boundary, cacheManager, notExpectedToFetch);
       // endMeasurement は measuredEntries を空にするので、先に読む
       for (const entry of ctx.measuredEntries) {
         const stage = `RequestContext.${entry.name}`;

@@ -33,26 +33,19 @@ Issue #60 / PR #61 で実装（2026-09-18）。
 
 境界を跨ぐタイルは union でまとめて取ることで、1 回のクエリで済ませる。
 
-## 取得量と時間の上限
+## 取得量の上限
 
-`app/src/lib/osm/limits.ts` に 2 つの上限を持つ。
+`app/src/lib/osm/limits.ts` に 1 つの上限を持つ。
 
 | 定数 | 既定 | 内容 |
 |---|---|---|
 | `MAX_OSM_CELLS` | 512 | 1 回の取得で扱うセル (1/64° 格子) 数の上限 |
-| `OSM_FETCH_BUDGET_MS` | 40000 | Overpass の fetch にかける時間の上限 [ms] |
 
 `MAX_OSM_CELLS` の 512 は 23×23 格子で、37°N ではおよそ 40km×32km に相当する。
-`OSM_FETCH_BUDGET_MS` の 40 秒は、サーバ側の `[timeout:30]` に部分応答の転送ぶん 10 秒を足した値になる。
-どちらも仮の値で、`log_lines` の requested / fetch と取得要素数の実測で見直す。
+仮の値で、`log_lines` の requested / fetch と取得要素数の実測で見直す。
 
-セル数が上限を超えるときは Overpass を叩かず、キャッシュ済みの分だけで続行する。
-時間予算で切れたときも同じくキャッシュ済みの分で続行する。
-予算は header と本文 (`res.json()`) の両方に効く。
-本文の受信中に切れると `remark` 判定ではなく時間切れとして扱い、キャッシュ済みで続行する。
-このとき取得できなかったセルはキャッシュに載らないので、次の取得で改めて対象になる。
-呼び出し元は戻り値の `partial` と `reason` で取り切れなかったことを知る。
-`/api/path-find` は応答の `osmPartial` に載せ、`/api/preload-osm` は応答の `partial` に載せる。
+セル数が上限を超えるときは Overpass を叩かず、`requireOSMData` が throw する。
+`/api/path-find` と `/api/preload-osm` は失敗の応答を返す。
 定期更新も 1 回に処理する失効セルを `MAX_OSM_CELLS` 枚までにし、残りは次回に回す。
 
 ## 端点先読み
@@ -79,6 +72,7 @@ Issue #60 / PR #61 で実装（2026-09-18）。
 - 同一範囲の同時 fetch が 1 回になることは `tests/osm-cache/index.test.ts` で検証している。
 - Overpass への同時接続数の上限は設けていない。範囲が異なる取得はそれぞれ独立に走る。
 - 429 や 504 は `fetchOverpassData` が throw する。経路探索は 500 を返し、リトライや待機はしない。
+- レートリミット (同時接続数の制限・429 の待機・リトライ) は未実装 (Issue #116)。
 - 端点先読みは 400ms デバウンスと検索開始時の cancel で、連続した取得を抑える。
 
 

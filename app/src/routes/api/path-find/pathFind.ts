@@ -331,8 +331,7 @@ export async function doPathFind(
     }
 
     const bbox = getBoundaryBox(begin, end);
-    const osmResult = await requireOSMData(reqCtx, bbox, cacheManager, fetchOverpassData);
-    const rawOsmData = osmResult.data;
+    const rawOsmData = await requireOSMData(reqCtx, bbox, cacheManager, fetchOverpassData);
     const profile = mode ? MODE_PROFILES[mode] : undefined;
     // mode 指定時はモードのルールで、未指定時は従来どおり highway 種別だけで絞り込む
     const osmData = profile
@@ -386,22 +385,6 @@ export async function doPathFind(
         console.info(
             `幅員データの網羅率 (経路): ${ratio === null ? "-" : (ratio * 100).toFixed(1) + "%"} (${known}/${total} 区間、タイル ${tiles.size} 枚、探索 ${pass} 回、${Date.now() - startedAt}ms)`,
         );
-    }
-
-    if (osmResult.partial) {
-        // 上限超過・時間切れで取り切れなかったことを利用者に伝える。地図が欠けると経路が出ないことがある
-        if (result.found) {
-            result = { ...result, osmPartial: true };
-        } else {
-            const cause = osmResult.reason === "cell-limit"
-                ? "地図データの範囲が広すぎる"
-                : "地図データの取得に時間がかかった";
-            result = {
-                ...result,
-                osmPartial: true,
-                message: `${result.message}(${cause}ため、一部の地図データを取得できませんでした)`,
-            };
-        }
     }
     return result;
 }
