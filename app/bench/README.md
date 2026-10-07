@@ -431,8 +431,78 @@ bench/
 │   └── cache-read.ts              # requireOSMData（キャッシュ全ヒット）
 └── scripts/
     ├── fetch-fixture.ts           # OSM_CACHE_DIR にフィクスチャを用意する
+    ├── preload-osm-regions.ts     # デモ用領域のキャッシュを温める
+    ├── preload-regions.ts         # デモ用領域の bbox 定義
     └── measure-noise.mjs          # 同じコードを N 回測ってばらつきを採取する
 ```
+
+## デモ用領域のプリロード
+
+`scripts/preload-osm-regions.ts` は、発表・デモで使う領域の OSM キャッシュを
+`OSM_CACHE_DIR` に書き込む。
+`fetch-fixture.ts` と同じ経路（`divideBoundary` → `fetchOverpassData` →
+`SplitOSMData` → `saveCache`）を通す。
+
+`/api/preload-osm` は `{begin,end}` から 1 つの bbox を作り、`MAX_OSM_CELLS`
+を超えると 422 になる。
+デモ用領域は数百セルなので、スクリプトで分割して取る。
+
+### 領域
+
+定義は [`scripts/preload-regions.ts`](scripts/preload-regions.ts)。
+
+| 領域 | 含む場所 | セル |
+|---|---|---|
+| `takamatsu` | サンポートホール高松、高松駅、高松港、高松空港 | 72 |
+| `tokyo` | 東京駅、新宿、渋谷、浅草、羽田、横浜駅 | 170 |
+
+bbox はセル境界（1/64°）にスナップした値で書く。`divideBoundary` は外側へ切り上げるので、
+未スナップだと 1 セル余って見積もりがずれる。
+
+### 使い方
+
+```bash
+cd app
+node bench/build.mjs                        # 先にバンドルする
+
+export OSM_CACHE_DIR=/var/cache/procon/osm  # サーバと同じ場所を指す
+node bench/.build/preload-osm-regions.mjs              # 見積もりのみ
+node bench/.build/preload-osm-regions.mjs --run        # 両領域を取得する
+node bench/.build/preload-osm-regions.mjs --run --region=tokyo
+```
+
+引数の既定は全領域の見積もりです。
+**`--run` を付けないと Overpass を叩きません。**
+
+### 1 クエリのセル数
+
+`CELLS_PER_QUERY = 64` にしている。
+2026-10-07 の実測。
+
+| セル数 | 結果 |
+|---|---|
+| 16 | 14.3 MB / 17 秒（通る） |
+| 64 | 55.9 MB / 27 秒（通る） |
+| 144 | `remark`（`timeout:30`） |
+| 512 | HTTP 504 |
+
+`MAX_OSM_CELLS` の 512 は「サーバが組み立てられる上限」であって
+「1 クエリで通るサイズ」ではありません。
+この 2 つを分けて扱います。
+
+### 間隔と取り直し
+
+- クエリ間は 60 秒。Overpass の fair use は 1 クエリ/分以下が目安
+- 失敗は最大 3 回まで 30 秒待って取り直す。`429` / `504` / `remark` はすべて失敗扱い
+- 再実行してもキャッシュ済みのセルは `readCache` が飛ばす。取り直しは中断してよい
+
+### TTL
+
+セルはファイル mtime で保持し、`OSM_CACHE_TTL_DAYS` で失効する。
+既定は 30 日、`0` で失効させない。
+本選まで 30 日以上あるなら既定のままでも間に合う。
+当日になって失効させる運用は避けたいので、
+`OSM_CACHE_TTL_DAYS=0` を設定する（環境変数は `infra/README.md` を参照）。
 
 ## モードごとの経路差の比較
 

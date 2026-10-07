@@ -52,6 +52,7 @@ const ENTRY_POINTS = [
   { entry: join(HERE, "run.ts"), out: join(OUT_DIR, "bench.mjs") },
   { entry: join(HERE, "compare-modes.ts"), out: join(OUT_DIR, "compare-modes.mjs") },
   { entry: join(HERE, "scripts", "fetch-fixture.ts"), out: join(OUT_DIR, "fetch-fixture.mjs") },
+  { entry: join(HERE, "scripts", "preload-osm-regions.ts"), out: join(OUT_DIR, "preload-osm-regions.mjs") },
 ];
 
 for (const { entry, out } of ENTRY_POINTS) {
