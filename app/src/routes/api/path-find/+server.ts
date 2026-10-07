@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { doPathFind } from './pathFind';
 import { MODE_IDS, MODE_PROFILES } from '$lib/mode_profiles';
 import type { ModeId } from '$lib/mode_rules';
+import { OSMCellLimitError } from '$lib/osm';
 import { RequestContext } from '$lib/tracing/requestContext';
 
 
@@ -73,6 +74,14 @@ export const POST: RequestHandler = async ({ request }) => {
         return json(res)
     } catch (error) {
         perfCtx.logError(error);
+        // 範囲が広すぎるのは利用者の入力で直せる。500 ではなく 422 で理由を返す
+        if (error instanceof OSMCellLimitError) {
+            return json({
+                found: false,
+                reason: "NO_ROUTE",
+                message: `経路が長すぎます。始点と終点を近づけてください (取得対象セル ${error.cells} 枚 > 上限 ${error.limit} 枚)`,
+            }, { status: 422 });
+        }
         throw error;
     } finally {
         perfCtx.endMeasurement();

@@ -2,7 +2,7 @@ import { beforeEach, expect, test, vi } from "vitest";
 import { getBoundaryBox } from "../../src/lib/osm/path-boundary";
 
 const { requireOSMData } = vi.hoisted(() => ({
-  requireOSMData: vi.fn(async (_reqCtx: unknown, _bbox: unknown) => ({ data: { elements: [] }, partial: false })),
+  requireOSMData: vi.fn(async (_reqCtx: unknown, _bbox: unknown) => ({ elements: [] })),
 }));
 
 vi.mock("../../src/lib/osm", () => ({ requireOSMData }));

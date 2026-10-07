@@ -4,7 +4,7 @@ import type { RequestHandler } from './$types';
 import { z } from 'zod';
 import { cacheManager } from '$lib/osm/fs-cache-manager';
 import { fetchOverpassData } from '$lib/osm/osm-fetcher';
-import { requireOSMData } from '$lib/osm';
+import { requireOSMData, OSMCellLimitError } from '$lib/osm';
 import { getBoundaryBox } from '$lib/osm/path-boundary';
 import { RequestContext } from '$lib/tracing/requestContext';
 
@@ -35,6 +35,10 @@ export const POST: RequestHandler = async ({ request }) => {
     return json({ success: true });
   } catch (error) {
     reqCtx.logError(error);
+    // 範囲が広すぎるのはクライアントの指定の問題。500 ではなく 4xx で返す
+    if (error instanceof OSMCellLimitError) {
+      return json({ error: error.message }, { status: 422 });
+    }
     console.error(error);
     return json({ error: 'Failed to fetch OSM data' }, { status: 500 });
   } finally {

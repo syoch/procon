@@ -8,11 +8,33 @@ import { MAX_OSM_CELLS } from './limits';
 export { MAX_OSM_CELLS } from './limits';
 
 /**
+ * 取得対象セルが上限を超えたときに投げる。
+ * 呼び出し元は利用者向けの応答 (path-find は 422) に変換する。
+ */
+export class OSMCellLimitError extends Error {
+  readonly cells: number;
+  readonly limit: number;
+  constructor(cells: number, limit: number) {
+    super(`OSM の取得対象セルが ${cells} 枚で上限 ${limit} 枚を超えています`);
+    this.name = "OSMCellLimitError";
+    this.cells = cells;
+    this.limit = limit;
+  }
+}
+
+/**
  * 同じ boundaries への同時 fetch を 1 回にまとめる。
  * 端点先読みと経路探索が重なったときの Overpass 二重取得を防ぐ。
  * プロセス内のメモリで共有する (adapter-node は 1 プロセス)。
  */
 const inFlightFetches = new Map<string, Promise<App.OSMData>>();
+
+/**
+ * in-flight entry を保持する時間 [ms]。
+ * fetch がハングしても `.finally` が走らない間、entry を外して同じ範囲の再取得を妨げない。
+ * undici の header/body timeout はそれぞれ 300 秒なので、それより早く外す。
+ */
+const IN_FLIGHT_TTL_MS = 60_000;
 
 function fetchKey(boundaries: Boundary[]): string {
   return boundaries.map((b) => `${b.minLat},${b.minLng},${b.maxLat},${b.maxLng}`).join("|");
@@ -23,8 +45,18 @@ function fetchCoalesced(boundaries: Boundary[], fetchOSM: OSMFetcher): Promise<A
   const existing = inFlightFetches.get(key);
   if (existing !== undefined) return existing;
 
-  // 失敗しても entry を残さない。finally は reject 時も走る
-  const promise = fetchOSM(boundaries).finally(() => inFlightFetches.delete(key));
+  let promise!: Promise<App.OSMData>;
+  promise = fetchOSM(boundaries).finally(() => {
+    // 自分が今の entry のときだけ消す (watchdog が外した後に新しい fetch が入っていれば残す)
+    if (inFlightFetches.get(key) === promise) inFlightFetches.delete(key);
+  });
+
+  // fetch は中断しない。entry だけ外して、次の要求が新しい fetch を始められるようにする
+  const watchdog = setTimeout(() => {
+    if (inFlightFetches.get(key) === promise) inFlightFetches.delete(key);
+  }, IN_FLIGHT_TTL_MS);
+  (watchdog as { unref?: () => void }).unref?.();
+
   inFlightFetches.set(key, promise);
   return promise;
 }
@@ -73,7 +105,7 @@ export async function requireOSMData(
   reqCtx.log(`osm-cells requested=${dividedBoundaries.length} fetch=${boundariesToGet.length} limit=${MAX_OSM_CELLS} capped=${capped}`);
 
   if (capped) {
-    throw new Error(`OSM の取得対象セルが ${boundariesToGet.length} 枚で上限 ${MAX_OSM_CELLS} 枚を超えています`);
+    throw new OSMCellLimitError(boundariesToGet.length, MAX_OSM_CELLS);
   }
 
   if (boundariesToGet.length > 0) {

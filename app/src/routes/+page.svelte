@@ -185,7 +185,9 @@
 		});
 
 		if (!res.ok) {
-			error = `/api/path-find API エラー: ${res.status}`;
+			// 上限超過などは応答の message をそのまま表示する
+			const body: { message?: unknown } = await res.json().catch(() => ({}));
+			error = typeof body.message === "string" ? body.message : `/api/path-find API エラー: ${res.status}`;
 			return false;
 		}
 

@@ -44,8 +44,9 @@ Issue #60 / PR #61 で実装（2026-09-18）。
 `MAX_OSM_CELLS` の 512 は 23×23 格子で、37°N ではおよそ 40km×32km に相当する。
 仮の値で、`log_lines` の requested / fetch と取得要素数の実測で見直す。
 
-セル数が上限を超えるときは Overpass を叩かず、`requireOSMData` が throw する。
-`/api/path-find` と `/api/preload-osm` は失敗の応答を返す。
+セル数が上限を超えるときは Overpass を叩かず、`requireOSMData` が `OSMCellLimitError` を throw する。
+`/api/path-find` は 422 と利用者向けのメッセージを返す。
+`/api/preload-osm` も 422 を返す。
 定期更新も 1 回に処理する失効セルを `MAX_OSM_CELLS` 枚までにし、残りは次回に回す。
 
 ## 端点先読み
@@ -70,6 +71,8 @@ Issue #60 / PR #61 で実装（2026-09-18）。
 
 - まとめはプロセス内のメモリで持つ。複数プロセスに分けると Overpass はプロセスごとに 1 回になる。
 - 同一範囲の同時 fetch が 1 回になることは `tests/osm-cache/index.test.ts` で検証している。
+- fetch がハングすると `finally` が走らず entry が残る。undici の header / body timeout はそれぞれ 300 秒なので、長くても 5 分で外れる。
+- その間その範囲を再取得できないのを避けるため、entry は 60 秒で外す (`IN_FLIGHT_TTL_MS`)。fetch 自体は中断しない。
 - Overpass への同時接続数の上限は設けていない。範囲が異なる取得はそれぞれ独立に走る。
 - 429 や 504 は `fetchOverpassData` が throw する。経路探索は 500 を返し、リトライや待機はしない。
 - レートリミット (同時接続数の制限・429 の待機・リトライ) は未実装 (Issue #116)。

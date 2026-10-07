@@ -1,7 +1,11 @@
-import { expect, test, vi } from "vitest";
+import { afterEach, expect, test, vi } from "vitest";
 import type { Boundary } from "../../src/lib/osm/boundary";
 import { requireOSMData } from "../../src/lib/osm";
 import { RequestContext } from "$lib/tracing/requestContext";
+
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 const BOUNDARY: Boundary = {
   minLat: 0 / 64,
@@ -152,4 +156,25 @@ test("同じ範囲の同時 fetch は 1 回にまとめる (#115)", async () => 
   resolveFetch({ elements: [] });
   await Promise.all([preload, pathFind]);
   expect(readCache).toHaveBeenCalledTimes(8);
+});
+
+test("fetch が応答しなくても in-flight entry を TTL で解放する", async () => {
+  vi.useFakeTimers();
+  // 他のテストと重ならない境界を使う
+  const boundary: Boundary = { minLat: 50, minLng: 50, maxLat: 50 + 2 / 64, maxLng: 50 + 2 / 64 };
+  const fetchOSM = vi.fn(() => new Promise<App.OSMData>(() => { /* 応答しない */ }));
+  const cache = { readCache: vi.fn().mockResolvedValue(null), saveCache: vi.fn().mockResolvedValue(undefined) };
+
+  void requireOSMData(context(), boundary, cache, fetchOSM);
+  await vi.advanceTimersByTimeAsync(0);
+  expect(fetchOSM).toHaveBeenCalledTimes(1);
+
+  // TTL を過ぎると entry が外れ、次の要求は新しい fetch を始める
+  await vi.advanceTimersByTimeAsync(60_000);
+  void requireOSMData(context(), boundary, cache, fetchOSM);
+  await vi.advanceTimersByTimeAsync(0);
+  expect(fetchOSM).toHaveBeenCalledTimes(2);
+
+  // 2 つ目の entry も解放する
+  await vi.advanceTimersByTimeAsync(60_000);
 });
