@@ -25,16 +25,23 @@ export async function requireOSMData(
   const cacheReadMeasurement = reqCtx.begin("cache");
   const boundariesToGet: Boundary[] = [];
   const cachedChunks: App.OSMData[] = [];
-  for (const b of dividedBoundaries) {
-    const cache = await readCache(b);
-    if (cache === null) {
-      boundariesToGet.push(b);
-      continue
-    }
+  try {
+    // セルを並列に読む。Promise.all は入力順で結果を返すので、
+    // 完了順ではなく dividedBoundaries の順に詰め直せる
+    const caches = await Promise.all(dividedBoundaries.map((b) => readCache(b)));
+    for (let i = 0; i < dividedBoundaries.length; i++) {
+      const cache = caches[i];
+      if (cache === null) {
+        boundariesToGet.push(dividedBoundaries[i]);
+        continue
+      }
 
-    cachedChunks.push(cache);
+      cachedChunks.push(cache);
+    }
+  } finally {
+    // readCache が 1 つでも reject してもスパンを落とさない
+    cacheReadMeasurement();
   }
-  cacheReadMeasurement();
 
   if (boundariesToGet.length > 0) {
     const boundariesToQuery = reqCtx.measure("simplify", () => simplifyBoundaries(boundariesToGet));
