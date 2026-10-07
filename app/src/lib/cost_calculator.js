@@ -39,8 +39,8 @@ export function CalculateCost(folded_edge, scoring) {
     widthScore = scoreWidth(scoring, averageWidth) ?? calculateWidthScore(averageWidth, primaryHighway);
 
     /* 混在スコアの計算 */
-    // モードごとの定義があり、歩道タグが無い場合はそちらを使う (mode_scoring.ts)
-    mixScore = scoreMix(scoring, primarySidewalk, primaryHighway) ?? calculateMixScore(primarySidewalk, primaryHighway);
+    // モードごとの定義があり、幅が分かるか歩道タグが無い場合はそちらを使う (mode_scoring.ts)
+    mixScore = scoreMix(scoring, primarySidewalk, primaryHighway, averageWidth) ?? calculateMixScore(primarySidewalk, primaryHighway);
 
     /* 視界スコアの計算 */
     viewScore = calculateViewScore(folded_edge,primaryHighway);
