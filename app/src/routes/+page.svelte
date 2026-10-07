@@ -415,6 +415,7 @@
 				/*Uターン判定用*/
 				let isUTurn = 0;
 				let prev_n = "";
+				let distFromPrevCross = 999;
 
 				for (let i = 0; i < informationGraph.type.length; i++) {
 					const t = informationGraph.type[i];
@@ -424,9 +425,10 @@
 					const next_n = informationGraph.tags[i + 1]?.name ?? "";
 
 					accumDist += d;
+					distFromPrevCross += d;
 
 					//走行距離(accumDist)が21m以上になったら、Uターン待ちを解除
-    				if (isUTurn === 1 && accumDist >= 21) {
+    				if (isUTurn === 1 && accumDist > 21) {
 						accumCross=0;
         				isUTurn = 0;
     				}
@@ -435,19 +437,27 @@
 						continue;
 					}
 
-					/*中央分離帯のある道路で交差点数が+1されてしまう問題を解決する処理*/
+					/*中央分離帯のある道路で右折するとき，交差点数が+1されてしまう問題を解決する処理OK*/
 					if(isUTurn===1&&accumDist<21&&t!=="right"){
 						accumCross--;
 						isUTurn=0;
 					}
 
-					/*名前タグのない道路でd<21mだとUターンにしてしまうのを防ぐ処理*/
+					/*名前タグのない道路でd<21mだとUターンにしてしまうのを防ぐ処理OK*/
 					/*実際に同じ道でUターンする場合は，informationGraphの段階でtype="uturn"となっていることを考慮している*/
 					if(isUTurn===1&&d<21&&t==="right"&&next_n===""){
 						isUTurn=0;
 					}
 
+					/*中央分離帯のある道路を横切るとき，交差点が+1されてしまうのを防ぐ処理OK*/
+					if(distFromPrevCross<21){
+						if (accumCross > 0) {
+                            accumCross--;
+                        }
+					}
+
 					if (t === "straight") {
+						distFromPrevCross=0;
 						accumCross++;
 					}else if(t==="right"){
 						if(isUTurn===0){/*1回目の右折は通常と同じ判定*/
@@ -456,24 +466,28 @@
 									type: "straight",
 									distance: Math.round(accumDist),
 									cross: accumCross,
-									name: n
+									name: n,
+									nextname: next_n
 								});
 
 								aggregated.push({
 									type: t,
 									distance: 0,
 									cross: accumCross + 1,
-									name: n
+									name: n,
+									nextname: next_n
 								});
 							} else if (Math.round(accumDist) === 0) {//0mだったとき
 								aggregated.push({ 
 								type: t,
 								distance: 0,
 								cross: accumCross+1,
-								name: n
+								name: n,
+								nextname: next_n
 								});				
 							}
 							accumDist = 0;
+							distFromPrevCross=0;
 							isUTurn++;
 							prev_n=informationGraph.tags[i - 1]?.name ?? "";
 						}else if(isUTurn===1){
@@ -486,11 +500,10 @@
 									type: "uturn",
 									distance: 0,
 									cross: accumCross + 1,
-									name: n
+									name: n,
+									nextname: next_n
 								});
-								accumDist = 0;
-								accumCross = 0;
-								isUTurn=0;
+								
 							}else{
 								/*Uターンではない場合は通常の右折として追加*/
 								if (Math.round(accumDist) > 0) {
@@ -498,27 +511,32 @@
 										type: "straight",
 										distance: Math.round(accumDist),
 										cross: accumCross,
-										name: n
+										name: n,
+										nextname: next_n
 									});
 									aggregated.push({
 										type: t,
 										distance: 0,
 										cross: accumCross + 1,
-										name: n
+										name: n,
+										nextname: next_n
 									});
 								} else if (Math.round(accumDist) === 0) {//0mだったとき
 									aggregated.push({ 
 									type: t,
 									distance: 0,
 									cross: accumCross+1,
-									name: n
+									name: n,
+									nextname: next_n
 									});
 								} 
 							}
 							accumDist = 0;
 							accumCross = 0;
 							isUTurn=0;
+							distFromPrevCross=0;
 						}
+						
 					}else if (t === "left"|| t === "uturn") {
 						// transientSplit が長さ0のエッジを拒否するため、現実の道路網データではここに到達しない。
 						// 万が一到達した場合は意図的に無視する（UIに距離0の案内を出さないため）。
@@ -527,39 +545,43 @@
 								type: "straight",
 								distance: Math.round(accumDist),
 								cross: accumCross,
-								name: n
+								name: n,
+								nextname: next_n
 							});
 
 							aggregated.push({
 								type: t,
 								distance: 0,
 								cross: accumCross + 1,
-								name: n
+								name: n,
+								nextname: next_n
 							});
-							accumDist = 0;
-							accumCross = 0;
-							isUTurn=0;
 						} else if (Math.round(accumDist) === 0) {//0mだったとき
 							aggregated.push({ 
 								type: t,
 								distance: 0,
 								cross: accumCross+1,
-								name: n
+								name: n,
+								nextname: next_n
 							});
-							accumDist = 0;
-							accumCross = 0;
-							isUTurn=0;
+							
 						}
+						accumDist = 0;
+						accumCross = 0;
+						isUTurn=0;
+						distFromPrevCross = 0;
 					}else if (i === informationGraph.type.length - 1) {
 						if (accumDist > 0 || accumCross > 0) {
 							aggregated.push({
 								type: "finish",
 								distance: Math.round(accumDist),
 								cross: accumCross,
-								name: n
+								name: n,
+								nextname: next_n
 							});
 						}
 					}
+					
 				}
 				return aggregated;
 				})()}
@@ -598,12 +620,14 @@
 								{step.name}
 							{:else if step.type === "finish"}
 								{step.name}
-							<!--{:else if step.type === "right"}
-								{step.name}
-							{:else if step.type === "left"}
-								{step.name}
-							{:else if step.type === "uturn"}
-								{step.name}-->
+							{/if}
+
+							{#if step.name !== step.nextname && step.name!=="" && step.nextname!==""}
+								{#if step.type === "right" || step.type === "left"}
+									{step.name}から{step.nextname}へ
+								{:else if (step.type === "right" || step.type === "left") && step.nextname !== ""}
+           							{step.nextname}へ
+								{/if}
 							{/if}
 						</div>
 					</div>
