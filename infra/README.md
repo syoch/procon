@@ -139,8 +139,29 @@ OVERPASS_ENDPOINT=http://127.0.0.1:3001/api/interpreter
 | 構築時間 | 44 分 |
 | ピーク RSS（構築） | 5.4 GiB |
 
-`MemoryMax=8G` は dispatcher と問い合わせだけを縛る。
-構築 (`overpass-init`) は `runuser` で走るのでこの上限の外にある。
+`MemoryMax` は dispatcher と問い合わせを別々に縛る。
+構築 (`overpass-init`) は `nix run` の別プロセスなので、どの unit の上限にも入らない。
+
+- `overpass-fcgi.service`: `MemoryMax=2G`（問い合わせ。実測ピークは 512 セルで 488 MB）
+- `overpass-dispatcher.service`: `MemoryMax=256M`（実測 6.2 MiB）
+
+### クエリの負荷（実測）
+
+自前 Overpass の結果はキャッシュしない方針である。
+毎回問い合わせるため、大きい bbox の時間を把握しておく。
+東京の密集部で、アプリと同じクエリを投げた実測値（無負荷時）。
+
+| セル数 | 時間 | 応答サイズ | fcgi メモリ (peak) |
+|---|---|---|---|
+| 1 | 0.32 秒 | 560 KB | 24.7 MB |
+| 16 | 0.81 秒 | 10.9 MB | 62.8 MB |
+| 64 | 2.31 秒 | 47.5 MB | 143 MB |
+| 256 | 5.93 秒 | 133 MB | 362 MB |
+| 512 | 7.22 秒 | 187 MB | 488 MB |
+
+上限 `MAX_OSM_CELLS = 512` は 7.22 秒であり 10 秒未満なので、キャッシュしない方針は成立する。
+256〜512 セルは 6〜7 秒かかる点を UI 側が想定する。
+クエリは `/dev/shm` を使わない（実測でクエリ中も 4 KB のまま）。
 
 ### 注意
 

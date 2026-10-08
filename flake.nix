@@ -269,9 +269,10 @@
           Type=simple
           User=overpass
           Group=overpass
-          # 問い合わせ (CGI) のメモリはここに載る。アプリは 512 セル上限なので 4G で十分。
-          # /dev/shm の tmpfs ページも最初に触ったプロセスの cgroup に課金される
-          MemoryMax=4G
+          # 問い合わせ (CGI) のメモリはここに載る。実測で 512 セル (上限) のピークが 488 MB。
+          # 同時クエリを考えて 2G にする。
+          # クエリは /dev/shm を使わない (実測でクエリ中も 4 KB のまま)
+          MemoryMax=2G
           # -n は no fork。systemd の Type=simple で前面に置く
           ExecStart=${pkgs.spawn_fcgi}/bin/spawn-fcgi -n -s /run/overpass/fcgiwrap.sock -M 0666 -- ${pkgs.fcgiwrap}/bin/fcgiwrap
           Restart=on-failure
