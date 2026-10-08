@@ -255,6 +255,7 @@ declare global {
     		type: ("start" | "finish" | "straight" | "left" | "right" | "uturn" | "segments")[];
     		distance: number[]; // 曲がるまでの累積距離
 			tags: (Record<string, string> | null)[];
+			crossingRoadNames: (string | null)[];
     	};
 	}
 }

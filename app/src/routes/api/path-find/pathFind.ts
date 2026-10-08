@@ -109,41 +109,41 @@ function calcTotalDistance(path: App.Coordinate[]) {
  * 指定されたエッジの実際の距離（セグメントがある場合はその総和）を測定する関数
  */
 function getEdgeDistance(
-  mapData: App.SearchGraph,
-  edge: App.SearchGraph['edges'][App.EdgeId],
-  reversed: boolean,
-  current: App.NodeId,
-  nextNodeId: App.NodeId,
+    mapData: App.SearchGraph,
+    edge: App.SearchGraph['edges'][App.EdgeId],
+    reversed: boolean,
+    current: App.NodeId,
+    nextNodeId: App.NodeId,
 ): number {
-  let segmentDist = 0;
+    let segmentDist = 0;
 
-  if ("segments" in edge && edge.segments.length > 0) {
-    let prevCoord = mapData.nodes[reversed ? edge.end : edge.begin].coordinate;
-    const segments = reversed ? [...edge.segments].reverse() : edge.segments;
+    if ("segments" in edge && edge.segments.length > 0) {
+        let prevCoord = mapData.nodes[reversed ? edge.end : edge.begin].coordinate;
+        const segments = reversed ? [...edge.segments].reverse() : edge.segments;
 
-    for (const seg of segments) {
-      const targetCoord = reversed ? seg.begin_coordinate : seg.end_coordinate;
-      segmentDist += distanceOf(prevCoord, targetCoord);
-      prevCoord = targetCoord;
+        for (const seg of segments) {
+            const targetCoord = reversed ? seg.begin_coordinate : seg.end_coordinate;
+            segmentDist += distanceOf(prevCoord, targetCoord);
+            prevCoord = targetCoord;
+        }
+
+        const endCoord = mapData.nodes[nextNodeId].coordinate;
+        segmentDist += distanceOf(prevCoord, endCoord);
+    } else {
+        const beginCoord = mapData.nodes[current].coordinate;
+        const endCoord = mapData.nodes[nextNodeId].coordinate;
+        segmentDist = distanceOf(beginCoord, endCoord);
     }
 
-    const endCoord = mapData.nodes[nextNodeId].coordinate;
-    segmentDist += distanceOf(prevCoord, endCoord);
-  } else {
-    const beginCoord = mapData.nodes[current].coordinate;
-    const endCoord = mapData.nodes[nextNodeId].coordinate;
-    segmentDist = distanceOf(beginCoord, endCoord);
-  }
-
-  return segmentDist;
+    return segmentDist;
 }
 
 /** 辺の進行方向の向き。start は辺に入った直後、end は辺から出る直前の向き */
 type EdgeVectors = {
-  start: { x: number; y: number };
-  end: { x: number; y: number };
-  /** ほぼ長さがゼロの辺 (交差点の中の辺) かどうか */
-  isZero: boolean;
+    start: { x: number; y: number };
+    end: { x: number; y: number };
+    /** ほぼ長さがゼロの辺 (交差点の中の辺) かどうか */
+    isZero: boolean;
 };
 
 /**
@@ -152,99 +152,99 @@ type EdgeVectors = {
  * そのため、入口側は最初の区間、出口側は最後の区間の向きを使う。
  */
 function getEdgeVectors(
-  mapData: App.SearchGraph,
-  edge: App.SearchGraph['edges'][App.EdgeId],
-  reversed: boolean,
-  current: App.NodeId,
-  nextNodeId: App.NodeId,
+    mapData: App.SearchGraph,
+    edge: App.SearchGraph['edges'][App.EdgeId],
+    reversed: boolean,
+    current: App.NodeId,
+    nextNodeId: App.NodeId,
 ): EdgeVectors {
-  const EPS = 0.000001; // ほぼ長さがゼロとみなす長さ (度)
-  const isLong = (v: { x: number; y: number }) => Math.sqrt(v.x * v.x + v.y * v.y) >= EPS;
+    const EPS = 0.000001; // ほぼ長さがゼロとみなす長さ (度)
+    const isLong = (v: { x: number; y: number }) => Math.sqrt(v.x * v.x + v.y * v.y) >= EPS;
 
-  const from = mapData.nodes[current].coordinate;
-  const to = mapData.nodes[nextNodeId].coordinate;
-  const chord = { x: to.lng - from.lng, y: to.lat - from.lat };
+    const from = mapData.nodes[current].coordinate;
+    const to = mapData.nodes[nextNodeId].coordinate;
+    const chord = { x: to.lng - from.lng, y: to.lat - from.lat };
 
-  if (!("segments" in edge) || edge.segments.length === 0) {
-    return { start: chord, end: chord, isZero: !isLong(chord) };
-  }
+    if (!("segments" in edge) || edge.segments.length === 0) {
+        return { start: chord, end: chord, isZero: !isLong(chord) };
+    }
 
-  // 進行方向に並べた各区間の向き (長さがゼロの区間は除く)
-  const segments = reversed ? [...edge.segments].reverse() : edge.segments;
-  const dirs = segments
-    .map((seg) =>
-      reversed
-        ? { x: seg.begin_coordinate.lng - seg.end_coordinate.lng, y: seg.begin_coordinate.lat - seg.end_coordinate.lat }
-        : { x: seg.end_coordinate.lng - seg.begin_coordinate.lng, y: seg.end_coordinate.lat - seg.begin_coordinate.lat },
-    )
-    .filter(isLong);
-  if (dirs.length === 0) {
-    return { start: chord, end: chord, isZero: true };
-  }
-  return { start: dirs[0], end: dirs[dirs.length - 1], isZero: false };
+    // 進行方向に並べた各区間の向き (長さがゼロの区間は除く)
+    const segments = reversed ? [...edge.segments].reverse() : edge.segments;
+    const dirs = segments
+        .map((seg) =>
+            reversed
+                ? { x: seg.begin_coordinate.lng - seg.end_coordinate.lng, y: seg.begin_coordinate.lat - seg.end_coordinate.lat }
+                : { x: seg.end_coordinate.lng - seg.begin_coordinate.lng, y: seg.end_coordinate.lat - seg.begin_coordinate.lat },
+        )
+        .filter(isLong);
+    if (dirs.length === 0) {
+        return { start: chord, end: chord, isZero: true };
+    }
+    return { start: dirs[0], end: dirs[dirs.length - 1], isZero: false };
 }
 
 function getVectorAngle(
-  v1: { x: number; y: number },
-  v2: { x: number; y: number },
+    v1: { x: number; y: number },
+    v2: { x: number; y: number },
 ): number {
-  const dot = v1.x * v2.x + v1.y * v2.y;
-  const len1 = Math.sqrt(v1.x * v1.x + v1.y * v1.y);
-  const len2 = Math.sqrt(v2.x * v2.x + v2.y * v2.y);
-  if (len1 === 0 || len2 === 0) return 0;
+    const dot = v1.x * v2.x + v1.y * v2.y;
+    const len1 = Math.sqrt(v1.x * v1.x + v1.y * v1.y);
+    const len2 = Math.sqrt(v2.x * v2.x + v2.y * v2.y);
+    if (len1 === 0 || len2 === 0) return 0;
 
-  let cosTheta = dot / (len1 * len2);
-  cosTheta = Math.max(-1, Math.min(1, cosTheta));
-  return (Math.acos(cosTheta) * 180) / Math.PI;
+    let cosTheta = dot / (len1 * len2);
+    cosTheta = Math.max(-1, Math.min(1, cosTheta));
+    return (Math.acos(cosTheta) * 180) / Math.PI;
 }
 
 function getCrossProduct2D(
-  v1: { x: number; y: number },
-  v2: { x: number; y: number },
+    v1: { x: number; y: number },
+    v2: { x: number; y: number },
 ): number {
-  return v1.x * v2.y - v1.y * v2.x;
+    return v1.x * v2.y - v1.y * v2.x;
 }
 
 /**
  * キャッシュされたベクトルの中から、長さが十分にある手前の有効なベクトルを探す関数
  */
 function getValidPrevVector(
-  vectorCache: EdgeVectors[],
-  currentIndex: number,
+    vectorCache: EdgeVectors[],
+    currentIndex: number,
 ) {
-  let k = currentIndex - 1;
-  while (k >= 0) {
-    if (!vectorCache[k].isZero) {
-      return vectorCache[k];
+    let k = currentIndex - 1;
+    while (k >= 0) {
+        if (!vectorCache[k].isZero) {
+            return vectorCache[k];
+        }
+        k--;
     }
-    k--;
-  }
-  return null;
+    return null;
 }
 
 /**
  * キャッシュされたベクトルの中から、長さが十分にある先の有効なベクトルを探す関数
  */
 function getValidNextVector(
-  vectorCache: EdgeVectors[],
-  currentIndex: number,
+    vectorCache: EdgeVectors[],
+    currentIndex: number,
 ) {
-  let k = currentIndex;
-  while (k < vectorCache.length) {
-    if (!vectorCache[k].isZero) {
-      return vectorCache[k];
+    let k = currentIndex;
+    while (k < vectorCache.length) {
+        if (!vectorCache[k].isZero) {
+            return vectorCache[k];
+        }
+        k++;
     }
-    k++;
-  }
-  return null;
+    return null;
 }
 
 /**
  * 修正版：交差点での右折・左折・直進を判定する関数（キャッシュを使用）
  */
 function judgeTurnTypeWithCache(
-  vectorCache: EdgeVectors[],
-  currentIndex: number,
+    vectorCache: EdgeVectors[],
+    currentIndex: number,
 ): "straight" | "left" | "right" | "uturn" {
     const prev = getValidPrevVector(vectorCache, currentIndex);
     const next = getValidNextVector(vectorCache, currentIndex);
@@ -257,24 +257,24 @@ function judgeTurnTypeWithCache(
     const vIn = prev.end;
     const vOut = next.start;
 
-  const angle = getVectorAngle(vIn, vOut);
-  const cross = getCrossProduct2D(vIn, vOut);
+    const angle = getVectorAngle(vIn, vOut);
+    const cross = getCrossProduct2D(vIn, vOut);
 
-// 1. まず直進（20度未満）を弾く
-  if (angle < 20) {
-    return "straight";
-  } 
-  // 2. 次にUターン（160度以上）を弾く
-  else if (angle > 160) {
-    return "uturn";
-  }
+    // 1. まず直進（20度未満）を弾く
+    if (angle < 20) {
+        return "straight";
+    }
+    // 2. 次にUターン（160度以上）を弾く
+    else if (angle > 160) {
+        return "uturn";
+    }
 
-  // 3. 残ったもの（20度〜160度）は外積で右左折判定
-  if (cross > 0) {
-    return "left";
-  } else {
-    return "right";
-  }
+    // 3. 残ったもの（20度〜160度）は外積で右左折判定
+    if (cross > 0) {
+        return "left";
+    } else {
+        return "right";
+    }
 }
 
 /**
@@ -282,13 +282,49 @@ function judgeTurnTypeWithCache(
  * 区間がない辺 (交差点の中の辺) は null
  */
 function getRoadTags(edge: App.SearchGraph['edges'][App.EdgeId], reversed: boolean): Record<string, string> | null {
-  if (!("segments" in edge) || edge.segments.length === 0) return null;
-  const segments = reversed ? [...edge.segments].reverse() : edge.segments;
-  return segments[segments.length - 1].tags ?? null;
+    if (!("segments" in edge) || edge.segments.length === 0) return null;
+    const segments = reversed ? [...edge.segments].reverse() : edge.segments;
+    return segments[segments.length - 1].tags ?? null;
 }
 
 /** buildInformationGraph の内部の作業用タグ (API には出さない) */
 type EdgeKind = "segments" | "turn";
+
+function getCrossingRoadName(mapData: App.SearchGraph, edge: App.MapVCrossEdge): string | null {
+    const intersectionNode = mapData.nodes[edge.begin];
+    if (intersectionNode.type !== "MapVCrossNode") {
+        throw new Error("MapVCrossEdge の始点は MapVCrossNode であるはずです")
+    }
+
+    const groupNodes = intersectionNode.edges
+        .map(edgeId => mapData.edges[edgeId])
+        .filter(internalEdge => internalEdge.type === "MapVCrossEdge")
+        // 交差点内で edge.begin, edge.end のどちらでもないノードに絞って Id をリストする
+        .map(internalEdge => internalEdge.begin === edge.begin ? internalEdge.end : internalEdge.begin)
+        .filter(nodeId => nodeId !== edge.end);
+    if (groupNodes.length < 2) {
+        return null
+    }
+
+    const crossingEdgeName = groupNodes
+        .map(vCrossNodeId => {
+            const neighborEdge = mapData.nodes[vCrossNodeId].edges
+                .map(neighborEdgeId => mapData.edges[neighborEdgeId])
+                .find(neighborEdge => neighborEdge.type !== "MapVCrossEdge")
+            if (neighborEdge === undefined) return;
+
+            const tagsIndex = neighborEdge.begin === vCrossNodeId ? neighborEdge.segments.length - 1 : 0;
+            const tags = neighborEdge.segments[tagsIndex].tags
+            return tags.name
+        })
+        .find(x => x !== undefined)
+    
+    if (crossingEdgeName === undefined) {
+        return null;
+    }
+
+    return crossingEdgeName;
+}
 
 export function buildInformationGraph(
     mapData: App.SearchGraph,
@@ -304,15 +340,17 @@ export function buildInformationGraph(
         type: [],
         distance: [],
         tags: [],
+        crossingRoadNames: [],
     };
 
     graphData.type.push("start");
     graphData.distance.push(0);
     graphData.tags.push(null);
+    graphData.crossingRoadNames.push(null);
 
     // ★ 1. 各エッジを通ったときの「進行方向のベクトル」を全エッジ分あらかじめ記録するキャッシュ
     const vectorCache: EdgeVectors[] = [];
-    const stepDataList: { edgeType: EdgeKind; dist: number; tags: Record<string, string> | null }[] = [];
+    const stepDataList: { edgeType: EdgeKind; dist: number; tags: Record<string, string> | null, crossingRoadName: string | null }[] = [];
 
     for (let i = 0; i < edgeIds.length; i++) {
         const edgeId = edgeIds[i];
@@ -332,7 +370,10 @@ export function buildInformationGraph(
         // 交差点の中の辺 (長さ 0 の MapVCrossEdge) は、交差点 1 個につき 1 本。ここを判定位置とする
         const edgeType: EdgeKind = edge.type === "MapVCrossEdge" ? "turn" : "segments";
 
-        stepDataList.push({ edgeType, dist, tags: getRoadTags(edge, reversed) });
+        const crossingRoadName = edge.type === "MapVCrossEdge" ? getCrossingRoadName(mapData, edge) : null;
+
+        stepDataList.push({ edgeType, dist, tags: getRoadTags(edge, reversed), crossingRoadName });
+
         current = nextNodeId;
     }
 
@@ -344,16 +385,19 @@ export function buildInformationGraph(
             graphData.type.push(judgeTurnTypeWithCache(vectorCache, i));
             graphData.distance.push(0);
             graphData.tags.push(null);
+            graphData.crossingRoadNames.push(step.crossingRoadName);
         } else {
             graphData.type.push("segments");
             graphData.distance.push(step.dist);
             graphData.tags.push(step.tags);
+            graphData.crossingRoadNames.push(null);
         }
     }
 
     graphData.type.push("finish");
     graphData.distance.push(0);
     graphData.tags.push(null);
+    graphData.crossingRoadNames.push(null);
 
     return graphData;
 }

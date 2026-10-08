@@ -44,7 +44,7 @@
 	let totalIntersections = $state<number | undefined>(undefined);
 	/** 手動・自動を問わず検索を実行済みか（$state ではない） */
 	let hasSearched = false;
-	let informationGraph=$state<App.InformationGraph>({ type: [], distance: [], tags: [] });
+	let informationGraph=$state<App.InformationGraph>({ type: [], distance: [], tags: [] ,crossingRoadNames: []});
 
 	// 移動モード (徒歩・自転車・車・バイク・大型トラック) ごとのプリセット。
 	// 表示名と重みは mode_profiles.ts を唯一の定義元とし、ここでは並べるだけにする
@@ -113,7 +113,7 @@
 		totalDistance = 0;
 		totalIntersections = 0;
 		sharpTurns = [];
-		informationGraph = { type: [], distance: [], tags: [] };
+		informationGraph = { type: [], distance: [], tags: [], crossingRoadNames: []};
 
 		const totalSlider = slider1 + slider2 + slider3;
 
@@ -420,8 +420,8 @@
 				for (let i = 0; i < informationGraph.type.length; i++) {
 					const type = informationGraph.type[i];
 					const distance = informationGraph.distance[i];
-					const name = informationGraph.tags[i-1]?.name ?? "";
-					const next_n = informationGraph.tags[i + 1]?.name ?? "";
+					const name = informationGraph.tags[i - 1]?.name ?? "";
+					const next_name = informationGraph.tags[i + 1]?.name ?? "";
 
 					accumDist += distance;
 					distFromPrevCross += distance;
@@ -436,15 +436,15 @@
 						continue;
 					}
 
-					/*中央分離帯のある道路で右折するとき，交差点数が+1されてしまう問題を解決する処理OK*/
-					if(isUTurn===1&&accumDist<21&&type!=="right"){
-						accumCross--;
+					/*名前タグのない道路でd<21mだとUターンにしてしまうのを防ぐ処理OK*/
+					/*実際に同じ道でUターンする場合は，informationGraphの段階でtype="uturn"となっていることを考慮している*/
+					if(isUTurn===1&&accumDist<21&&type==="right"&&next_name===""){
 						isUTurn=0;
 					}
 
-					/*名前タグのない道路でd<21mだとUターンにしてしまうのを防ぐ処理OK*/
-					/*実際に同じ道でUターンする場合は，informationGraphの段階でtype="uturn"となっていることを考慮している*/
-					if(isUTurn===1&&distance<21&&type==="right"&&next_n===""){
+					/*中央分離帯のある道路から右折したとき，交差点数が+1されてしまう問題を解決する処理OK*/
+					if(isUTurn===1 && accumDist<21 && type!=="right" && name!==""){
+						accumCross--;
 						isUTurn=0;
 					}
 
@@ -466,7 +466,7 @@
 									distance: Math.round(accumDist),
 									cross: accumCross,
 									name: name,
-									nextname: next_n
+									nextname: next_name,
 								});
 
 								aggregated.push({
@@ -474,7 +474,7 @@
 									distance: 0,
 									cross: accumCross + 1,
 									name: name,
-									nextname: next_n
+									nextname: next_name,
 								});
 							} else if (Math.round(accumDist) === 0) {//0mだったとき
 								aggregated.push({ 
@@ -482,7 +482,7 @@
 								distance: 0,
 								cross: accumCross+1,
 								name: name,
-								nextname: next_n
+								nextname: next_name,
 								});				
 							}
 							accumDist = 0;
@@ -491,7 +491,7 @@
 							prev_n=informationGraph.tags[i - 1]?.name ?? "";
 						}else if(isUTurn===1){
 							/*同じ名前の交差点で2回右折かつ距離が短い場合はUターンと判定*/
-							if(prev_n===next_n&&accumDist<21){
+							if(prev_n===next_name&&accumDist<21){
 								/*前に入れた右折を削除*/
 								aggregated.pop();
 								/*Uターンとして追加*/
@@ -500,7 +500,7 @@
 									distance: 0,
 									cross: accumCross + 1,
 									name: name,
-									nextname: next_n
+									nextname: next_name,
 								});
 								
 							}else{
@@ -511,14 +511,14 @@
 										distance: Math.round(accumDist),
 										cross: accumCross,
 										name: name,
-										nextname: next_n
+										nextname: next_name,
 									});
 									aggregated.push({
 										type: type,
 										distance: 0,
 										cross: accumCross + 1,
 										name: name,
-										nextname: next_n
+										nextname: next_name,
 									});
 								} else if (Math.round(accumDist) === 0) {//0mだったとき
 									aggregated.push({ 
@@ -526,7 +526,7 @@
 									distance: 0,
 									cross: accumCross+1,
 									name: name,
-									nextname: next_n
+									nextname: next_name,
 									});
 								} 
 							}
@@ -545,7 +545,7 @@
 								distance: Math.round(accumDist),
 								cross: accumCross,
 								name: name,
-								nextname: next_n
+								nextname: next_name,
 							});
 
 							aggregated.push({
@@ -553,7 +553,7 @@
 								distance: 0,
 								cross: accumCross + 1,
 								name: name,
-								nextname: next_n
+								nextname: next_name,
 							});
 						} else if (Math.round(accumDist) === 0) {//0mだったとき
 							aggregated.push({ 
@@ -561,7 +561,7 @@
 								distance: 0,
 								cross: accumCross+1,
 								name: name,
-								nextname: next_n
+								nextname: next_name,
 							});
 							
 						}
@@ -576,7 +576,7 @@
 								distance: Math.round(accumDist),
 								cross: accumCross,
 								name: name,
-								nextname: next_n
+								nextname: next_name,
 							});
 						}
 					}

@@ -232,11 +232,16 @@ function buildGraphFromWays(rawNodes, rawWays) {
         existing.sidewalk = mergeSidewalk(existing.sidewalk, tags.sidewalk ?? null);
 
         for (const [key, value] of Object.entries(tags)) {
-          if (!existing.tags[key]) {
-            existing.tags[key] = value;
-          }
+        // 既存のエッジに name がなく、新しく見つけた方のタグに name がある場合のみ引き継ぐ
+        if (!existing.tags.name && tags.name) {
+            existing.tags.name = tags.name;
         }
-        
+
+        // ※「国道351号」などをUIに出す場合は、一緒に ref も引き継ぐのがおすすめです
+        if (!existing.tags.ref && tags.ref) {
+            existing.tags.ref = tags.ref;
+        }
+      }
         continue;
       }
 
