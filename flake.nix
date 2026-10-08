@@ -252,8 +252,9 @@
           ExecStart=${self.packages.${system}.osm3s}/bin/dispatcher --osm-base --db-dir=/var/lib/overpass/db/ --allow-duplicate-queries=yes
           ExecStop=${self.packages.${system}.osm3s}/bin/dispatcher --osm-base --db-dir=/var/lib/overpass/db/ --terminate
           # Overpass 側を先に殺し、procon-app に波及させない。
-          # DB 構築 (overpass-init) は runuser で走るのでこの上限の外。ここが縛るのは
-          # dispatcher と問い合わせの分だけ。構築のピークは日本全体で 5.4 GiB だった
+          # DB 構築 (overpass-init) は nix run が起こす別プロセスなのでこの unit の
+          # cgroup に入らない。MemoryMax が縛るのは dispatcher と問い合わせだけ。
+          # dispatcher の RSS は実測で 22 MiB。8G は問い合わせの余裕を含めた値
           MemoryMax=8G
           Restart=on-failure
 
@@ -303,7 +304,8 @@
 
           # Overpass を専用ユーザで動かす。root では動かさない
           if ! id overpass >/dev/null 2>&1; then
-            useradd --system --no-create-home --home-dir /var/lib/overpass --shell /usr/sbin/nologin overpass
+            # -U で同名グループも作る。--system のグループ自動作成は USERGROUPS_ENAB 依存
+            useradd --system -U --no-create-home --home-dir /var/lib/overpass --shell /usr/sbin/nologin overpass
           fi
 
           install -d -m 0755 -o overpass -g overpass /var/lib/overpass

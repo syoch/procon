@@ -120,11 +120,15 @@ HEAD ハッシュを取得できない場合は `no-git` として扱われる�
 `3000` は `procon-app` が使うため `3001` にしている。
 `localhost` にだけ束縛するので外からは見えない。
 
-`procon-app` に使わせるには `/etc/procon.env` に次を足す。
+`procon-app` に使わせるには `/etc/procon.env` の `OVERPASS_ENDPOINT` を次に変える。
+アプリが読むのは `OVERPASS_ENDPOINT` だけである（`osm-fetcher.ts`）。
 
 ```
-OSM_SELF_HOSTED_ENDPOINT=http://127.0.0.1:3001/api/interpreter
+OVERPASS_ENDPOINT=http://127.0.0.1:3001/api/interpreter
 ```
+
+**`OSM_SELF_HOSTED_ENDPOINT` / `OSM_FALLBACK_ENDPOINT` / `OSM_SELF_HOSTED_COVERAGE` は未実装である。**
+これは自前と外部ミラーをセル単位で振り分ける将来の設計であり、アプリはまだ読まない。
 
 ### 実測値（日本全体）
 
