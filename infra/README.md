@@ -94,3 +94,60 @@ HEAD ハッシュを取得できない場合は `no-git` として扱われる�
 `:memory:` はインメモリで動作し、空文字列は Tracing モジュールを使わないことを意味する。
 
 既存のデプロイにおいてこの変数を設定しなかった場合は、Tracing モジュールを無効化した状態でサービスは動作する。
+
+## 自前 Overpass (任意)
+
+デモを公開 Overpass に依存させないため、日本全体の OSM データを自前で持てる。
+`procon-app` とは独立に動く。
+
+### セットアップ
+
+```shell
+[procon@vm20025:~]$ sudo nix run /srv/procon#overpass-setup
+[procon@vm20025:~]$ sudo nix run /srv/procon#overpass-init
+```
+
+`overpass-setup` は `overpass` ユーザ、DB ディレクトリ、3 つの systemd unit を用意する。
+短く冪等であり、`procon-app` を再起動しない。
+`setup` は `procon-app` を再起動するので流用しない。
+
+`overpass-init` は extract を取得して DB を構築し、3 つの unit を起動する。
+既定の extract は `japan-latest.osm.pbf` であり、`OVERPASS_PBF_URL` で差し替えられる。
+
+### エンドポイント
+
+`http://127.0.0.1:3001/api/interpreter` で待ち受ける。
+`3000` は `procon-app` が使うため `3001` にしている。
+`localhost` にだけ束縛するので外からは見えない。
+
+`procon-app` に使わせるには `/etc/procon.env` に次を足す。
+
+```
+OSM_SELF_HOSTED_ENDPOINT=http://127.0.0.1:3001/api/interpreter
+```
+
+### 実測値（日本全体）
+
+| 項目 | 値 |
+|---|---|
+| extract | 2.55 GB |
+| DB | 15 GB |
+| 構築時間 | 44 分 |
+| ピーク RSS（構築） | 5.4 GiB |
+
+`MemoryMax=8G` は dispatcher と問い合わせだけを縛る。
+構築 (`overpass-init`) は `runuser` で走るのでこの上限の外にある。
+
+### 注意
+
+**圧縮は 2 つとも lz4 にする。**
+`update_database` は `--compression-method` と `--map-compression-method` を別に受ける。
+片方だけだと DB が 6.7 倍になる（四国で 1.8 GB → 12 GB）。
+`overpass-init` は両方を固定で渡す。
+
+**`osm3s_query` は `--db-dir` を付けずに呼ぶ。**
+dispatcher は `/dev/shm/osm3s_osm_base` 経由で見つかる。
+`--db-dir` を付けると「dispatcher が動作中」で失敗する。
+
+**`compute_geometry: ... not found` のログは正常。**
+地域 extract では relation が extract 外の way を参照するため。
