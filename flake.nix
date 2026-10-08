@@ -61,14 +61,29 @@
             hash = "sha256-MimAlodtczWohlkCZJxpwDQWdNmIZzj5RCGT9oU8s+U=";
           };
 
-          # configure は tarball に同梱されている。autoconf や automake は要らない
+          # configure は tarball に同梱されている。autoconf や automake は要らない。
+          # 0.7.62 は現行 gcc でそのままビルドできるので postPatch は不要。
+          # nixpkgs を更新して C++ の既定が変わったら postPatch が要るかもしれない
           buildInputs = [
             pkgs.expat
             pkgs.zlib
             pkgs.lz4
           ];
-          # lz4 圧縮データベースを使う (0.7.54 以降の既定)
+          # lz4 圧縮データベースを有効にする。configure.ac の既定は no なので明示する
           configureFlags = [ "--enable-lz4" ];
+
+          # stripDebugList は既定 (bin/lib など) を上書きする。
+          # cgi-bin を足すときは既定も並べないと bin/osm3s_query (201 MB) が
+          # 未 strip のまま残り、closure に gcc と -dev が入る。
+          # cgi-bin は削除せず strip だけする (fcgiwrap が interpreter を使う)
+          stripDebugList = [
+            "bin"
+            "sbin"
+            "lib"
+            "lib64"
+            "libexec"
+            "cgi-bin"
+          ];
 
           meta = {
             description = "Overpass API server";
