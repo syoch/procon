@@ -418,13 +418,13 @@
 				let distFromPrevCross = 999;
 
 				for (let i = 0; i < informationGraph.type.length; i++) {
-					const t = informationGraph.type[i];
-					const d = informationGraph.distance[i];
-					const n = informationGraph.tags[i-1]?.name ?? "";
+					const type = informationGraph.type[i];
+					const distance = informationGraph.distance[i];
+					const name = informationGraph.tags[i-1]?.name ?? "";
 					const next_n = informationGraph.tags[i + 1]?.name ?? "";
 
-					accumDist += d;
-					distFromPrevCross += d;
+					accumDist += distance;
+					distFromPrevCross += distance;
 
 					//走行距離(accumDist)が21m以上になったら、Uターン待ちを解除
     				if (isUTurn === 1 && accumDist > 21) {
@@ -432,19 +432,19 @@
         				isUTurn = 0;
     				}
 
-					if (t === "start" || t === "segments") {
+					if (type === "start" || type === "segments") {
 						continue;
 					}
 
 					/*中央分離帯のある道路で右折するとき，交差点数が+1されてしまう問題を解決する処理OK*/
-					if(isUTurn===1&&accumDist<21&&t!=="right"){
+					if(isUTurn===1&&accumDist<21&&type!=="right"){
 						accumCross--;
 						isUTurn=0;
 					}
 
 					/*名前タグのない道路でd<21mだとUターンにしてしまうのを防ぐ処理OK*/
 					/*実際に同じ道でUターンする場合は，informationGraphの段階でtype="uturn"となっていることを考慮している*/
-					if(isUTurn===1&&d<21&&t==="right"&&next_n===""){
+					if(isUTurn===1&&distance<21&&type==="right"&&next_n===""){
 						isUTurn=0;
 					}
 
@@ -455,33 +455,33 @@
                         }
 					}
 
-					if (t === "straight") {
+					if (type === "straight") {
 						distFromPrevCross=0;
 						accumCross++;
-					}else if(t==="right"){
+					}else if(type==="right"){
 						if(isUTurn===0){/*1回目の右折は通常と同じ判定*/
 							if (Math.round(accumDist) > 0) {
 						 		aggregated.push({
 									type: "straight",
 									distance: Math.round(accumDist),
 									cross: accumCross,
-									name: n,
+									name: name,
 									nextname: next_n
 								});
 
 								aggregated.push({
-									type: t,
+									type: type,
 									distance: 0,
 									cross: accumCross + 1,
-									name: n,
+									name: name,
 									nextname: next_n
 								});
 							} else if (Math.round(accumDist) === 0) {//0mだったとき
 								aggregated.push({ 
-								type: t,
+								type: type,
 								distance: 0,
 								cross: accumCross+1,
-								name: n,
+								name: name,
 								nextname: next_n
 								});				
 							}
@@ -499,7 +499,7 @@
 									type: "uturn",
 									distance: 0,
 									cross: accumCross + 1,
-									name: n,
+									name: name,
 									nextname: next_n
 								});
 								
@@ -510,22 +510,22 @@
 										type: "straight",
 										distance: Math.round(accumDist),
 										cross: accumCross,
-										name: n,
+										name: name,
 										nextname: next_n
 									});
 									aggregated.push({
-										type: t,
+										type: type,
 										distance: 0,
 										cross: accumCross + 1,
-										name: n,
+										name: name,
 										nextname: next_n
 									});
 								} else if (Math.round(accumDist) === 0) {//0mだったとき
 									aggregated.push({ 
-									type: t,
+									type: type,
 									distance: 0,
 									cross: accumCross+1,
-									name: n,
+									name: name,
 									nextname: next_n
 									});
 								} 
@@ -536,7 +536,7 @@
 							distFromPrevCross=0;
 						}
 						
-					}else if (t === "left"|| t === "uturn") {
+					}else if (type === "left"|| type === "uturn") {
 						// transientSplit が長さ0のエッジを拒否するため、現実の道路網データではここに到達しない。
 						// 万が一到達した場合は意図的に無視する（UIに距離0の案内を出さないため）。
 						if (Math.round(accumDist) > 0) {
@@ -544,23 +544,23 @@
 								type: "straight",
 								distance: Math.round(accumDist),
 								cross: accumCross,
-								name: n,
+								name: name,
 								nextname: next_n
 							});
 
 							aggregated.push({
-								type: t,
+								type: type,
 								distance: 0,
 								cross: accumCross + 1,
-								name: n,
+								name: name,
 								nextname: next_n
 							});
 						} else if (Math.round(accumDist) === 0) {//0mだったとき
 							aggregated.push({ 
-								type: t,
+								type: type,
 								distance: 0,
 								cross: accumCross+1,
-								name: n,
+								name: name,
 								nextname: next_n
 							});
 							
@@ -575,7 +575,7 @@
 								type: "finish",
 								distance: Math.round(accumDist),
 								cross: accumCross,
-								name: n,
+								name: name,
 								nextname: next_n
 							});
 						}
