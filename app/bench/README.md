@@ -445,19 +445,24 @@ bench/
 
 `/api/preload-osm` は `{begin,end}` から 1 つの bbox を作り、`MAX_OSM_CELLS`
 を超えると 422 になる。
-デモ用領域は数百セルなので、スクリプトで分割して取る。
+デモ用領域は数十〜数百セルなので、スクリプトで分割して取る。
 
 ### 領域
 
 定義は [`scripts/preload-regions.ts`](scripts/preload-regions.ts)。
+角は「デモで使う範囲」をそのまま書き、セル集合は
+[`getBoundaryBox`](../src/lib/osm/path-boundary.ts) で組む。
 
-| 領域 | 含む場所 | セル |
-|---|---|---|
-| `takamatsu` | サンポートホール高松、高松駅、高松港、高松空港 | 72 |
-| `tokyo` | 東京駅、新宿、渋谷、浅草、羽田、横浜駅 | 170 |
+| 領域 | 含む場所 | 角 | セル（余白込み） |
+|---|---|---|---|
+| `takamatsu` | サンポートホール高松、高松駅、高松港、高松空港 | 34.1875,133.984375 .. 34.375,134.078125 | 112 |
+| `tokyo` | 東京駅、新宿、渋谷、浅草、羽田、横浜駅 | 35.4375,139.625 .. 35.703125,139.78125 | 228 |
+| `nagaoka` | 長岡駅、長岡プラザ | 37.421875,138.84375 .. 37.46875,138.890625 | 25 |
 
-bbox はセル境界（1/64°）にスナップした値で書く。`divideBoundary` は外側へ切り上げるので、
-未スナップだと 1 セル余って見積もりがずれる。
+**余白は `getBoundaryBox` が足す。** サーバは経路探索でも同じ関数を使い、
+周囲 1 セルを余白として要求する。
+角に手で ±1 すると、サーバの余白と二重になったり足りなくなったりする。
+サーバと同じ関数を使うことで、プリロードする集合と経路探索が要求する集合を一致させる。
 
 ### 使い方
 
@@ -467,7 +472,7 @@ node bench/build.mjs                        # 先にバンドルする
 
 export OSM_CACHE_DIR=/var/cache/procon/osm  # サーバと同じ場所を指す
 node bench/.build/preload-osm-regions.mjs              # 見積もりのみ
-node bench/.build/preload-osm-regions.mjs --run        # 両領域を取得する
+node bench/.build/preload-osm-regions.mjs --run        # 3 領域を取得する
 node bench/.build/preload-osm-regions.mjs --run --region=tokyo
 node bench/.build/preload-osm-regions.mjs --run --cache-dir=/tmp/procon/osm-cache
 ```
