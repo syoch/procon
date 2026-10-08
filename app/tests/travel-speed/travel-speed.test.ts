@@ -52,6 +52,18 @@ describe("segmentSpeedKmh (想定速度)", () => {
     expect(segmentSpeedKmh(car, { highway: "primary", width: null })).toBe(60);
     expect(segmentSpeedKmh(car, { highway: "residential", width: null })).toBe(30);
   });
+  test("ランプ: 高速道路は 40 km/h、一般道路の幹線は本線と同じ 60 km/h", () => {
+    expect(segmentSpeedKmh(car, { highway: "motorway_link", width: null })).toBe(40);
+    expect(segmentSpeedKmh(truck, { highway: "motorway_link", width: null })).toBe(40);
+    for (const highway of ["trunk_link", "primary_link", "secondary_link", "tertiary_link"]) {
+      expect(segmentSpeedKmh(car, { highway, width: null })).toBe(60);
+    }
+  });
+  test("高速道路のランプも、標識の速度が本線の上限を超えない", () => {
+    expect(segmentSpeedKmh(truck, { highway: "motorway_link", width: null, maxspeed: 100 })).toBe(90);
+    expect(segmentSpeedKmh(car, { highway: "motorway_link", width: null, maxspeed: 120 })).toBe(100);
+    expect(segmentSpeedKmh(car, { highway: "motorway_link", width: null, maxspeed: 60 })).toBe(60);
+  });
   test("徒歩は道によらず一定", () => {
     expect(segmentSpeedKmh(walk, { highway: "primary", width: null })).toBe(4.8);
   });
@@ -70,7 +82,7 @@ describe("travelTimeFactor / travelTimeSeconds", () => {
   });
 });
 
-describe("osm.js: maxspeed / lanes タグを読む", () => {
+describe("osm/graph.js: maxspeed / lanes タグを読む", () => {
   test("エッジに km/h と車線数が入り、多重辺は大きい方を採る", () => {
     const graph = transformOSMMapToOSMGraph({
       elements: [
@@ -90,6 +102,18 @@ describe("osm.js: maxspeed / lanes タグを読む", () => {
     const plain = edges.find((e) => [e.begin, e.end].sort().join() === "2,3")!;
     expect(plain.maxspeed).toBeNull();
     expect(plain.lanes).toBeNull();
+  });
+  test("多重辺の片方だけに maxspeed があれば、way の並び順によらずその値を採る", () => {
+    const tagged: App.OSMRawWay = { type: "way", id: 1, nodes: [1, 2], tags: { highway: "residential", maxspeed: "40" } };
+    const plain: App.OSMRawWay = { type: "way", id: 2, nodes: [1, 2], tags: { highway: "residential" } };
+    for (const ways of [[tagged, plain], [plain, tagged]]) {
+      const graph = transformOSMMapToOSMGraph({
+        elements: [...ways, { type: "node", id: 1, lat: 0, lon: 0 }, { type: "node", id: 2, lat: 0, lon: 0.001 }],
+      });
+      const edges = Object.values(graph.edges);
+      expect(edges).toHaveLength(1);
+      expect(edges[0].maxspeed).toBe(40);
+    }
   });
 });
 

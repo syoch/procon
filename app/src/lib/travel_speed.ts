@@ -95,8 +95,11 @@ export function segmentSpeedKmh(profile: SpeedProfile, segment: SpeedSegment): n
     // 標識の速度があっても、車種の法定速度 (大型トラック 90 km/h) は超えない
     return Math.min(segment.maxspeed ?? profile.motorwayKmh, profile.motorwayKmh);
   }
+  if (segment.highway === "motorway_link") {
+    // ランプが本線より速くならないよう、本線と同じ上限を掛ける
+    return Math.min(segment.maxspeed ?? MOTORWAY_LINK_KMH, profile.motorwayKmh);
+  }
   if (segment.maxspeed) return segment.maxspeed;
-  if (segment.highway === "motorway_link") return MOTORWAY_LINK_KMH;
   return hasCenterLine(segment) ? CENTER_LINE_KMH : NO_CENTER_LINE_KMH;
 }
 
