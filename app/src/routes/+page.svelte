@@ -487,6 +487,7 @@
 									nextname: next_name,
 								});
 
+								if(distFromPrevCross<21){
 								aggregated.push({
 									type: type,
 									distance: 0,
@@ -494,6 +495,16 @@
 									name: name,
 									nextname: informationGraph.tags[i + 3]?.name ?? "",/*中央分離帯がある可能性を考慮*/
 								});
+							}else {
+								aggregated.push({
+									type: type,
+									distance: 0,
+									cross: accumCross + 1,
+									name: name,
+									nextname: informationGraph.tags[i + 1]?.name ?? "",/*中央分離帯がある可能性を考慮*/
+								});
+							}
+								
 							} else if (Math.round(accumDist) === 0) {//0mだったとき
 								aggregated.push({ 
 								type: type,
