@@ -1,24 +1,27 @@
 import { transientSplit } from '$lib/transient-split';
 import { pathFind } from '$lib/path_finder';
 import { largestComponentEdges } from '$lib/utils/graph';
-import { MODE_PROFILES, type ModeId, type ModeProfile } from '$lib/mode_profiles';
-import { collectRoadJunctions, detectSharpTurnsOnPath, type SharpTurn } from '$lib/sharp_turn';
+import { MODE_PROFILES } from '$lib/mode_profiles';
+import type { ModeId, ModeProfile } from '$lib/mode_rules';
+import { collectRoadJunctions, detectSharpTurnsOnPath } from '$lib/sharp_turn';
 import { CrossConvert } from '$lib/cross_transform';
-import { transformOSMMapToOSMGraph } from '$lib/map_loader/osm';
+import { transformOSMMapToOSMGraph } from '$lib/osm/graph';
 import { fold2DegreeEdges } from '$lib/fold2degree';
 
-import { requireOSMData } from '../osm';
-import { cacheManager } from '../osm/fs-cache-manager';
-import { fetchOverpassData } from '../osm/osm-fetcher';
-import { trimOSMDataByMode, trimOSMDataByWayHighway } from '../osm/osm-data';
+import { requireOSMData } from '$lib/osm';
+import { cacheManager } from '$lib/osm/fs-cache-manager';
+import { fetchOverpassData } from '$lib/osm/osm-fetcher';
+import { trimOSMDataByMode, trimOSMDataByWayHighway } from '$lib/osm/osm-data';
 import { distanceOf } from '$lib/utils/haversine';
 import { travelTimeSeconds } from '$lib/travel_speed';
-import { applyGsiWidths, GsiRoadIndex, measureSegmentsWidthCoverage, removeNarrowEdges, type GsiRoadSegment, type WidthCoverage } from '$lib/road_width';
-import { GSI_FETCH_BUDGET_MS, MAX_GSI_TILES, requireGsiRoadSegmentsForTiles, tileKey, tilesAlongPath, type GsiTile } from '../gsi';
-import { gsiCacheManager } from '../gsi/fs-cache-manager';
-import { fetchGsiRoadTile } from '../gsi/gsi-fetcher';
+import { applyGsiWidths, GsiRoadIndex, measureSegmentsWidthCoverage, removeNarrowEdges } from '$lib/road_width';
+import type { GsiRoadSegment } from '$lib/gsi/parse';
+import { GSI_FETCH_BUDGET_MS, MAX_GSI_TILES, requireGsiRoadSegmentsForTiles, tileKey, tilesAlongPath, type GsiTile } from '$lib/gsi';
+import { gsiCacheManager } from '$lib/gsi/fs-cache-manager';
+import { fetchGsiRoadTile } from '$lib/gsi/gsi-fetcher';
 import type { RequestContext } from '$lib/tracing/requestContext';
-import { deltaLatitude, deltaLongitude } from '../osm/grid';
+import { getBoundaryBox } from '$lib/osm/path-boundary';
+import type { PathFindResult } from '$lib/api/path-find';
 
 /**
  * 経路の辺列から、始点を含むノード列を走行順に復元する。
@@ -305,28 +308,6 @@ export function buildInformationGraph(
 
     return graphData;
 }
-/**
- * 始点・終点を囲む範囲に足す余白 (格子のマス数)
- * 余白が無いと、範囲の外を回る道 (山道など) が切れて道路網から切り離されたり、
- * 範囲の外で交わる道が見えず交差点をカーブと誤判定したりするため
- */
-const BOUNDARY_MARGIN_CELLS = 1;
-/**
- * 経路探索に使う地図データの範囲を求める
- */
-export function getBoundaryBox(begin: App.Coordinate, end: App.Coordinate): {
-    minLat: number;
-    minLng: number;
-    maxLat: number;
-    maxLng: number;
-} {
-    return {
-        minLat: (Math.floor(Math.min(begin.lat, end.lat) / deltaLatitude) - BOUNDARY_MARGIN_CELLS) * deltaLatitude,
-        minLng: (Math.floor(Math.min(begin.lng, end.lng) / deltaLongitude) - BOUNDARY_MARGIN_CELLS) * deltaLongitude,
-        maxLat: (Math.ceil(Math.max(begin.lat, end.lat) / deltaLatitude) + BOUNDARY_MARGIN_CELLS) * deltaLatitude,
-        maxLng: (Math.ceil(Math.max(begin.lng, end.lng) / deltaLongitude) + BOUNDARY_MARGIN_CELLS) * deltaLongitude,
-    }
-}
 
 /**
  * 始点・終点を道に吸着したときに許すずれの上限 [m]
@@ -334,40 +315,9 @@ export function getBoundaryBox(begin: App.Coordinate, end: App.Coordinate): {
  */
 export const MAX_SNAP_DISTANCE_M = 200;
 
-/** /api/path-find の応答 */
-export type PathFindResult =
-    | {
-        found: false;
-        /** 見つからなかった理由 */
-        reason: "BEGIN_UNREACHABLE" | "END_UNREACHABLE" | "NO_ROUTE";
-        /** ユーザーに表示するメッセージ */
-        message: string;
-    }
-    | {
-        found: true;
-        coords: App.Coordinate[];
-        totalDistance: number;
-        totalIntersections: number;
-        /** 経路上の急カーブ (道の途中のカーブのみ。検出しないモードでは空) */
-        sharpTurns: SharpTurn[];
-        /** 指定された始点・終点から、吸着した道の上の点までの距離 [m] */
-        snapDistance: { begin: number; end: number };
-        /**
-         * 経路の幅員の網羅率 (経路の区間のうち車両が通る道で、幅が分かっている区間の割合)。
-         * 国土地理院のタイルが取れなかった範囲では幅の制限が効かないため、キャッシュの有無で結果が変わりうることを観測するためのもの
-         */
-        widthCoverage: WidthCoverage;
-        /**
-         * 想定の所要時間 [秒] (mode 指定時のみ。mode なしは null)。
-         * 想定速度は maxspeed タグか法定速度 (travel_speed.ts)。信号・交差点の待ち時間や渋滞は含まない
-         */
-        totalTime: number | null;
-        infoGraph: App.InformationGraph;
-    };
-
 /**
  * @param wayHighway 通行できる highway 種別 (mode を指定した場合は使わない)
- * @param mode 移動モード。指定した場合、通行可否・一方通行の扱いは mode_profiles.ts のルールで決まる
+ * @param mode 移動モード。指定した場合、通行可否・一方通行の扱いは mode_rules.ts のルールで決まる
  */
 export async function doPathFind(
     reqCtx: RequestContext,
@@ -398,20 +348,25 @@ export async function doPathFind(
     const startedAt = Date.now();
     const tiles = new Map<string, GsiTile>();
     const addTiles = (list: GsiTile[]) => list.forEach((tile) => tiles.set(tileKey(tile), tile));
-    addTiles(tilesAlongPath([begin]));
-    addTiles(tilesAlongPath([end]));
+    addTiles(reqCtx.measure("tilesAlong", () => tilesAlongPath([begin])));
+    addTiles(reqCtx.measure("tilesAlong", () => tilesAlongPath([end])));
     const deadline = Date.now() + GSI_FETCH_BUDGET_MS;
 
     let result: PathFindResult;
     let pass = 1;
     for (; ; pass++) {
-        const gsiSegments = await requireGsiRoadSegmentsForTiles([...tiles.values()], gsiCacheManager, fetchGsiRoadTile, {
-            budgetMs: Math.max(0, deadline - Date.now()),
-        });
+        const gsiSegments = await reqCtx.measureAsync("gsiFetch", () =>
+            requireGsiRoadSegmentsForTiles([...tiles.values()], gsiCacheManager, fetchGsiRoadTile, {
+                budgetMs: Math.max(0, deadline - Date.now()),
+            }),
+        );
         result = searchWithWidths(reqCtx, { begin, end, parameters, profile, osmData, rawOsmData, bbox }, gsiSegments);
         if (!result.found) break;
 
-        const newTiles = tilesAlongPath(result.coords).filter((tile) => !tiles.has(tileKey(tile)));
+        const coords = result.coords;
+        const newTiles = reqCtx
+            .measure("tilesAlong", () => tilesAlongPath(coords))
+            .filter((tile) => !tiles.has(tileKey(tile)));
         if (newTiles.length === 0) break;
         if (pass >= MAX_GSI_PASSES) {
             console.warn(
@@ -471,13 +426,14 @@ function searchWithWidths(
     { begin, end, parameters, profile, osmData, rawOsmData, bbox }: SearchContext,
     gsiSegments: GsiRoadSegment[],
 ): PathFindResult {
-    const osmGraph = transformOSMMapToOSMGraph(osmData);
+    const osmGraph = reqCtx.measure("transform", () => transformOSMMapToOSMGraph(osmData));
 
     // 国土地理院の幅員区分で、幅が分からない車道の幅を補う (取得できなかったタイルは幅なしのまま続行する)
-    applyGsiWidths(osmGraph, new GsiRoadIndex(gsiSegments));
+    reqCtx.measure("gsiWidths", () => applyGsiWidths(osmGraph, new GsiRoadIndex(gsiSegments)));
     // 大型トラックなど、幅の下限があるモードでは狭すぎる道を取り除く (幅が分からない道は残す)
-    if (profile?.minRoadWidth) {
-        removeNarrowEdges(osmGraph, profile.minRoadWidth);
+    const minRoadWidth = profile?.minRoadWidth;
+    if (minRoadWidth) {
+        reqCtx.measure("narrowEdges", () => removeNarrowEdges(osmGraph, minRoadWidth));
     }
 
     const ccGraph = reqCtx.measure("crossConvert", () => CrossConvert(osmGraph));
@@ -494,9 +450,11 @@ function searchWithWidths(
 
     // 孤立した小さな道路網 (敷地内の道など) に吸着すると経路が見つからないため、
     // 最大連結成分のエッジだけを吸着の候補にする
-    const mainEdges = largestComponentEdges(mapData);
-    const beginNodeId = transientSplit(mapData, begin, mainEdges);
-    const endNodeId = transientSplit(mapData, end, mainEdges);
+    const mainEdges = reqCtx.measure("component", () => largestComponentEdges(mapData));
+    const { beginNodeId, endNodeId } = reqCtx.measure("split", () => ({
+        beginNodeId: transientSplit(mapData, begin, mainEdges),
+        endNodeId: transientSplit(mapData, end, mainEdges),
+    }));
 
     // 吸着先が遠すぎる場合 (近くの道が道路網から切り離されている場合など) は、間違った経路を返さず「到達できない」とする
     const snapDistance = {

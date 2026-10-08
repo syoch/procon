@@ -1,4 +1,4 @@
-import { boundaryContains, divideBoundary, simplifyBoundaries, type Boundary } from "../../src/routes/api/osm/boundary";
+import { boundaryContains, divideBoundary, simplifyBoundaries, type Boundary } from "../../src/lib/osm/boundary";
 import { expect, test } from "vitest";
 
 function boundariesCovers(original: Boundary, divided: Boundary[]): boolean {

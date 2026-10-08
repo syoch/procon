@@ -1,7 +1,7 @@
 import { expect, test } from "vitest";
-import { SplitOSMData, trimOSMData } from "../../src/routes/api/osm/osm-data";
-import { divideBoundary, type Boundary } from "../../src/routes/api/osm/boundary";
-import { deltaLatitude, deltaLongitude } from "../../src/routes/api/osm/grid";
+import { SplitOSMData, trimOSMData } from "../../src/lib/osm/osm-data";
+import { divideBoundary, type Boundary } from "../../src/lib/osm/boundary";
+import { deltaLatitude, deltaLongitude } from "../../src/lib/osm/grid";
 
 const D_LAT = deltaLatitude;
 const D_LNG = deltaLongitude;

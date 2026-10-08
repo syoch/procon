@@ -1,6 +1,6 @@
 import { expect, test } from "vitest";
-import { mergeOSMData, trimOSMData } from "../../src/routes/api/osm/osm-data";
-import { boundaryContains, type Boundary } from "../../src/routes/api/osm/boundary";
+import { mergeOSMData, trimOSMData } from "../../src/lib/osm/osm-data";
+import { boundaryContains, type Boundary } from "../../src/lib/osm/boundary";
 
 const DATA1: App.OSMData = {
   elements: [

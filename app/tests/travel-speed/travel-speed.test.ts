@@ -3,7 +3,7 @@ import {
   hasCenterLine, parseLanes, parseMaxspeed, segmentSpeedKmh, travelTimeFactor, travelTimeSeconds, type SpeedProfile,
 } from "../../src/lib/travel_speed";
 import { MODE_PROFILES } from "../../src/lib/mode_profiles";
-import { transformOSMMapToOSMGraph } from "../../src/lib/map_loader/osm";
+import { transformOSMMapToOSMGraph } from "../../src/lib/osm/graph";
 import { pathFind } from "../../src/lib/path_finder";
 
 const car = MODE_PROFILES.car.speed;

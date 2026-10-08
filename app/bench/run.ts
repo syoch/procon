@@ -1,7 +1,8 @@
 import { mkdirSync, writeFileSync, writeSync } from "node:fs";
 import { dirname } from "node:path";
 
-import { MODE_IDS, type ModeId } from "../src/lib/mode_profiles";
+import { MODE_IDS } from "../src/lib/mode_profiles";
+import type { ModeId } from "../src/lib/mode_rules";
 import { pipelineScenario } from "./scenarios/pipeline";
 import { splitScenario } from "./scenarios/split";
 import { cacheReadScenario } from "./scenarios/cache-read";

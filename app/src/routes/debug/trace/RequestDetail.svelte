@@ -42,3 +42,22 @@
     {/each}
   </tbody>
 </table>
+
+{#if request.logs.length > 0}
+  <table>
+    <thead>
+      <tr>
+        <th>logged at</th>
+        <th>log</th>
+      </tr>
+    </thead>
+    <tbody>
+      {#each request.logs as line}
+        <tr>
+          <td>{new Date(line.loggedAt).toISOString()}</td>
+          <td>{line.log}</td>
+        </tr>
+      {/each}
+    </tbody>
+  </table>
+{/if}

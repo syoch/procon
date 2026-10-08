@@ -1,8 +1,8 @@
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 
-import { mergeOSMData } from "../../src/routes/api/osm/osm-data";
-import { divideBoundary, type Boundary } from "../../src/routes/api/osm/boundary";
+import { mergeOSMData } from "../../src/lib/osm/osm-data";
+import { divideBoundary, type Boundary } from "../../src/lib/osm/boundary";
 import { clone } from "./harness";
 
 /**

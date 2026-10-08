@@ -2,9 +2,9 @@ import { json } from '@sveltejs/kit';
 
 import type { RequestHandler } from './$types';
 import { env } from '$env/dynamic/private';
-import { refreshExpiredOSMCache, ttlMs } from '../osm/expired-cache';
-import { cacheManager, cleanupStaleTempFiles, listCachedOSMCells } from '../osm/fs-cache-manager';
-import { fetchOverpassData } from '../osm/osm-fetcher';
+import { refreshExpiredOSMCache, ttlMs } from '$lib/osm/expired-cache';
+import { cacheManager, cleanupStaleTempFiles, listCachedOSMCells } from '$lib/osm/fs-cache-manager';
+import { fetchOverpassData } from '$lib/osm/osm-fetcher';
 
 /**
  * TTL を超えた OSM キャッシュを更新するためのエントリポイント。
