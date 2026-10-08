@@ -251,11 +251,9 @@
           Group=overpass
           ExecStart=${self.packages.${system}.osm3s}/bin/dispatcher --osm-base --db-dir=/var/lib/overpass/db/ --allow-duplicate-queries=yes
           ExecStop=${self.packages.${system}.osm3s}/bin/dispatcher --osm-base --db-dir=/var/lib/overpass/db/ --terminate
-          # Overpass 側を先に殺し、procon-app に波及させない。
-          # DB 構築 (overpass-init) は nix run が起こす別プロセスなのでこの unit の
-          # cgroup に入らない。MemoryMax が縛るのは dispatcher と問い合わせだけ。
-          # dispatcher の RSS は実測で 22 MiB。8G は問い合わせの余裕を含めた値
-          MemoryMax=8G
+          # dispatcher は読み書きの調停だけ。実測 RSS は 6.2 MiB なので小さく抑える。
+          # 問い合わせのメモリは fcgi 側 (overpass-fcgi.service) に載る
+          MemoryMax=256M
           Restart=on-failure
 
           [Install]
@@ -271,6 +269,9 @@
           Type=simple
           User=overpass
           Group=overpass
+          # 問い合わせ (CGI) のメモリはここに載る。アプリは 512 セル上限なので 4G で十分。
+          # /dev/shm の tmpfs ページも最初に触ったプロセスの cgroup に課金される
+          MemoryMax=4G
           # -n は no fork。systemd の Type=simple で前面に置く
           ExecStart=${pkgs.spawn_fcgi}/bin/spawn-fcgi -n -s /run/overpass/fcgiwrap.sock -M 0666 -- ${pkgs.fcgiwrap}/bin/fcgiwrap
           Restart=on-failure
