@@ -52,6 +52,29 @@
             runHook postInstall
           '';
         });
+        osm3s = pkgs.stdenv.mkDerivation (finalAttrs: {
+          pname = "osm3s";
+          version = "0.7.62";
+
+          src = pkgs.fetchurl {
+            url = "https://dev.overpass-api.de/releases/osm-3s_v${finalAttrs.version}.tar.gz";
+            hash = "sha256-MimAlodtczWohlkCZJxpwDQWdNmIZzj5RCGT9oU8s+U=";
+          };
+
+          # configure は tarball に同梱されている。autoconf や automake は要らない
+          buildInputs = [
+            pkgs.expat
+            pkgs.zlib
+            pkgs.lz4
+          ];
+          # lz4 圧縮データベースを使う (0.7.54 以降の既定)
+          configureFlags = [ "--enable-lz4" ];
+
+          meta = {
+            description = "Overpass API server";
+            homepage = "https://overpass-api.de/";
+          };
+        });
         procon-service-unit = pkgs.writeText "procon-app.service" ''
           [Unit]
           Description=ProCon App Server
