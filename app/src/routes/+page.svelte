@@ -14,6 +14,7 @@
 	import SpeedSafetySlider from "$lib/components/SpeedSafetySlider.svelte";
 	import { SPEED_SAFETY_CENTER, sliderToLambda } from "$lib/speed_safety";
 	import { formatDuration } from "$lib/utils/duration";
+	import { createLatestGuard } from "$lib/utils/latest";
 	import DetailButton from "$lib/components/figma/DetailButton.svelte";
 	import DetailPanel from "$lib/components/figma/DetailPanel.svelte";
 	import TitleScreen from "$lib/components/figma/TitleScreen.svelte";
@@ -56,8 +57,8 @@
 	let widthCoverage = $state<WidthCoverage | undefined>(undefined);
 	/** 手動・自動を問わず検索を実行済みか（$state ではない） */
 	let hasSearched = false;
-	/** 検索の通し番号。最後に始めた検索の応答だけを画面に反映する（$state ではない） */
-	let searchSeq = 0;
+	/** 最後に始めた検索の応答だけを画面に反映するための目印（$state ではない） */
+	const latestSearch = createLatestGuard();
 	let informationGraph=$state<App.InformationGraph>({ type: [], distance: [] });
 
 	// 移動モード (徒歩・自転車・車・バイク・大型トラック) ごとのプリセット。
@@ -158,7 +159,7 @@
 		preloadAroundEndpoints.cancel();
 		// 手動の検索が始まったら、待機中の探し直しは捨てる
 		researchWithNewBalance.cancel();
-		const seq = ++searchSeq;
+		const isLatest = latestSearch.begin();
 		showSliders = false;
 		error = null;
 		hasSearched = true;
@@ -210,7 +211,7 @@
 			),
 		});
 		// 待っている間に次の検索が始まっていたら、この応答は反映しない (失敗ではないので true)
-		if (seq !== searchSeq) return true;
+		if (!isLatest()) return true;
 
 		if (!res.ok) {
 			// 上限超過などは応答の message をそのまま表示する
@@ -221,7 +222,7 @@
 
 		try {
 			const resObj: PathFindResult = await res.json();
-			if (seq !== searchSeq) return true;
+			if (!isLatest()) return true;
 
 			if (!resObj.found) {
 				// 到達できない理由 (目的地の近くに通れる道が無い など) をそのまま表示する
