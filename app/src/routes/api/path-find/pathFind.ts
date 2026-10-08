@@ -10,7 +10,7 @@ import { fold2DegreeEdges } from '$lib/fold2degree';
 
 import { requireOSMData } from '$lib/osm';
 import { cacheManager } from '$lib/osm/fs-cache-manager';
-import { fetchOverpassData } from '$lib/osm/osm-fetcher';
+import { overpassFetcher } from '$lib/osm/osm-fetcher';
 import { trimOSMDataByMode, trimOSMDataByWayHighway } from '$lib/osm/osm-data';
 import { distanceOf } from '$lib/utils/haversine';
 import { travelTimeSeconds } from '$lib/travel_speed';
@@ -332,7 +332,7 @@ export async function doPathFind(
     }
 
     const bbox = getBoundaryBox(begin, end);
-    const rawOsmData = await requireOSMData(reqCtx, bbox, cacheManager, fetchOverpassData);
+    const rawOsmData = await requireOSMData(reqCtx, bbox, cacheManager, overpassFetcher);
     const profile = mode ? MODE_PROFILES[mode] : undefined;
     // mode 指定時はモードのルールで、未指定時は従来どおり highway 種別だけで絞り込む
     const osmData = profile

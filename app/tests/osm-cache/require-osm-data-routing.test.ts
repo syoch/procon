@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, test, vi } from "vitest";
 
 import type { Boundary } from "../../src/lib/osm/boundary";
+import type { OverpassEndpointFetcher } from "../../src/lib/osm/types";
 
 const { env } = vi.hoisted(() => ({
     env: {} as Record<string, string | undefined>,
@@ -9,7 +10,7 @@ const { env } = vi.hoisted(() => ({
 vi.mock("$env/dynamic/private", () => ({ env }));
 
 import { requireOSMData } from "../../src/lib/osm";
-import { fetchOverpassData } from "../../src/lib/osm/osm-fetcher";
+import { createOverpassFetcher } from "../../src/lib/osm/osm-fetcher";
 import { RequestContext } from "$lib/tracing/requestContext";
 
 const SELF = "http://127.0.0.1:3001/api/interpreter";
@@ -22,69 +23,46 @@ const COVERAGE = "0,0,37.43,180";
 // 跨がれるセル (lat 37.421875..37.4375)
 const CELL: Boundary = { minLat: 37.421875, minLng: 138.84375, maxLat: 37.4375, maxLng: 138.859375 };
 
-/** 跨ぎの内側 (lat 37.421875..37.43) */
-const INSIDE_PART: Boundary = { minLat: 37.421875, minLng: 138.84375, maxLat: 37.43, maxLng: 138.859375 };
-/** 跨ぎの外側 (lat 37.43..37.4375) */
-const OUTSIDE_PART: Boundary = { minLat: 37.43, minLng: 138.84375, maxLat: 37.4375, maxLng: 138.859375 };
-
-function response(status: number, body: unknown) {
-    return {
-        ok: status >= 200 && status < 300,
-        status,
-        statusText: "Mocked",
-        json: async () => body,
-        text: async () => JSON.stringify(body),
-    };
-}
-
-function boundariesFromQuery(body: string): Boundary[] {
-    const query = decodeURIComponent(new URLSearchParams(body).get("data") ?? "");
-    const out: Boundary[] = [];
-    const re = /way\["highway"\]\(([-\d.]+),([-\d.]+),([-\d.]+),([-\d.]+)\)/g;
-    for (const m of query.matchAll(re)) {
-        out.push({ minLat: Number(m[1]), minLng: Number(m[2]), maxLat: Number(m[3]), maxLng: Number(m[4]) });
-    }
-    return out;
-}
+// カバレッジに完全に含まれるセル (lat 37.0..37.015625)
+const INSIDE_CELL: Boundary = { minLat: 37.0, minLng: 138.0, maxLat: 37.015625, maxLng: 138.015625 };
 
 type Call = { endpoint: string; boundaries: Boundary[] };
 
-/** endpoint ごとに要素を返しつつ、呼び出しを記録する stub */
-function recordingFetch() {
+/** endpoint ごとに ways を返しつつ、呼び出しを記録する偽の低レベル fetcher */
+function fakeFetch(): { fetch: OverpassEndpointFetcher; calls: Call[] } {
     const calls: Call[] = [];
-    const spy = vi.fn(async (endpoint: string, init: { body: string }) => {
-        calls.push({ endpoint, boundaries: boundariesFromQuery(init.body) });
+    const fetch: OverpassEndpointFetcher = async (endpoint, boundaries) => {
+        calls.push({ endpoint, boundaries });
         if (endpoint === SELF) {
             // 内側の way。ノードの lat は跨ぎの下側
-            return response(200, {
+            return {
                 elements: [
                     { type: "way", id: 101, nodes: [11], tags: { highway: "residential" } },
                     { type: "node", id: 11, lat: 37.425, lon: 138.85 },
                 ],
-            });
+            };
         }
-        // 外側の way。ノードの lat は跨ぎの上側
-        return response(200, {
+        // 外部の way。ノードの lat は跨ぎの上側
+        return {
             elements: [
                 { type: "way", id: 102, nodes: [12], tags: { highway: "residential" } },
                 { type: "node", id: 12, lat: 37.435, lon: 138.85 },
             ],
-        });
-    });
-    vi.stubGlobal("fetch", spy);
-    return calls;
+        };
+    };
+    return { fetch, calls };
 }
 
 beforeEach(() => {
-    vi.unstubAllGlobals();
     env.OVERPASS_ENDPOINT = FALLBACK;
     env.OSM_SELF_HOSTED_ENDPOINT = SELF;
     env.OSM_SELF_HOSTED_COVERAGE = COVERAGE;
 });
 
 describe("カバレッジ境界をまたぐセル (requireOSMData 経由)", () => {
-    test("跨いだセルに両側の要素が入り、合わせた内容でキャッシュされる", async () => {
-        const calls = recordingFetch();
+    test("跨ぐセルは丸ごと外部へ送られ、そのセルがキャッシュされる", async () => {
+        const { fetch, calls } = fakeFetch();
+        const routed = createOverpassFetcher(fetch);
         const saved: { bound: Boundary; data: App.OSMData }[] = [];
         const cache = {
             readCache: vi.fn().mockResolvedValue(null),
@@ -93,21 +71,29 @@ describe("カバレッジ境界をまたぐセル (requireOSMData 経由)", () =
             }),
         };
 
-        await requireOSMData(new RequestContext(new Date(), "POST", "/test"), CELL, cache, fetchOverpassData);
+        await requireOSMData(new RequestContext(new Date(), "POST", "/test"), CELL, cache, routed);
 
-        // 内側は自前、外側は外部へ分かれて飛ぶ
-        const byEndpoint = new Map(calls.map((c) => [c.endpoint, c.boundaries]));
-        expect(byEndpoint.get(SELF)).toEqual([INSIDE_PART]);
-        expect(byEndpoint.get(FALLBACK)).toEqual([OUTSIDE_PART]);
-
-        // そのセルが取得済みとして保存される
+        // 1. 自己ホストは呼ばれない
+        expect(calls.some((c) => c.endpoint === SELF)).toBe(false);
+        // 2. 外部がそのセル全体で 1 回呼ばれる
+        expect(calls).toEqual([{ endpoint: FALLBACK, boundaries: [CELL] }]);
+        // 3. 外部の結果なので、そのセルがキャッシュされる
         expect(saved).toHaveLength(1);
         expect(saved[0].bound).toEqual(CELL);
+        expect(saved[0].data.elements.map((e) => e.id).sort((a, b) => a - b)).toEqual([12, 102]);
+    });
 
-        // 中身は両側を合わせたもの (片側だけではない)
-        const ids = saved[0].data.elements.map((e) => e.id).sort((a, b) => a - b);
-        expect(ids).toEqual([11, 12, 101, 102]);
-        const wayIds = saved[0].data.elements.filter((e) => e.type === "way").map((e) => e.id);
-        expect(wayIds.sort((a, b) => a - b)).toEqual([101, 102]);
+    test("完全に内のセルは自前から取り、キャッシュしない", async () => {
+        const { fetch, calls } = fakeFetch();
+        const routed = createOverpassFetcher(fetch);
+        const saveCache = vi.fn();
+        const cache = { readCache: vi.fn().mockResolvedValue(null), saveCache };
+
+        await requireOSMData(new RequestContext(new Date(), "POST", "/test"), INSIDE_CELL, cache, routed);
+
+        // 自前が担当する
+        expect(calls).toEqual([{ endpoint: SELF, boundaries: [INSIDE_CELL] }]);
+        // 自前の結果はキャッシュしない
+        expect(saveCache).not.toHaveBeenCalled();
     });
 });

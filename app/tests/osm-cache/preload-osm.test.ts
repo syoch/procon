@@ -7,7 +7,7 @@ const { requireOSMData } = vi.hoisted(() => ({
 
 vi.mock("../../src/lib/osm", () => ({ requireOSMData }));
 vi.mock("../../src/lib/osm/fs-cache-manager", () => ({ cacheManager: {} }));
-vi.mock("../../src/lib/osm/osm-fetcher", () => ({ fetchOverpassData: vi.fn() }));
+vi.mock("../../src/lib/osm/osm-fetcher", () => ({ overpassFetcher: vi.fn() }));
 
 import { POST } from "../../src/routes/api/preload-osm/+server";
 

@@ -48,6 +48,38 @@ Overpass はエラーを HTTP status で伝えず、`remark` として返す（s
 TTL の間使われる。失敗として扱うのはこのため。応答全体に対する例外なので、
 セル単位のカウントにはしない。
 
+## 自前 Overpass への振り分け
+
+取得は 2 層に分かれている（`osm-fetcher.ts`）。
+
+| 層 | 関数 | 担当 |
+|---|---|---|
+| 低レベル | `fetchOverpassData(endpoint, boundaries)` | 1 つの endpoint に投げるだけ。env も coverage も見ない |
+| ルーティング | `createOverpassFetcher(fetch)` が返す `OSMFetcher` | env を読み、セルを分配し、低レベルを endpoint ごとに呼ぶ |
+
+`requireOSMData` に注入されるのはルーティング層（既定は `overpassFetcher`）。
+低レベルを差し替えられるので、テストは `(endpoint, boundaries)` の呼び出しを観測できる。
+
+分配は**座標**で決める。
+**空の応答では判定しない。**
+
+| セル | 送り先 | キャッシュ |
+|---|---|---|
+| 完全にカバレッジ内 | 自前 | **しない** |
+| 完全に外 | 外部 | する |
+| カバレッジを跨ぐ | 外部（丸ごと） | する |
+
+**セルは分割しない。** 跨ぐセルは丸ごと外部へ回す。
+部分的な取得が起きないので、部分セルが保存される余地がない。
+
+自前の結果はキャッシュしない。
+跨ぐセルと外のセルは外部の結果なのでキャッシュする。
+カバレッジ内の空は「本当に道が無い」なので、そのまま返して再送しない。
+自前が 5xx / タイムアウト / `remark` で throw したときだけ、そのグループを外部へ再送する。
+
+環境変数（`OVERPASS_ENDPOINT` / `OSM_SELF_HOSTED_ENDPOINT` /
+`OSM_SELF_HOSTED_COVERAGE`）と運用は [`infra/README.md`](../../../infra/README.md) を参照。
+
 ## 一時ファイル
 
 `saveCache` は `{base}-tmp.{pid}.{seq}.json` に書いてから `rename` することで、 atomic に更新する。

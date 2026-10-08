@@ -1,8 +1,8 @@
 import { type Boundary } from "./boundary";
-import { type OSMFetcher } from "./types";
+import { type OSMFetcher, type OverpassEndpointFetcher } from "./types";
 import { env } from "$env/dynamic/private";
 import { mergeOSMData } from "./osm-data";
-import { parseCoverage, routeBoundaries } from "./endpoint-routing";
+import { routeBoundaries, selfHostedConfig } from "./endpoint-routing";
 
 /**
  * 外部ミラー。カバレッジの外のセルはここへ送る。
@@ -14,42 +14,6 @@ function getFallbackEndpoint(): string {
     throw new Error("OVERPASS_ENDPOINT 環境変数が設定されていません");
   }
   return endpoint;
-}
-
-/** `getSelfHosted` の結果。同じ設定の間は再計算しない */
-let selfHostedCache: { key: string; value: { endpoint: string; coverage: Boundary } | null } | null = null;
-
-/**
- * 自前 Overpass の設定。
- *
- * `OSM_SELF_HOSTED_ENDPOINT` が未設定なら null を返し、現行の挙動を保つ。
- * endpoint はあるが `OSM_SELF_HOSTED_COVERAGE` が無効なら、どのセルが
- * カバレッジ内か決められないので null を返す（誤ってカバレッジ外を送らない）。
- *
- * 結果は設定値の組み合わせごとに 1 度だけ計算する。
- * 毎リクエスト計算すると、無効な値の警告が取得のたびに出る。
- */
-function getSelfHosted(): { endpoint: string; coverage: Boundary } | null {
-  const endpoint = env.OSM_SELF_HOSTED_ENDPOINT;
-  const rawCoverage = env.OSM_SELF_HOSTED_COVERAGE;
-  const key = `${endpoint ?? ""}\u0000${rawCoverage ?? ""}`;
-  if (selfHostedCache !== null && selfHostedCache.key === key) {
-    return selfHostedCache.value;
-  }
-
-  let value: { endpoint: string; coverage: Boundary } | null = null;
-  if (endpoint) {
-    const coverage = parseCoverage(rawCoverage);
-    if (coverage === null) {
-      console.warn(
-        "OSM_SELF_HOSTED_ENDPOINT は設定されていますが OSM_SELF_HOSTED_COVERAGE が無効なため、外部ミラーだけを使います",
-      );
-    } else {
-      value = { endpoint, coverage };
-    }
-  }
-  selfHostedCache = { key, value };
-  return value;
 }
 
 function buildQuery(boundaries: Boundary[]): string {
@@ -70,8 +34,16 @@ function buildQuery(boundaries: Boundary[]): string {
     `;
 }
 
-/** 1 つの endpoint へ 1 クエリ投げる。失敗はすべて throw に揃える */
-async function requestBoundaries(endpoint: string, boundaries: Boundary[]): Promise<App.OSMData> {
+/**
+ * 与えられた endpoint へ 1 クエリ投げる。**env も coverage も見ない。**
+ *
+ * 失敗はすべて throw に揃える。5xx も `remark` も失敗として扱う。
+ * ルーティング層が endpoint を決めて呼ぶ。テストから差し替えられる。
+ */
+export const fetchOverpassData: OverpassEndpointFetcher = async function (
+  endpoint: string,
+  boundaries: Boundary[],
+): Promise<App.OSMData> {
   const query = buildQuery(boundaries);
 
   const res = await fetch(endpoint, {
@@ -108,56 +80,63 @@ async function requestBoundaries(endpoint: string, boundaries: Boundary[]): Prom
   }
 
   return data;
-}
+};
 
 /**
- * セル単位で自前 Overpass と外部ミラーを振り分けて取得する。
+ * セル単位で自前 Overpass と外部ミラーを振り分ける取得を作る。
  *
  * 1. カバレッジ内のセルは `OSM_SELF_HOSTED_ENDPOINT` へ
  * 2. 外のセルは `OVERPASS_ENDPOINT` へ
  * 3. 混在すれば 2 回に分けて `mergeOSMData` で結合
- * 4. 自前が 5xx / タイムアウト / `remark` なら、そのグループだけ外部へ再送
+ * 4. 自前が throw したら、そのグループだけ外部へ再送
  *
  * **カバレッジ内から返った空は「本当に空」としてそのまま返す。**
  * 外部へ再送すると、DB の外を空としてキャッシュする失敗模式になる。
  * 再送の条件は「失敗」であって「空」ではない。
+ *
+ * 低レベルの `fetch` を注入できる。テストは偽の fetcher を渡して
+ * `(endpoint, boundaries)` の呼び出しを観測する。
  */
-export const fetchOverpassData: OSMFetcher = async function (boundaries: Boundary[]): Promise<App.OSMData> {
-  const selfHosted = getSelfHosted();
-  const fallbackEndpoint = getFallbackEndpoint();
+export function createOverpassFetcher(fetch: OverpassEndpointFetcher): OSMFetcher {
+  return async function fetchOverpassRouted(boundaries: Boundary[]): Promise<App.OSMData> {
+    const selfHosted = selfHostedConfig();
+    const fallbackEndpoint = getFallbackEndpoint();
 
-  if (selfHosted === null) {
-    console.log(`fetchOverpassData: boundaries=${JSON.stringify(boundaries)}`);
-    return requestBoundaries(fallbackEndpoint, boundaries);
-  }
-
-  const { selfHosted: inside, fallback: outside } = routeBoundaries(boundaries, selfHosted.coverage);
-  console.log(
-    `fetchOverpassData: self=${inside.length} fallback=${outside.length} boundaries=${JSON.stringify(boundaries)}`,
-  );
-
-  const chunks: App.OSMData[] = [];
-
-  if (inside.length > 0) {
-    try {
-      chunks.push(await requestBoundaries(selfHosted.endpoint, inside));
-    } catch (error) {
-      // 自前の障害はそのグループだけ外部へ回す。カバレッジ内の空は失敗ではないので
-      // ここには来ない (来るのは 5xx / timeout / remark)
-      console.warn(`自前 Overpass が失敗したため外部へ再送します (${inside.length} 領域)`, error);
-      chunks.push(await requestBoundaries(fallbackEndpoint, inside));
+    if (selfHosted === null) {
+      return fetch(fallbackEndpoint, boundaries);
     }
-  }
 
-  if (outside.length > 0) {
-    chunks.push(await requestBoundaries(fallbackEndpoint, outside));
-  }
+    const { selfHosted: inside, fallback: outside } = routeBoundaries(boundaries, selfHosted.coverage);
+    console.log(
+      `fetchOverpassData: self=${inside.length} fallback=${outside.length} boundaries=${JSON.stringify(boundaries)}`,
+    );
 
-  if (chunks.length === 1) {
-    return chunks[0];
-  }
+    const chunks: App.OSMData[] = [];
 
-  const merged: App.OSMData = { elements: [] };
-  mergeOSMData(merged, ...chunks);
-  return merged;
+    if (inside.length > 0) {
+      try {
+        chunks.push(await fetch(selfHosted.endpoint, inside));
+      } catch (error) {
+        // 自前の障害はそのグループだけ外部へ回す。カバレッジ内の空は失敗ではないので
+        // ここには来ない (来るのは 5xx / timeout / remark)
+        console.warn(`自前 Overpass が失敗したため外部へ再送します (${inside.length} 領域)`, error);
+        chunks.push(await fetch(fallbackEndpoint, inside));
+      }
+    }
+
+    if (outside.length > 0) {
+      chunks.push(await fetch(fallbackEndpoint, outside));
+    }
+
+    if (chunks.length === 1) {
+      return chunks[0];
+    }
+
+    const merged: App.OSMData = { elements: [] };
+    mergeOSMData(merged, ...chunks);
+    return merged;
+  };
 }
+
+/** 既定のルーティング層。`requireOSMData` に注入される */
+export const overpassFetcher: OSMFetcher = createOverpassFetcher(fetchOverpassData);

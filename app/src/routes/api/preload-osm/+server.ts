@@ -3,7 +3,7 @@ import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { z } from 'zod';
 import { cacheManager } from '$lib/osm/fs-cache-manager';
-import { fetchOverpassData } from '$lib/osm/osm-fetcher';
+import { overpassFetcher } from '$lib/osm/osm-fetcher';
 import { requireOSMData, OSMCellLimitError } from '$lib/osm';
 import { getBoundaryBox } from '$lib/osm/path-boundary';
 import { RequestContext } from '$lib/tracing/requestContext';
@@ -30,7 +30,7 @@ export const POST: RequestHandler = async ({ request }) => {
     const { begin, end } = query.data;
     const bbox = getBoundaryBox(begin, end ?? begin);
     reqCtx.log(`boundary: minLat=${bbox.minLat} minLng=${bbox.minLng} maxLat=${bbox.maxLat} maxLng=${bbox.maxLng}`);
-    await requireOSMData(reqCtx, bbox, cacheManager, fetchOverpassData, true);
+    await requireOSMData(reqCtx, bbox, cacheManager, overpassFetcher, true);
 
     return json({ success: true });
   } catch (error) {
