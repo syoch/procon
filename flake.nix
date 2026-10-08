@@ -194,12 +194,179 @@
             echo "  sudo systemctl restart procon-app.service"
           fi
         '';
+        # ===== 自前 Overpass (Issue #141) =====
+        # procon-app とは独立に動かす。setup とは別の app にして、
+        # 既存 setup (procon-app を再起動する) を流用しない。
+        overpass-nginx-conf = pkgs.writeText "overpass-nginx.conf" ''
+          worker_processes 1;
+          error_log /run/overpass/nginx-error.log warn;
+          pid /run/overpass/nginx.pid;
+          events { worker_connections 64; }
+          http {
+            access_log off;
+            client_body_temp_path /run/overpass/client_body;
+            proxy_temp_path /run/overpass/proxy;
+            fastcgi_temp_path /run/overpass/fastcgi;
+            uwsgi_temp_path /run/overpass/uwsgi;
+            scgi_temp_path /run/overpass/scgi;
+            server {
+              # 3000 は procon-app。Overpass は 3001 で localhost だけに出す
+              listen 127.0.0.1:3001;
+              location = /api/interpreter {
+                include ${pkgs.nginx}/conf/fastcgi_params;
+                fastcgi_pass unix:/run/overpass/fcgiwrap.sock;
+                fastcgi_param SCRIPT_FILENAME ${self.packages.${system}.osm3s}/cgi-bin/interpreter;
+                fastcgi_param SCRIPT_NAME /api/interpreter;
+              }
+            }
+          }
+        '';
+        overpass-tmpfiles = pkgs.writeText "overpass-tmpfiles.conf" ''
+          d /run/overpass 0755 overpass overpass -
+        '';
+        overpass-dispatcher-unit = pkgs.writeText "overpass-dispatcher.service" ''
+          [Unit]
+          Description=Overpass API dispatcher
+          After=network.target
+
+          [Service]
+          # root では動かさない (wiki の指示)
+          Type=simple
+          User=overpass
+          Group=overpass
+          ExecStart=${self.packages.${system}.osm3s}/bin/dispatcher --osm-base --db-dir=/var/lib/overpass/db/ --allow-duplicate-queries=yes
+          ExecStop=${self.packages.${system}.osm3s}/bin/dispatcher --osm-base --db-dir=/var/lib/overpass/db/ --terminate
+          # Overpass 側を先に殺し、procon-app に波及させない。
+          # DB 構築 (overpass-init) は runuser で走るのでこの上限の外。ここが縛るのは
+          # dispatcher と問い合わせの分だけ。構築のピークは日本全体で 5.4 GiB だった
+          MemoryMax=8G
+          Restart=on-failure
+
+          [Install]
+          WantedBy=multi-user.target
+        '';
+        overpass-fcgi-unit = pkgs.writeText "overpass-fcgi.service" ''
+          [Unit]
+          Description=Overpass FastCGI wrapper
+          After=network.target overpass-dispatcher.service
+          Requires=overpass-dispatcher.service
+
+          [Service]
+          Type=simple
+          User=overpass
+          Group=overpass
+          # -n は no fork。systemd の Type=simple で前面に置く
+          ExecStart=${pkgs.spawn_fcgi}/bin/spawn-fcgi -n -s /run/overpass/fcgiwrap.sock -M 0666 -- ${pkgs.fcgiwrap}/bin/fcgiwrap
+          Restart=on-failure
+
+          [Install]
+          WantedBy=multi-user.target
+        '';
+        overpass-nginx-unit = pkgs.writeText "overpass-nginx.service" ''
+          [Unit]
+          Description=Overpass HTTP API (nginx, 127.0.0.1:3001)
+          After=network.target overpass-fcgi.service
+          Requires=overpass-fcgi.service
+
+          [Service]
+          Type=simple
+          User=overpass
+          Group=overpass
+          ExecStart=${pkgs.nginx}/bin/nginx -c ${self.packages.${system}.overpass-nginx-conf} -p /run/overpass -e /run/overpass/nginx-error.log -g 'daemon off;'
+          Restart=on-failure
+
+          [Install]
+          WantedBy=multi-user.target
+        '';
+        overpass-setup-script = pkgs.writeShellScript "overpass-setup.sh" ''
+          set -euo pipefail
+
+          if [ "$(id -u)" -ne 0 ]; then
+            echo "This script must be run as root"
+            exit 1
+          fi
+
+          # Overpass を専用ユーザで動かす。root では動かさない
+          if ! id overpass >/dev/null 2>&1; then
+            useradd --system --no-create-home --home-dir /var/lib/overpass --shell /usr/sbin/nologin overpass
+          fi
+
+          install -d -m 0755 -o overpass -g overpass /var/lib/overpass
+          install -d -m 0755 -o overpass -g overpass /var/lib/overpass/db
+
+          # /run は tmpfs なので起動のたびに作り直す
+          ln -sf ${self.packages.${system}.overpass-tmpfiles} /etc/tmpfiles.d/overpass.conf
+          systemd-tmpfiles --create /etc/tmpfiles.d/overpass.conf
+
+          ln -sf ${self.packages.${system}.overpass-dispatcher-unit} /etc/systemd/system/overpass-dispatcher.service
+          ln -sf ${self.packages.${system}.overpass-fcgi-unit} /etc/systemd/system/overpass-fcgi.service
+          ln -sf ${self.packages.${system}.overpass-nginx-unit} /etc/systemd/system/overpass-nginx.service
+
+          systemctl daemon-reload
+          systemctl enable overpass-dispatcher.service
+          systemctl enable overpass-fcgi.service
+          systemctl enable overpass-nginx.service
+
+          # procon-app は再起動しない。このスクリプトは Overpass 専用
+          echo "Overpass の unit とディレクトリを用意しました。"
+          echo "DB を作るには: nix run .#overpass-init"
+          echo "起動: systemctl start overpass-dispatcher overpass-fcgi overpass-nginx"
+        '';
+        overpass-init-script = pkgs.writeShellScript "overpass-init.sh" ''
+          set -euo pipefail
+
+          if [ "$(id -u)" -ne 0 ]; then
+            echo "This script must be run as root"
+            exit 1
+          fi
+
+          # 既定は日本全体。四国で試すなら OVERPASS_PBF_URL で差し替える
+          PBF_URL="''${OVERPASS_PBF_URL:-https://download.geofabrik.de/asia/japan-latest.osm.pbf}"
+          DB_DIR=/var/lib/overpass/db
+          IMPORT_DIR=/var/lib/overpass/import
+          OSM3S=${self.packages.${system}.osm3s}
+          PBF="$IMPORT_DIR/$(basename "$PBF_URL")"
+
+          install -d -m 0755 -o overpass -g overpass "$IMPORT_DIR"
+
+          echo "extract を取得: $PBF_URL"
+          ${pkgs.curl}/bin/curl -fSL --retry 3 --retry-delay 10 -o "$PBF" "$PBF_URL"
+
+          # 既存 DB を作り直す。構築中はサービスを止める
+          systemctl stop overpass-nginx.service overpass-fcgi.service overpass-dispatcher.service 2>/dev/null || true
+          rm -rf "$DB_DIR"
+          install -d -m 0755 -o overpass -g overpass "$DB_DIR"
+
+          # bz2 は挟まない。osmconvert の XML を update_database に直接流す。
+          # --compression-method と --map-compression-method の両方を lz4 にする。
+          # 片方でも忘れると DB が 6.7 倍になる (四国 1.8G -> 12G)
+          ${pkgs.util-linux}/bin/runuser -u overpass -- ${pkgs.bash}/bin/bash -c \
+            "${pkgs.osmctools}/bin/osmconvert '$PBF' --out-osm | '$OSM3S/bin/update_database' --db-dir='$DB_DIR' --compression-method=lz4 --map-compression-method=lz4"
+
+          rm -f "$PBF"
+
+          systemctl start overpass-dispatcher.service
+          systemctl start overpass-fcgi.service
+          systemctl start overpass-nginx.service
+
+          echo "完了しました。確認:"
+          echo "  curl 'http://127.0.0.1:3001/api/interpreter?data=%5Bout%3Ajson%5D%3Bway%5B%22highway%22%5D(34.34%2C134.05%2C34.36%2C134.07)%3Bout%20body%3B%3E%3Bout%20skel%20qt%3B'"
+          echo "注意: osm3s_query は --db-dir を付けずに呼ぶ。付けると失敗する"
+        '';
       };
 
       apps.${system} = {
         setup = {
           type = "app";
           program = "${self.packages.${system}.setup-script}";
+        };
+        overpass-setup = {
+          type = "app";
+          program = "${self.packages.${system}.overpass-setup-script}";
+        };
+        overpass-init = {
+          type = "app";
+          program = "${self.packages.${system}.overpass-init-script}";
         };
       };
     };
