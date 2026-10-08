@@ -389,7 +389,7 @@ export function buildInformationGraph(
         } else {
             graphData.type.push("segments");
             graphData.distance.push(step.dist);
-            graphData.tags.push(step.tags);
+            graphData.tags.push(step.tags && step.tags.name ? { name: step.tags.name } : null);
             graphData.crossingRoadNames.push(null);
         }
     }

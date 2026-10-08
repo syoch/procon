@@ -516,7 +516,7 @@
 								aggregated.push({
 									type: "uturn",
 									distance: 0,
-									cross: accumCross + 1,
+									cross: accumCross + 2,/*中央分離帯のある道路を横切るとき，交差点が+1されてしまうのを防ぐ処理に必ず入るので+2*/
 									name: name,
 									nextname: next_name,
 								});
