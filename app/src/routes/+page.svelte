@@ -350,7 +350,7 @@
 				{:else}
 					<span
 						style="position: absolute; white-space: nowrap; left: 18.3px; top: 100px;"
-						>出発点</span
+						>始点</span
 					>
 					<span
 						style="position: absolute; white-space: nowrap; left: 30.7px; top: 140px;"
@@ -363,7 +363,7 @@
 					<div class="divider" style="top: 220px;"></div>
 					<span
 						style="position: absolute; white-space: nowrap; left: 18.5px; top: 230px;"
-						>終着点</span
+						>終点</span
 					>
 					<span
 						style="position: absolute; white-space: nowrap; left: 32.7px; top: 270px;"
@@ -492,7 +492,7 @@
 									distance: 0,
 									cross: accumCross + 1,
 									name: name,
-									nextname: next_name,
+									nextname: informationGraph.tags[i + 3]?.name ?? "",/*中央分離帯がある可能性を考慮*/
 								});
 							} else if (Math.round(accumDist) === 0) {//0mだったとき
 								aggregated.push({ 
@@ -536,7 +536,7 @@
 										distance: 0,
 										cross: accumCross + 1,
 										name: name,
-										nextname: next_name,
+										nextname: informationGraph.tags[i + 1],
 									});
 								} else if (Math.round(accumDist) === 0) {//0mだったとき
 									aggregated.push({ 
@@ -657,7 +657,7 @@
 		<div class="route-row">
 			<img src={finishpointLogo} alt="終点" />
 			<div class="route-info">
-				<div class="text-title">目的地</div>
+				<div class="text-title">終点</div>
 				<div class="text-sub">{ctx.state.end.query}</div>
 			</div>
 		</div>
