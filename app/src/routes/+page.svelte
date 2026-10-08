@@ -261,6 +261,22 @@
 		slider3 = params.width_score_weight * 100;
 	});
 
+	/*交差する道路の名前をソートして比較する関数*/
+	function isSameCrossing(
+		str1: string | null | undefined, 
+		str2: string | null | undefined
+	): boolean {
+		// どちらかが null や undefined、空文字なら単純比較
+		if (!str1 || !str2) return str1 === str2;
+
+		// カンマなどで複数の道路名が入っている場合を考慮し、
+		// 分割してソート（五十音順に並び替え）してから比較する
+		const sorted1 = str1.split(",").sort().join(",");
+		const sorted2 = str2.split(",").sort().join(",");
+
+		return sorted1 === sorted2;
+	}
+
 </script>
 
 <MapViewer bind:map bind:pathResult {sharpTurns} {onClick}></MapViewer>
@@ -422,6 +438,8 @@
 					const distance = informationGraph.distance[i];
 					const name = informationGraph.tags[i - 1]?.name ?? "";
 					const next_name = informationGraph.tags[i + 1]?.name ?? "";
+					const crossingRoad = informationGraph.crossingRoadNames[i] ?? "";
+					const prev_crossingRoad = informationGraph.crossingRoadNames[i-2] ?? "";
 
 					accumDist += distance;
 					distFromPrevCross += distance;
@@ -436,21 +454,21 @@
 						continue;
 					}
 
-					/*名前タグのない道路でd<21mだとUターンにしてしまうのを防ぐ処理OK*/
+					/*名前タグのない道路でd<21mだとUターンにしてしまうのを防ぐ処理*/
 					/*実際に同じ道でUターンする場合は，informationGraphの段階でtype="uturn"となっていることを考慮している*/
 					if(isUTurn===1&&accumDist<21&&type==="right"&&next_name===""){
 						isUTurn=0;
 					}
 
-					/*中央分離帯のある道路から右折したとき，交差点数が+1されてしまう問題を解決する処理OK*/
+					/*中央分離帯のある道路から右折したとき，交差点数が+1されてしまう問題を解決する処理*/
 					if(isUTurn===1 && accumDist<21 && type!=="right" && name!==""){
 						accumCross--;
 						isUTurn=0;
 					}
 
-					/*中央分離帯のある道路を横切るとき，交差点が+1されてしまうのを防ぐ処理OK*/
+					/*中央分離帯のある道路を横切るとき，交差点が+1されてしまうのを防ぐ処理(21m以下の小さい道路の交差点を配慮)*/
 					if(distFromPrevCross<21){
-						if (accumCross > 0) {
+						if (crossingRoad!=="" && prev_crossingRoad!=="" && isSameCrossing(crossingRoad, prev_crossingRoad) ) {
                             accumCross--;
                         }
 					}
