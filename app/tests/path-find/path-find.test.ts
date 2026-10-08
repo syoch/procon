@@ -132,10 +132,11 @@ describe("doPathFind: 到達できない場合のエラー", () => {
 
   describe("国土地理院の幅員", () => {
     // 西 (0,0) と東 (0,0.01) を結ぶ 2 本の道: 直進の residential と、北に膨らむ tertiary
+    // 直進の residential と、北へ回り道する residential (どちらも幅が分からなければ中央線なし = 30 km/h で、速さは同じ)
     const twoRoads = (): App.OSMData => ({
       elements: [
         { type: "way", id: 1, nodes: [1, 2], tags: { highway: "residential" } },
-        { type: "way", id: 2, nodes: [1, 3, 2], tags: { highway: "tertiary" } },
+        { type: "way", id: 2, nodes: [1, 3, 2], tags: { highway: "residential" } },
         { type: "way", id: 3, nodes: [4, 1], tags: { highway: "tertiary" } },
         { type: "way", id: 4, nodes: [2, 5], tags: { highway: "tertiary" } },
         node(1, 0, 0), node(2, 0, 0.01), node(3, 0.003, 0.005), node(4, 0, -0.002), node(5, 0, 0.012),
@@ -224,5 +225,33 @@ describe("doPathFind: 国土地理院のタイルは経路の周りだけ使う"
     await doPathFind(new RequestContext(new Date(), "POST", "/test"), begin, end, car, [], "car");
     const all = tilesForBoundary(getBoundaryBox(begin, end));
     expect(requestedTiles[requestedTiles.length - 1].length).toBeLessThan(all.length);
+  });
+});
+
+describe("doPathFind: 所要時間", () => {
+  // 東西にまっすぐ約 1.1km の住宅地の道 (幅不明 = 中央線なし = 30 km/h)
+  const road = (): App.OSMData => ({
+    elements: [
+      { type: "way", id: 1, nodes: [1, 2], tags: { highway: "residential" } },
+      node(1, 0, 0), node(2, 0, 0.01),
+    ],
+  });
+  const begin = { lat: 0, lng: 0 }, end = { lat: 0, lng: 0.01 };
+
+  test("mode 指定時は想定速度から所要時間 [秒] を返す", async () => {
+    mapData = road();
+    gsiSegments = [];
+    const res = await doPathFind(new RequestContext(new Date(), "POST", "/test"), begin, end, car, [], "car");
+    expect(res.found).toBe(true);
+    if (!res.found) return;
+    // 約 1112m を 30 km/h で約 133 秒
+    expect(res.totalTime).toBeGreaterThan(125);
+    expect(res.totalTime).toBeLessThan(140);
+  });
+  test("mode なし (従来の形式) は null", async () => {
+    mapData = road();
+    gsiSegments = [];
+    const res = await doPathFind(new RequestContext(new Date(), "POST", "/test"), begin, end, car, ["residential"]);
+    expect(res.found && res.totalTime).toBeNull();
   });
 });

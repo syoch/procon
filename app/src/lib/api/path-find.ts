@@ -28,5 +28,10 @@ export type PathFindResult =
          * 国土地理院のタイルが取れなかった範囲では幅の制限が効かないため、キャッシュの有無で結果が変わりうることを観測するためのもの
          */
         widthCoverage: WidthCoverage;
+        /**
+         * 想定の所要時間 [秒] (mode 指定時のみ。mode なしは null)。
+         * 想定速度は maxspeed タグか法定速度 (travel_speed.ts)。信号・交差点の待ち時間や渋滞は含まない
+         */
+        totalTime: number | null;
         infoGraph: App.InformationGraph;
     };

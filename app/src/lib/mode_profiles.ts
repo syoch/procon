@@ -41,6 +41,8 @@ export const MODE_PROFILES: Record<ModeId, ModeProfile> = {
     allowMotorroad: false,
     ignoreOneway: true,
     scoring: SCORING_PROFILES.walk,
+    // 徒歩 80m を 1 分 (不動産の表示に関する公正競争規約の徒歩所要時間) = 4.8 km/h
+    speed: { kind: "constant", kmh: 4.8 },
     // 徒歩と自転車は同じ重みとし、違いは混在スコアの中身 (何から分かれているか) で出す (仮の値)。
     // 変更前 (混在 0.3・視界 0.5・幅員 0.2) から、混在を 0.3 → 0.5 に上げ、視界を 0.5 → 0.3 に下げた (幅員は 0.2 のまま)。
     // - 混在: 歩行者・自転車にとっては車と分かれていることが最も大事なため重くする
@@ -59,6 +61,8 @@ export const MODE_PROFILES: Record<ModeId, ModeProfile> = {
     ignoreOneway: false,
     onewayKeys: ["oneway:bicycle"],
     scoring: SCORING_PROFILES.bicycle,
+    // 15 km/h (仮の値。出典なし。所要時間の表示だけに使い、経路には影響しない)
+    speed: { kind: "constant", kmh: 15 },
     // 徒歩と同じ重み (理由は徒歩を参照)
     defaultParameters: { lambda: 1, mix_score_weight: 0.5, view_score_weight: 0.3, width_score_weight: 0.2 },
   },
@@ -77,6 +81,8 @@ export const MODE_PROFILES: Record<ModeId, ModeProfile> = {
     vehicle: { width: 1.8, height: 1.6, weight: 2 },
     sharpTurnMinRadius: 0,
     scoring: SCORING_PROFILES.car,
+    // 高速道路の法定速度 100 km/h (一般道路は travel_speed.ts の法定速度)
+    speed: { kind: "motor", motorwayKmh: 100 },
     defaultParameters: { lambda: 1, mix_score_weight: 0.3, view_score_weight: 0.2, width_score_weight: 0.5 },
   },
   motorcycle: {
@@ -95,6 +101,8 @@ export const MODE_PROFILES: Record<ModeId, ModeProfile> = {
     vehicle: { width: 1.0, height: 1.5, weight: 0.5 },
     sharpTurnMinRadius: 0,
     scoring: SCORING_PROFILES.motorcycle,
+    // 原付は対象外としているので、高速道路は車と同じ 100 km/h
+    speed: { kind: "motor", motorwayKmh: 100 },
     defaultParameters: { lambda: 1, mix_score_weight: 0.3, view_score_weight: 0.3, width_score_weight: 0.4 },
   },
   truck: {
@@ -117,6 +125,8 @@ export const MODE_PROFILES: Record<ModeId, ModeProfile> = {
     sharpTurnMinRadius: 20,
     // 重みは仮の値 (幅員を最重視)
     scoring: SCORING_PROFILES.truck,
+    // 大型トラックの高速道路の法定速度 90 km/h (2024-04-01 から。トレーラーは 80 km/h のまま)
+    speed: { kind: "motor", motorwayKmh: 90 },
     defaultParameters: { lambda: 1, mix_score_weight: 0.1, view_score_weight: 0.3, width_score_weight: 0.6 },
   },
 };

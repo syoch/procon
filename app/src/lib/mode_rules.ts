@@ -13,6 +13,7 @@
 
 import type { RoadWidthLimit } from "./road_width";
 import type { ScoringProfile } from "./mode_scoring";
+import type { SpeedProfile } from "./travel_speed";
 
 export type ModeId = "walk" | "bicycle" | "car" | "motorcycle" | "truck";
 
@@ -72,6 +73,11 @@ export type ModeProfile = {
   sharpTurnMinRadius?: number;
   /** 幅員スコア・混在スコアのモードごとの定義 (mode_scoring.ts) */
   scoring: ScoringProfile;
+  /**
+   * 想定速度 (travel_speed.ts)。車系モードは経路のコストを所要時間で測る。
+   * 徒歩・自転車は速度一定 (経路は距離のまま。所要時間の表示だけに使う)
+   */
+  speed: SpeedProfile;
   /** 既定の探索パラメータ */
   defaultParameters: App.SearchParameters;
 };

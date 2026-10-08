@@ -283,6 +283,7 @@ async function searchMode(
       ignoreOneway: profile.ignoreOneway,
       highwayCostFactor: profile.highwayCostFactor,
       scoring: profile.scoring,
+      speed: profile.speed,
     });
     if (pathEdges.length === 0) {
       last = { ...base, found: false, reason: "NO_ROUTE", message: "経路が見つかりませんでした。" };

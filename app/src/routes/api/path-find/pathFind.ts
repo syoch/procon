@@ -13,6 +13,7 @@ import { cacheManager } from '$lib/osm/fs-cache-manager';
 import { fetchOverpassData } from '$lib/osm/osm-fetcher';
 import { trimOSMDataByMode, trimOSMDataByWayHighway } from '$lib/osm/osm-data';
 import { distanceOf } from '$lib/utils/haversine';
+import { travelTimeSeconds } from '$lib/travel_speed';
 import { applyGsiWidths, GsiRoadIndex, measureSegmentsWidthCoverage, removeNarrowEdges } from '$lib/road_width';
 import type { GsiRoadSegment } from '$lib/gsi/parse';
 import { GSI_FETCH_BUDGET_MS, MAX_GSI_TILES, requireGsiRoadSegmentsForTiles, tileKey, tilesAlongPath, type GsiTile } from '$lib/gsi';
@@ -479,6 +480,7 @@ function searchWithWidths(
         ignoreOneway: profile?.ignoreOneway,
         highwayCostFactor: profile?.highwayCostFactor,
         scoring: profile?.scoring,
+        speed: profile?.speed,
     };
     const pathEdges = reqCtx.measure("pathFind", () => pathFind(mapData, parameters, [beginNodeId], [endNodeId], searchOptions));
     if (pathEdges.length <= 0) {
@@ -517,6 +519,9 @@ function searchWithWidths(
         sharpTurns,
         snapDistance,
         widthCoverage: measureSegmentsWidthCoverage(pathSegments),
+        totalTime: profile
+            ? travelTimeSeconds(profile.speed, pathSegments.map((s) => ({ ...s, distance: distanceOf(s.begin_coordinate, s.end_coordinate) })))
+            : null,
         infoGraph,
     };
 }

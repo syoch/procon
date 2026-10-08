@@ -101,6 +101,7 @@ export function pipelineScenario(mode: ModeId): Scenario {
           ignoreOneway: profile.ignoreOneway,
           highwayCostFactor: profile.highwayCostFactor,
           scoring: profile.scoring,
+          speed: profile.speed,
         });
         recorder.mark("pathFind");
 
