@@ -16,26 +16,40 @@ function getFallbackEndpoint(): string {
   return endpoint;
 }
 
+/** `getSelfHosted` の結果。同じ設定の間は再計算しない */
+let selfHostedCache: { key: string; value: { endpoint: string; coverage: Boundary } | null } | null = null;
+
 /**
  * 自前 Overpass の設定。
  *
  * `OSM_SELF_HOSTED_ENDPOINT` が未設定なら null を返し、現行の挙動を保つ。
  * endpoint はあるが `OSM_SELF_HOSTED_COVERAGE` が無効なら、どのセルが
  * カバレッジ内か決められないので null を返す（誤ってカバレッジ外を送らない）。
+ *
+ * 結果は設定値の組み合わせごとに 1 度だけ計算する。
+ * 毎リクエスト計算すると、無効な値の警告が取得のたびに出る。
  */
 function getSelfHosted(): { endpoint: string; coverage: Boundary } | null {
   const endpoint = env.OSM_SELF_HOSTED_ENDPOINT;
-  if (!endpoint) {
-    return null;
+  const rawCoverage = env.OSM_SELF_HOSTED_COVERAGE;
+  const key = `${endpoint ?? ""}\u0000${rawCoverage ?? ""}`;
+  if (selfHostedCache !== null && selfHostedCache.key === key) {
+    return selfHostedCache.value;
   }
-  const coverage = parseCoverage(env.OSM_SELF_HOSTED_COVERAGE);
-  if (coverage === null) {
-    console.warn(
-      "OSM_SELF_HOSTED_ENDPOINT は設定されていますが OSM_SELF_HOSTED_COVERAGE が無効なため、外部ミラーだけを使います",
-    );
-    return null;
+
+  let value: { endpoint: string; coverage: Boundary } | null = null;
+  if (endpoint) {
+    const coverage = parseCoverage(rawCoverage);
+    if (coverage === null) {
+      console.warn(
+        "OSM_SELF_HOSTED_ENDPOINT は設定されていますが OSM_SELF_HOSTED_COVERAGE が無効なため、外部ミラーだけを使います",
+      );
+    } else {
+      value = { endpoint, coverage };
+    }
   }
-  return { endpoint, coverage };
+  selfHostedCache = { key, value };
+  return value;
 }
 
 function buildQuery(boundaries: Boundary[]): string {
