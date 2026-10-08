@@ -164,7 +164,9 @@ export async function requireOSMData(
     const splittedGrids = SplitOSMData(fetchedData);
     const subDatas = missing.map((b) => splittedGrids[`${b.minLat},${b.minLng}`] ?? { elements: [] });
     // 自前 Overpass が担当するセル (完全にカバレッジ内) はキャッシュしない。
-    // 跨ぐセルと外のセルは外部の結果なのでキャッシュする
+    // 跨ぐセルと外のセルは外部の結果なのでキャッシュする。
+    // 判定は provenance ではなく coverage で行う。完全に内で自前が失敗して
+    // 外部へ再送した場合もキャッシュしない
     const toSave = missing
       .map((b, i) => ({ b, data: subDatas[i] }))
       .filter(({ b }) => isSelfHostedBoundary(b) === false);
