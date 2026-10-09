@@ -16,8 +16,12 @@
 		iconUrl: markerIcon,
 		iconRetinaUrl: markerIcon2x,
 		shadowUrl: markerShadow,
-		imagePath: location.origin,
 	});
+	// Leaflet の Icon.Default は imagePath を画像 URL の前に無条件で付ける。
+	// Vite は小さな画像を data URI にインライン化するので、imagePath が付くと
+	// "https://<host>data:image/png;base64,..." のような壊れた URL になる。
+	// 空文字にすると前置されない (typeof が string なので自動検出も走らない)。
+	L.Icon.Default.imagePath = "";
 </script>
 
 <svelte:head>
