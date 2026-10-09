@@ -59,6 +59,7 @@ function folded(highway: string, widths: (number | null)[], sidewalk: string | n
       highway,
       width,
       sidewalk,
+      tags: {},
     })),
   };
 }

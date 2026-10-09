@@ -45,6 +45,7 @@ function computedEdge(
 				highway: "residential",
 				width: 3,
 				sidewalk: "both",
+				tags: {}
 			},
 		],
 		view_score: 1,

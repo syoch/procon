@@ -124,7 +124,7 @@ describe("pathFind: 車系は所要時間で、徒歩は距離で経路を選ぶ
     const node = (id: string, coordinate: App.Coordinate, edges: string[]): App.SplittedNode => ({ type: "SplittedNode", id, coordinate, edges });
     const edge = (id: string, begin: string, end: string, from: App.Coordinate, to: App.Coordinate, highway: string): App.FoldedEdge => ({
       type: "FoldedEdge", id, begin, end, direction: "both",
-      segments: [{ begin_coordinate: from, end_coordinate: to, highway, width: null, sidewalk: null }],
+      segments: [{ begin_coordinate: from, end_coordinate: to, highway, width: null, sidewalk: null, tags: {} }],
     });
     return {
       nodes: { A: node("A", A, ["AB", "AC"]), B: node("B", B, ["AB", "CB"]), C: node("C", C, ["AC", "CB"]) },

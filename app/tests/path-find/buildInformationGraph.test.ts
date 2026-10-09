@@ -29,7 +29,7 @@ function rotate([x, y]: Pt, k: number): Pt {
 }
 
 /** 折れ線の道 (way) の並びから OSMGraph を作る。同じ座標の点は同じノードになる */
-function makeOsmGraph(ways: Pt[][]): App.OSMGraph {
+function makeOsmGraph(ways: Pt[][], wayTags?: Record<string, string>[]): App.OSMGraph {
 	const nodes: Record<string, any> = {};
 	const edges: Record<string, any> = {};
 
@@ -40,6 +40,9 @@ function makeOsmGraph(ways: Pt[][]): App.OSMGraph {
 	};
 
 	ways.forEach((way, w) => {
+		// 現在の way (w番目) に対応するタグを取得。渡されていなければ空のオブジェクト {} にする
+		const currentTags = wayTags && wayTags[w] ? wayTags[w] : {};
+
 		for (let i = 0; i + 1 < way.length; i++) {
 			const b = nodeId(way[i]);
 			const e = nodeId(way[i + 1]);
@@ -59,8 +62,10 @@ function makeOsmGraph(ways: Pt[][]): App.OSMGraph {
 						highway: "residential",
 						width: 3,
 						sidewalk: "both",
+						tags: { ...currentTags }, // ← ここにタグを追加（テスト対象の関数がここを見にくるため）
 					},
 				],
+				tags: { ...currentTags } // ← ここも空の {} から書き換え
 			};
 			nodes[b].edges.push(id);
 			nodes[e].edges.push(id);
@@ -100,25 +105,25 @@ function shortestPathEdges(g: App.SearchGraph, begin: App.NodeId, end: App.NodeI
 }
 
 /** 道路網と始点・終点から、案内情報 (buildInformationGraph) を作る */
-function guidance(ways: Pt[][], begin: Pt, end: Pt) {
-	const cc = CrossConvert(makeOsmGraph(ways));
-	if (cc instanceof Error) throw cc;
-	const g = fold2DegreeEdges(cc);
-	if (g instanceof Error) throw g;
+function guidance(ways: Pt[][], begin: Pt, end: Pt, wayTags?: Record<string, string>[]) {
+// wayTags を makeOsmGraph に渡す (makeOsmGraph 側も修正が必要)
+    const cc = CrossConvert(makeOsmGraph(ways, wayTags)); 
+    
+    if (cc instanceof Error) throw cc;
+    const g = fold2DegreeEdges(cc);
+    if (g instanceof Error) throw g;
 
-	const beginNode = transientSplit(g, toCoord(begin));
-	const endNode = transientSplit(g, toCoord(end));
-	const edgeIds = shortestPathEdges(g, beginNode, endNode);
+    const beginNode = transientSplit(g, toCoord(begin));
+    const endNode = transientSplit(g, toCoord(end));
+    const edgeIds = shortestPathEdges(g, beginNode, endNode);
 
-	// 本番では pathFind が探索した辺を ComputedEdge に書き換える（MapVCrossEdge はそのまま）。
-	// 案内は書き換え後のグラフで作るので、テストでも同じ状態にする
-	for (const id of edgeIds) {
-		if (g.edges[id].type === "MapVCrossEdge") continue;
-		g.edges[id] = { ...g.edges[id], type: "ComputedEdge", view_score: 1, width_score: 1, mix_score: 1 } as App.ComputedEdge;
-	}
+    for (const id of edgeIds) {
+        if (g.edges[id].type === "MapVCrossEdge") continue;
+        g.edges[id] = { ...g.edges[id], type: "ComputedEdge", view_score: 1, width_score: 1, mix_score: 1 } as App.ComputedEdge;
+    }
 
-	return { g, beginNode, edgeIds, info: buildInformationGraph(g, edgeIds, beginNode) };
-}
+    return { g, beginNode, edgeIds, info: buildInformationGraph(g, edgeIds, beginNode) };
+};
 
 /** 案内の種別のうち、交差点での判定（直進・右折・左折・Uターン）だけを取り出す */
 function turnsOf(info: App.InformationGraph) {
@@ -285,4 +290,79 @@ test("先頭は start、末尾は finish で、type と distance の長さが揃
 	const allowed = new Set(["start", "finish", "segments", "straight", "left", "right", "uturn"]);
 	for (const t of info.type) expect(allowed.has(t)).toBe(true);
 	for (const d of info.distance) expect(d).toBeGreaterThanOrEqual(0);
+});
+
+// ---------------------------------------------------------------------------
+// 7. 道が折れ線のとき（両端のノードを結ぶ直線 (弦) と、交差点での実際の向きがずれる）
+// ---------------------------------------------------------------------------
+
+/**
+ * 交差点に入る道が、交差点の手前で直角に曲がっている。
+ * 東向きに n ブロック進み、(n,0) で北へ曲がって、1 ブロック先の交差点 (n,1) に着く。
+ * 交差点に入る辺は 1 本の折れ線で、実際に入る向きは北だが、両端を結ぶ直線は北東（n が大きいほど東寄り）を向く。
+ * 交差点では北へ直進する場合と、東へ曲がる (右折) 場合を確かめる
+ */
+for (const n of [4, 9, 19, 39]) {
+	test(`交差点の手前で直角に曲がる道（${n} ブロック先から）でも、交差点を直進すると straight になる`, () => {
+		const ways: Pt[][] = [
+			[[0, 0], [n, 0], [n, 1], [n, 3]],
+			[[n, 1], [n + 1, 1]],
+		];
+		const { info } = guidance(ways, [n / 2, 0], [n, 2.5]);
+
+		expect(turnsOf(info)).toEqual(["straight"]);
+	});
+
+	test(`交差点の手前で直角に曲がる道（${n} ブロック先から）でも、交差点で東へ曲がると right になる`, () => {
+		const ways: Pt[][] = [
+			[[0, 0], [n, 0], [n, 1], [n, 3]],
+			[[n, 1], [n + 3, 1]],
+		];
+		const { info } = guidance(ways, [n / 2, 0], [n + 1.5, 1]);
+
+		expect(turnsOf(info)).toEqual(["right"]);
+	});
+}
+
+test("交差点を出てすぐ道が曲がっていても、交差点を直進すれば straight になる", () => {
+	// 出る辺は、交差点 (0,0) から東へ 1 ブロック進んでから北へ曲がる。両端を結ぶ直線は北東を向く
+	const ways: Pt[][] = [
+		[[-3, 0], [0, 0], [1, 0], [1, 3]],
+		[[0, 0], [0, 1]],
+	];
+	const { info } = guidance(ways, [-2.5, 0], [1, 2.5]);
+
+	expect(turnsOf(info)).toEqual(["straight"]);
+});
+
+test("出る道が引き返す向き (約 179°) で始まるなら、先で別の方角へ曲がっていても uturn になる", () => {
+	// 交差点 (0,0) から西へほぼ引き返し (179.0°)、すぐ北へ曲がる。両端を結ぶ直線は北西を向く
+	const ways: Pt[][] = [
+		[[-3, 0], [0, 0], [3, 0]],
+		[[0, 0], [-1, 0.017], [-1, 3]],
+	];
+	const { info } = guidance(ways, [-2.5, 0], [-1, 2.5]);
+
+	expect(turnsOf(info)).toEqual(["uturn"]);
+});
+
+test("実パイプラインを通して、直進時に交差道路名(crossingRoadNames)が取得できること", () => {
+    // 1. [0, 0] で交差するシンプルな十字路の座標データ
+    const ways: Pt[][] = [
+        [[0, -1], [0, 0], [0, 1]], // [0] 南北の道（本通り）
+        [[-1, 0], [0, 0], [1, 0]]  // [1] 東西の道（クロス通り）
+    ];
+
+    // 2. 4つ目の引数として渡す wayTags（道路名）
+    const wayTags = [
+        { name: '本通り' },     // ways[0] の道に付与
+        { name: 'クロス通り' }   // ways[1] の道に付与
+    ];
+
+    // 3. 南 [0, -0.5] から 北 [0, 0.5] へ直進するルートで guidance を実行
+    const { info } = guidance(ways, [0, -0.5], [0, 0.5], wayTags);
+
+    // 4. 検証: info の中に「クロス通り」という文字が抽出されているか確認
+    const stringifiedInfo = JSON.stringify(info);
+    expect(stringifiedInfo).toContain('クロス通り');
 });

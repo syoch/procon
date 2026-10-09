@@ -19,7 +19,7 @@ const COORD: Record<string, App.Coordinate> = {
 };
 
 function osmEdge(id: string, begin: string, end: string, direction: App.TravelDirection): App.OSMEdge {
-  return { type: "OSMEdge", id, begin, end, direction, highway: "residential", width: 3, sidewalk: "both" };
+  return { type: "OSMEdge", id, begin, end, direction, highway: "residential", width: 3, sidewalk: "both", tags: {} };
 }
 
 function buildOSM(edgeList: App.OSMEdge[]): App.OSMGraph {
@@ -120,7 +120,7 @@ function compEdge(
     begin,
     end,
     direction,
-    segments: [{ begin_coordinate: bc, end_coordinate: ec, highway: "residential", width: 3, sidewalk: "both" }],
+    segments: [{ begin_coordinate: bc, end_coordinate: ec, highway: "residential", width: 3, sidewalk: "both", tags: {} }],
     width_score: 0,
     view_score: 0,
     mix_score: 0,

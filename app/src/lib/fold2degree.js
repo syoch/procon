@@ -45,6 +45,7 @@ export function fold2DegreeEdges(graph) {
             sidewalk: edge.sidewalk,
             maxspeed: edge.maxspeed ?? null,
             lanes: edge.lanes ?? null,
+            tags: edge.tags,
           },
         ],
       };

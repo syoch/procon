@@ -59,7 +59,7 @@ describe("MODE_PROFILES のスコア", () => {
 function folded(id: string, begin: App.Coordinate, end: App.Coordinate, highway: string, width: number | null): App.FoldedEdge {
   return {
     type: "FoldedEdge", id, begin: `${id}-b`, end: `${id}-e`, direction: "both",
-    segments: [{ begin_coordinate: begin, end_coordinate: end, highway, width, sidewalk: null }],
+    segments: [{ begin_coordinate: begin, end_coordinate: end, highway, width, sidewalk: null, tags: {} }],
   };
 }
 

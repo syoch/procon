@@ -116,6 +116,7 @@ export function loadDebugMap(): App.OSMGraph {
         width: tags.width ? Number(tags.width) : -1,
         sidewalk: tags.sidewalk ?? null,
         direction: 'both',
+        tags: {}
       };
 
       nodes[beginNodeId].edges.push(edgeId);

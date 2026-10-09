@@ -116,6 +116,7 @@ describe("pathFind: ignoreOneway", () => {
       highway: "residential",
       width: 3,
       sidewalk: "both",
+      tags: {}
     };
     return {
       nodes: {
