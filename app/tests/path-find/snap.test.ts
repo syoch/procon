@@ -12,6 +12,7 @@ function graphOf(roads: Record<string, App.Coordinate[]>): App.SearchGraph {
       type: "FoldedEdge", id, begin: b, end: e, direction: "both",
       segments: pts.slice(0, -1).map((p, i) => ({
         begin_coordinate: p, end_coordinate: pts[i + 1], highway: "residential", width: null, sidewalk: null,
+        tags: {}
       })),
     };
   }

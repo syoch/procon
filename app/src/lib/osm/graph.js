@@ -199,6 +199,9 @@ function buildGraphFromWays(rawNodes, rawWays) {
         existing.sidewalk = mergeSidewalk(existing.sidewalk, tags.sidewalk ?? null);
         existing.maxspeed = mergeMax(existing.maxspeed, maxspeed);
         existing.lanes = mergeMax(existing.lanes, lanes);
+        // name / ref は既存に無く、今回の way にあるときだけ引き継ぐ
+        if (!existing.tags.name && tags.name) existing.tags.name = tags.name;
+        if (!existing.tags.ref && tags.ref) existing.tags.ref = tags.ref;
         continue;
       }
 
@@ -218,6 +221,9 @@ function buildGraphFromWays(rawNodes, rawWays) {
         maxspeed,
         lanes,
         direction,
+        // 1 本の way の各エッジで同じオブジェクトを共有しないようコピーする
+        // (共有すると、1 区間の name を書き換えたときに他の区間へ伝染する)
+        tags: { ...tags },
       };
 
       edges[edgeId] = edge;

@@ -59,8 +59,7 @@
 	let hasSearched = false;
 	/** 最後に始めた検索の応答だけを画面に反映するための目印（$state ではない） */
 	const latestSearch = createLatestGuard();
-	let informationGraph=$state<App.InformationGraph>({ type: [], distance: [] });
-
+	let informationGraph=$state<App.InformationGraph>({ type: [], distance: [], tags: [] ,crossingRoadNames: []});
 	// 移動モード (徒歩・自転車・車・バイク・大型トラック) ごとのプリセット。
 	// 表示名と重みは mode_profiles.ts を唯一の定義元とし、ここでは並べるだけにする
 	const parameterVariants: ParameterVariant[] = MODE_IDS.map((mode) => ({
@@ -93,7 +92,8 @@
 				? ctx.state.begin
 				: ctx.state.end;
 		locationState.state = "confirmed";
-		locationState.query = `${lat}, ${lat}`;
+		locationState.query = `${lat}, ${lng}`;
+		locationState.displayName = undefined;
 		ctx.state.setCoordinate(ctx.state.locationSelection, {lat, lng});
 	}
 	$effect(() => {
@@ -169,7 +169,7 @@
 		totalTime = undefined;
 		widthCoverage = undefined;
 		sharpTurns = [];
-		informationGraph = { type: [], distance: [] };
+		informationGraph = { type: [], distance: [], tags: [], crossingRoadNames: []};
 
 		const totalSlider = slider1 + slider2 + slider3;
 
@@ -178,8 +178,7 @@
 			lambda: sliderToLambda(speedSafety),
     		mix_score_weight: totalSlider === 0 ? 0 : slider1 / totalSlider,
     		view_score_weight: totalSlider === 0 ? 0 : slider2 / totalSlider,
-    		width_score_weight: totalSlider === 0 ? 0 : slider3 / totalSlider,
-		};
+    		width_score_weight: totalSlider === 0 ? 0 : slider3 / totalSlider,		};
 
 
 		// 送るのは重みの数値だけ (プリセットの表示名などは含めない)
@@ -247,8 +246,7 @@
 				error = "サーバー応答の読み取りエラーが発生しました";
 				return false;
 			}
-			return true;
-		} finally {
+			return true;		} finally {
 			if (isLatest()) {
 				isSearching = false;
 			}
@@ -301,15 +299,30 @@
     let slider3 = $state(50);
 	/** 速さ⇔安全スライダーの位置 (車種を変えても保つ) */
 	let speedSafety = $state(SPEED_SAFETY_CENTER);
-
 	$effect(()=> { 
 		const params = ctx.state.parameterVariants[
-      		ctx.state.selectedVariantIndex
-    	];
+	  		ctx.state.selectedVariantIndex
+		];
 		slider1 = params.mix_score_weight * 100;
 		slider2 = params.view_score_weight * 100;
 		slider3 = params.width_score_weight * 100;
 	});
+
+	/*交差する道路の名前をソートして比較する関数*/
+	function isSameCrossing(
+		str1: string | null | undefined, 
+		str2: string | null | undefined
+	): boolean {
+		// どちらかが null や undefined、空文字なら単純比較
+		if (!str1 || !str2) return str1 === str2;
+
+		// カンマなどで複数の道路名が入っている場合を考慮し、
+		// 分割してソート（五十音順に並び替え）してから比較する
+		const sorted1 = str1.split(",").sort().join(",");
+		const sorted2 = str2.split(",").sort().join(",");
+
+		return sorted1 === sorted2;
+	}
 
 </script>
 
@@ -390,7 +403,7 @@
 				{:else}
 					<span
 						style="position: absolute; white-space: nowrap; left: 18.3px; top: 100px;"
-						>出発点</span
+						>始点</span
 					>
 					<span
 						style="position: absolute; white-space: nowrap; left: 30.7px; top: 140px;"
@@ -403,7 +416,7 @@
 					<div class="divider" style="top: 220px;"></div>
 					<span
 						style="position: absolute; white-space: nowrap; left: 18.5px; top: 230px;"
-						>終着点</span
+						>終点</span
 					>
 					<span
 						style="position: absolute; white-space: nowrap; left: 32.7px; top: 270px;"
@@ -414,19 +427,18 @@
 						>{ctx.state.end.displayName ?? ""}</span
 					>
 					<div class="divider" style="top: 350px;"></div>
-					<span style="position: absolute; white-space: nowrap; left: 32.8px; top: 360px;">
+					<span style="position: absolute; white-space: nowrap; left: 32.8px; top: 375px;">
 						総走行距離: {((totalDistance ?? 0) / 1000).toFixed(2)} km
 					</span>
-					<span style="position: absolute; white-space: nowrap; left: 32.8px; top: 390px;">
+					<!--<span style="position: absolute; white-space: nowrap; left: 32.8px; top: 390px;">
 						総通過交差点数: {totalIntersections ?? 0} 個
-					</span>
+					</span>-->
 					{#if totalTime != null}
 						<span style="position: absolute; white-space: nowrap; left: 32.8px; top: 420px;">
 							所要時間の目安: {formatDuration(totalTime)} <span class="summary-note">(信号・渋滞を除く)</span>
 						</span>
 					{/if}
-					<div class="divider" style="top: 452px;"></div>
-					<div
+					<div class="divider" style="top: 452px;"></div>					<div
 						style="position: absolute; top: 462px; display: flex;"
 						transition:fade={{ duration: 140 }}
 					>
@@ -467,82 +479,238 @@
 
 
 {#if informationGraph && informationGraph.type && informationGraph.type.length > 0}
-			<div class="route-scroll-container">
-        <div class="text-title">経路案内</div>
+		<div class="route-scroll-container">
+		<div class="text-title">経路案内</div>
 
-        <!-- 開始地点 -->
-        <div class="route-row">
-            <img src={startpointLogo} alt="" />
-            <div class="route-info">
-                <div class="text-title">始点</div>
-                <div class="text-sub">{ctx.state.begin.query}</div>
-            </div>
-        </div>
+		<!-- 開始地点 -->
+		<div class="route-row">
+			<img src={startpointLogo} alt="" />
+			<div class="route-info">
+				<div class="text-title">始点</div>
+				<div class="text-sub">{ctx.state.begin.query}</div>
+			</div>
+		</div>
 
-        {#if informationGraph && informationGraph.type.length > 0}
-            <!-- 累積用の変数とステップ分割ロジック -->
-            {@const steps = (() => {
-                const aggregated = [];
-                let accumDist = 0;
-                let accumCross = 0;
+		{#if informationGraph && informationGraph.type.length > 0}
+			<!-- 累積用の変数とステップ分割ロジック -->	
+			{@const steps = (() => {
+				/*交差点数のカウントは，前回曲がった交差点から何個目の交差点かを示している。*/
+				const aggregated = [];
+				let accumDist = 0;
+				let accumCross = 0;
+				let isUTurn = 0;/*Uターン判定用*/
+				let prev_name = "";
+				let distFromPrevCross = 999;
+				/* 直前の交差点の横断道路名。配列の添字 (i-2) に依存しないよう変数で持つ */
+				let prevCrossingRoad = "";
 
-                for (let i = 0; i < informationGraph.type.length; i++) {
-                    const t = informationGraph.type[i];
-                    const d = informationGraph.distance[i];
+				for (let i = 0; i < informationGraph.type.length; i++) {
+					const type = informationGraph.type[i];
+					const distance = informationGraph.distance[i];
+					const name = informationGraph.tags[i - 1]?.name ?? "";
+					const next_name = informationGraph.tags[i + 1]?.name ?? "";
+					const crossingRoad = informationGraph.crossingRoadNames[i] ?? "";
+					const prev_crossingRoad = prevCrossingRoad;
+					const threshold=21;
+					let isCrossMinusDone = false;
 
-                    accumDist += d;
-					if (t === "start" || t === "segments") {
-        				continue;
+					accumDist += distance;
+					distFromPrevCross += distance;
+
+					//走行距離(accumDist)がしきい値以上になったら、Uターン待ちを解除
+    				if (isUTurn === 1 && accumDist > threshold) {
+						accumCross=0;
+        				isUTurn = 0;
     				}
 
-                    if (t === "straight") {
-                        accumCross++;
-                    }else if (t === "right" || t === "left"|| t === "uturn") {
-						// transientSplit が長さ0のエッジを拒否するため、現実の道路網データではここに到達しない。
-    					// 万が一到達した場合は意図的に無視する（UIに距離0の案内を出さないため）。
-						 if (Math.round(accumDist) > 0) {
-                         	aggregated.push({
-                            	type: "straight",
-                            	distance: Math.round(accumDist),
-                            	cross: accumCross
-                        	});
+					if (type === "start" || type === "segments") {
+						continue;
+					}
 
-                        	aggregated.push({
-                            	type: t,
-                        		distance: 0,
-                            	cross: accumCross + 1
-                        	});
+					/* Uターンキャンセル・中央分離帯右折の補正処理 */
+        			if (isUTurn === 1 && accumDist < threshold) {
+            			if (type === "right") {
+                		// 小さい道路（名前なし）で右折が2回続いた場合は、誤ったUターン判定を防ぐ
+                			if (next_name === "") {
+                    			isUTurn = 0;
+                			}
+            			} else {
+                			// 右折の直後に「直進(straight)」が来た場合のみ相殺する
+                			if (type === "straight" && name !== "") {
+                    			accumCross--;
+                    			isCrossMinusDone = true; /*マイナスしたことを記録する*/
+                			}
+                		isUTurn = 0; 
+            			}
+        			}
 
-                        	accumDist = 0;
-                        	accumCross = 0;
-						
-                    	} else if (Math.round(accumDist) === 0) {//0mだったとき
-        						aggregated.push({ 
-								type: t,
-								distance: 0,
-								cross: accumCross+1
+					
+        			/* 中央分離帯の交差点マイナス処理 */
+        			// 条件追加：上でまだマイナスされていない時(!isCrossMinusDone)だけ実行する
+        			if (distFromPrevCross < threshold && !isCrossMinusDone) {
+            			if (crossingRoad !== "" && prev_crossingRoad !== "" && isSameCrossing(crossingRoad, prev_crossingRoad) && type !=="right") {
+                			accumCross--;
+            			}
+					}
+					/*普通の道路から中央分離帯のある道路で右折したとき*/
+					if(distFromPrevCross<threshold && type==="right" && isUTurn===0){
+						if(prev_crossingRoad!== "" && crossingRoad !== ""){
+							accumCross--;
+						}
+					}
+
+					// 直前の交差点の横断道路名を覚える (次の交差点の判定で prev_crossingRoad として使う)
+					if (crossingRoad !== "") prevCrossingRoad = crossingRoad;
+
+
+					if (type === "straight") {
+						distFromPrevCross=0;
+						accumCross++;
+					}else if(type==="right"){
+						if(isUTurn===0){/*1回目の右折は通常と同じ判定*/
+							if (Math.round(accumDist) > 0) {
+						 		aggregated.push({
+									type: "straight",
+									distance: Math.round(accumDist),
+									cross: accumCross,
+									name: name,
+									nextname: next_name,
 								});
+
+								if(informationGraph.distance[i+1]<threshold && (informationGraph.type[i+2]==="straight" || informationGraph.type[i+2]==="segments")){
+								aggregated.push({
+									type: type,
+									distance: 0,
+									cross: accumCross + 1,
+									name: name,
+									nextname: informationGraph.tags[i + 3]?.name ?? "",/*中央分離帯がある可能性を考慮*/
+								});
+								}else {
+								aggregated.push({
+									type: type,
+									distance: 0,
+									cross: accumCross + 1,
+									name: name,
+									nextname: informationGraph.tags[i + 1]?.name ?? "",
+								});
+								}
+								
+							} else if (Math.round(accumDist) === 0) {//0mだったとき
+								aggregated.push({ 
+								type: type,
+								distance: 0,
+								cross: accumCross+1,
+								name: name,
+								nextname: next_name,
+								});				
+							}
 							accumDist = 0;
-                        	accumCross = 0;
-    					}
+							accumCross = 0;
+							distFromPrevCross=0;
+							isUTurn++;
+							prev_name=informationGraph.tags[i - 1]?.name ?? "";
+						}else if(isUTurn===1){
+							/*同じ名前の交差点で2回右折かつ距離が短い場合はUターンと判定*/
+							if(prev_name===next_name&&accumDist<threshold){
+								/*前に入れた右折を削除*/
+								const targetItem = aggregated[aggregated.length - 1];
+								const uturn_crossCount: number = targetItem.cross;
+								aggregated.pop();
+								/*Uターンとして追加*/
+								aggregated.push({
+									type: "uturn",
+									distance: 0,
+									cross: uturn_crossCount,
+									nextname: next_name,
+								});
+								
+							}else{
+								/*Uターンではない場合は通常の右折として追加*/
+								if (Math.round(accumDist) > 0) {
+							 		aggregated.push({
+										type: "straight",
+										distance: Math.round(accumDist),
+										cross: accumCross,
+										name: name,
+										nextname: next_name,
+									});
+									aggregated.push({
+										type: type,
+										distance: 0,
+										cross: accumCross + 1,
+										name: name,
+										nextname: next_name,
+									});
+								} else if (Math.round(accumDist) === 0) {//0mだったとき
+									aggregated.push({ 
+									type: type,
+									distance: 0,
+									cross: accumCross+1,
+									name: name,
+									nextname: next_name,
+									});
+								} 
+							}
+							accumDist = 0;
+							accumCross = 0;
+							isUTurn=0;
+							distFromPrevCross=0;
+						}
+						
+					}else if (type === "left"|| type === "uturn") {
+						// transientSplit が長さ0のエッジを拒否するため、現実の道路網データではここに到達しない。
+						// 万が一到達した場合は意図的に無視する（UIに距離0の案内を出さないため）。
+						if (Math.round(accumDist) > 0) {
+					 		aggregated.push({
+								type: "straight",
+								distance: Math.round(accumDist),
+								cross: accumCross,
+								name: name,
+								nextname: next_name,
+							});
+
+							aggregated.push({
+								type: type,
+								distance: 0,
+								cross: accumCross + 1,
+								name: name,
+								nextname: next_name,
+							});
+						} else if (Math.round(accumDist) === 0) {//0mだったとき
+							aggregated.push({ 
+								type: type,
+								distance: 0,
+								cross: accumCross+1,
+								name: name,
+								nextname: next_name,
+							});
+							
+						}
+						accumDist = 0;
+						accumCross = 0;
+						isUTurn=0;
+						distFromPrevCross = 0;
 					}else if (i === informationGraph.type.length - 1) {
-                        if (accumDist > 0 || accumCross > 0) {
-                            aggregated.push({
-                            	type: "finish",
-                            	distance: Math.round(accumDist),
-                            	cross: accumCross
-                        	});
-                    	}
-                    }
-                }	
-            	return aggregated;
+						if (accumDist > 0 || accumCross > 0) {
+							aggregated.push({
+								type: "finish",
+								distance: Math.round(accumDist),
+								cross: accumCross,
+								name: name,
+								nextname: next_name,
+							});
+						}
+					}
+					
+				}
+				return aggregated;
 				})()}
 
-            <!-- まとめたステップをループして表示 -->
-            {#each steps as step}
-                <div class="route-row">
-                    <img 
-                        src={
+			<!-- まとめたステップをループして表示 -->
+			{#each steps as step}
+				<div class="route-row">
+					<img 
+						src={
 							step.type === "right" ? turnrightLogo :
 							step.type === "left" ? turnleftLogo : 
 							step.type === "uturn" ? uturnLogo : straightLogo
@@ -552,20 +720,6 @@
 
 					<div class="route-info">
 						<div class="text-title">
-							{#if step.type === "straight"}
-								道なり
-							{:else if step.type === "finish"}
-								道なり
-							{:else if step.type === "right"}
-								右折
-							{:else if step.type === "left"}
-								左折
-							{:else if step.type === "uturn"}
-								Uターン
-							{/if}
-						</div>
-
-						<div class="text-sub">
 							{#if step.type === "straight"}
 								{step.distance}m道なり
 							{:else if step.type === "finish"}
@@ -578,6 +732,23 @@
 								{step.cross}個目の交差点をUターン
 							{/if}
 						</div>
+
+
+						<!--後で道路名を表示させるかも-->
+						<div class="text-sub">
+							{#if step.type === "straight"}
+								{step.name}
+							{:else if step.type === "finish"}
+								{step.name}
+							{/if}
+
+							{#if (step.type === "right" || step.type === "left") && step.nextname !== ""}
+           							{step.nextname}へ
+							
+							
+
+							{/if}
+						</div>
 					</div>
 				</div>
 			{/each}
@@ -587,7 +758,7 @@
 		<div class="route-row">
 			<img src={finishpointLogo} alt="終点" />
 			<div class="route-info">
-				<div class="text-title">目的地</div>
+				<div class="text-title">終点</div>
 				<div class="text-sub">{ctx.state.end.query}</div>
 			</div>
 		</div>
@@ -695,8 +866,7 @@
         width: 95%;
         height: calc(100% - 580px); /* パネルの残り全体の高さに合わせる */
         overflow-y: auto;
-        overflow-x: hidden;
-}
+        overflow-x: hidden;}
 /* 長い住所の表示。約2行分の高さに収め、はみ出した分はホイールでスクロールして読む */
 .addr-scroll {
 	position: absolute;
@@ -712,62 +882,62 @@
 }
 
 .route-scroll-container::-webkit-scrollbar {
-    width: 6px;
+	width: 6px;
 }
 .route-scroll-container::-webkit-scrollbar-thumb {
-    background: rgba(0, 0, 0, 0.2);
-    border-radius: 3px;
+	background: rgba(0, 0, 0, 0.2);
+	border-radius: 3px;
 }
 
 .route-row {
-        display: flex;
-        align-items: center;
-        gap: 16px;
-        padding: 12px 16px;
-        background-color: var(--wn-white);
-        border-bottom: 1px solid var(--wn-spinner-gray);
-    }
+		display: flex;
+		align-items: center;
+		gap: 16px;
+		padding: 12px 16px;
+		background-color: var(--wn-white);
+		border-bottom: 1px solid var(--wn-spinner-gray);
+	}
 
-    .route-info {
-        display: flex;
-        flex-direction: column;
-        gap: 4px;
-    }
+	.route-info {
+		display: flex;
+		flex-direction: column;
+		gap: 4px;
+	}
 
-    .text-title {
-        font-size: 20px;
-        font-weight: 500;
-        color: var(--wn-ink);
-    }
+	.text-title {
+		font-size: 20px;
+		font-weight: 500;
+		color: var(--wn-ink);
+	}
 
-    .text-sub {
-        font-size: 16px;
-        color: var(--wn-spinner-gray);
-    }
+	.text-sub {
+		font-size: 16px;
+		color: var(--wn-spinner-gray);
+	}
 
 
 	/* スライダーグループのスタイル */
 	.slider-group {
-        display: flex;
-        flex-direction: column; /* 縦向きに並べる */
-        gap: 15px;              /* スライダー同士の隙間をあける */
-        padding: 15px;
-        background: white;
-        border-radius: 8px;
+		display: flex;
+		flex-direction: column; /* 縦向きに並べる */
+		gap: 15px;              /* スライダー同士の隙間をあける */
+		padding: 15px;
+		background: white;
+		border-radius: 8px;
 		position: absolute;
-        top: 400px; /* 画面の下から30pxの位置に配置 */
-        left: 50px;   /* 画面の左から50pxの位置に配置 */
-        z-index: 1000; /* 地図などの手前に表示させる */
-    }
-    .slider-item {
-        display: flex;
-        flex-direction: column;
-        gap: 5px;
-    }
+		top: 400px; /* 画面の下から30pxの位置に配置 */
+		left: 50px;   /* 画面の左から50pxの位置に配置 */
+		z-index: 1000; /* 地図などの手前に表示させる */
+	}
+	.slider-item {
+		display: flex;
+		flex-direction: column;
+		gap: 5px;
+	}
 	.custom-slider {
-        accent-color: #2f7731; /* 緑色にする例（好きなカラーコードや色名） */
+		accent-color: #2f7731; /* 緑色にする例（好きなカラーコードや色名） */
 		width: 250px;
-    }
+	}
 	.slider-popover {
 		top: 575px;                      /* 開閉ボタン (542px) のすぐ下 */
 		max-height: calc(100% - 590px);  /* 低い画面では、はみ出さずスクロールにする */

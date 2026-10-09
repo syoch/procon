@@ -67,6 +67,8 @@ declare global {
 			maxspeed?: number | null;
 			/** OSM の lanes タグ (車線数)。無ければ null */
 			lanes?: number | null;
+			/** OSM 上の tags */
+			tags: Record<string, string>;
 			/** 通行可能な向き */
 			direction: TravelDirection;
 		};
@@ -124,6 +126,8 @@ declare global {
 			maxspeed?: number | null,
 			/** OSM の lanes タグ (車線数)。無ければ null */
 			lanes?: number | null,
+			/** OSM 上の tags */
+			tags: Record<string, string>
 		}
 
 		/**
@@ -255,10 +259,12 @@ declare global {
 		type OSMData = {
 			elements: (OSMRawWay | OSMRawNode)[]
 		};
-    type InformationGraph = {
-      type: ("start" | "finish" | "straight" | "left" | "right" | "uturn" | "segments")[];
-      distance: number[]; // 曲がるまでの累積距離
-    };
+    	type InformationGraph = {
+    		type: ("start" | "finish" | "straight" | "left" | "right" | "uturn" | "segments")[];
+    		distance: number[]; // 曲がるまでの累積距離
+			tags: (Record<string, string> | null)[];
+			crossingRoadNames: (string | null)[];
+    	};
 	}
 }
 
