@@ -466,7 +466,7 @@
                 			// 右折の直後に「直進(straight)」が来た場合のみ相殺する
                 			if (type === "straight" && name !== "") {
                     			accumCross--;
-                    			isCrossMinusDone = true; //マイナスしたことを記録する
+                    			isCrossMinusDone = true; /*マイナスしたことを記録する*/
                 			}
                 		isUTurn = 0; 
             			}
@@ -562,7 +562,7 @@
 										distance: 0,
 										cross: accumCross + 1,
 										name: name,
-										nextname: informationGraph.tags[i + 1],
+										nextname: next_name,
 									});
 								} else if (Math.round(accumDist) === 0) {//0mだったとき
 									aggregated.push({ 

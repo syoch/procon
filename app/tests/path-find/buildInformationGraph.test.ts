@@ -61,6 +61,7 @@ function makeOsmGraph(ways: Pt[][]): App.OSMGraph {
 						sidewalk: "both",
 					},
 				],
+				tags: {}
 			};
 			nodes[b].edges.push(id);
 			nodes[e].edges.push(id);
