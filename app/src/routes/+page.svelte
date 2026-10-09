@@ -476,7 +476,7 @@
         			/* 中央分離帯の交差点マイナス処理 */
         			// 条件追加：上でまだマイナスされていない時(!isCrossMinusDone)だけ実行する
         			if (distFromPrevCross < 21 && !isCrossMinusDone) {
-            			if (crossingRoad !== "" && prev_crossingRoad !== "" && isSameCrossing(crossingRoad, prev_crossingRoad)) {
+            			if (crossingRoad !== "" && prev_crossingRoad !== "" && isSameCrossing(crossingRoad, prev_crossingRoad) && type !=="right") {
                 			accumCross--;
             			}
 					}
@@ -510,7 +510,7 @@
 									name: name,
 									nextname: informationGraph.tags[i + 3]?.name ?? "",/*中央分離帯がある可能性を考慮*/
 								});
-							}else {
+								}else {
 								aggregated.push({
 									type: type,
 									distance: 0,
@@ -518,7 +518,7 @@
 									name: name,
 									nextname: informationGraph.tags[i + 1]?.name ?? "",
 								});
-							}
+								}
 								
 							} else if (Math.round(accumDist) === 0) {//0mだったとき
 								aggregated.push({ 
@@ -530,6 +530,7 @@
 								});				
 							}
 							accumDist = 0;
+							accumCross = 0;
 							distFromPrevCross=0;
 							isUTurn++;
 							prev_n=informationGraph.tags[i - 1]?.name ?? "";
@@ -537,13 +538,14 @@
 							/*同じ名前の交差点で2回右折かつ距離が短い場合はUターンと判定*/
 							if(prev_n===next_name&&accumDist<21){
 								/*前に入れた右折を削除*/
+								const targetItem = aggregated[aggregated.length - 1];
+								const uturn_crossCount: number = targetItem.cross;
 								aggregated.pop();
 								/*Uターンとして追加*/
 								aggregated.push({
 									type: "uturn",
 									distance: 0,
-									cross: accumCross + 2,/*中央分離帯のある道路を横切るとき，交差点が+1されてしまうのを防ぐ処理に必ず入るので+2*/
-									name: name,
+									cross: uturn_crossCount,
 									nextname: next_name,
 								});
 								
@@ -667,10 +669,8 @@
 
 							{#if (step.type === "right" || step.type === "left") && step.nextname !== ""}
            							{step.nextname}へ
-							{:else if step.name !== step.nextname && step.name!=="" && step.nextname!==""}
-								{#if step.type === "right" || step.type === "left"}
-									{step.name}から{step.nextname}へ
-								{/if}
+							
+							
 
 							{/if}
 						</div>
