@@ -213,9 +213,9 @@
 							},
 				),
 			});
-			if (!isLatest()) return true;
 
 			if (!res.ok) {
+				if (!isLatest()) return true;
 				// 上限超過などは応答の message をそのまま表示する
 				const body: { message?: unknown } = await res.json().catch(() => ({}));
 				error = typeof body.message === "string" ? body.message : `/api/path-find API エラー: ${res.status}`;
@@ -226,6 +226,7 @@
 				const resObj: PathFindResult = await res.json();
 
 				if (!resObj.found) {
+					if (!isLatest()) return true;
 					// 到達できない理由 (目的地の近くに通れる道が無い など) をそのまま表示する
 					error = resObj.message ?? "経路が見つかりませんでした。";
 					return false;
@@ -242,11 +243,13 @@
 				informationGraph = resObj.infoGraph;
 				ctx.state.appState = "menu-result";
 			} catch (e) {
+				if (!isLatest()) return true;
 				error = "サーバー応答の読み取りエラーが発生しました";
 				return false;
 			}
 			return true;
 		} finally {
+			if (!isLatest()) return true;
 			isSearching = false;
 		}
 	}
