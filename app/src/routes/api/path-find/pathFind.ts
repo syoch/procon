@@ -338,21 +338,42 @@ export async function doPathFind(
     const osmData = profile
         ? reqCtx.measure("trim", () => trimOSMDataByMode(rawOsmData, profile))
         : reqCtx.measure("trim", () => trimOSMDataByWayHighway(rawOsmData, wayHighway));
-    // 幅員で道を除去しないモードでは、地図グラフと交差点変換を 1 回だけ作ってパス間で共有する。
-    // 交差点変換は座標と次数にだけ依存し、幅員では変わらない。
-    // 幅員の補完は、タイルが増えるとより近い区間が見つかって幅が変わりうる。
-    // そのため共有する場合もパスごとに OSM の値へ戻してから補完し直す (searchWithWidths)。
+    // 幅員で道を除去しないモードでは、グラフ変換を 1 回だけ行いパス間で共有する。
+    // - transform の入力は osmData だけ
+    // - CrossConvert は座標と次数にだけ依存し、幅員では変わらない
+    // - fold2deg / largestComponentEdges / transientSplit は幅員でトポロジが変わらない
+    // 幅員の補完だけをパスごとにやり直す (searchWithWidths)。
     // 大型トラックは removeNarrowEdges を交差点変換より先に掛ける必要があるため、ループの中で作り直す。
-    let osmGraph: App.OSMGraph | undefined;
-    let crossGraph: App.CrossConvertedGraph | undefined;
+    let session: SharedSession | undefined;
     if (profile?.minRoadWidth === undefined) {
-        const graph = reqCtx.measure("transform", () => transformOSMMapToOSMGraph(osmData));
-        const converted = reqCtx.measure("crossConvert", () => CrossConvert(graph));
-        if (converted instanceof Error) {
-            throw converted;
+        const osmGraph = reqCtx.measure("transform", () => transformOSMMapToOSMGraph(osmData));
+        const crossGraph = reqCtx.measure("crossConvert", () => CrossConvert(osmGraph));
+        if (crossGraph instanceof Error) {
+            throw crossGraph;
         }
-        osmGraph = graph;
-        crossGraph = converted;
+        const mapData = reqCtx.measure("fold2deg", () => fold2DegreeEdges(crossGraph));
+        if (mapData instanceof Error) {
+            throw mapData;
+        }
+        if (Object.keys(mapData.edges).length === 0) {
+            throw new Error("地図データを読み込み中です。少し待って再度お試しください");
+        }
+        // 孤立した小さな道路網 (敷地内の道など) に吸着すると経路が見つからないため、
+        // 最大連結成分のエッジだけを吸着の候補にする
+        const mainEdges = reqCtx.measure("component", () => largestComponentEdges(mapData));
+        const { beginNodeId, endNodeId } = reqCtx.measure("split", () => ({
+            beginNodeId: transientSplit(mapData, begin, mainEdges),
+            endNodeId: transientSplit(mapData, end, mainEdges),
+        }));
+        session = {
+            osmGraph,
+            crossGraph,
+            mapData,
+            // pathFind は探索したエッジを ComputedEdge に書き換えるため、書き換わる前のエッジを控える
+            frozenEdges: mapData.edges,
+            beginNodeId,
+            endNodeId,
+        };
     }
     // 国土地理院の幅員は、探索範囲全体ではなく経路の周りのタイルだけ使う (長い経路でタイル数の上限を超えないようにするため)。
     // 1. 始点・終点の周りのタイルで探索する
@@ -376,7 +397,7 @@ export async function doPathFind(
                 budgetMs: Math.max(0, deadline - Date.now()),
             }),
         );
-        result = searchWithWidths(reqCtx, { begin, end, parameters, profile, osmGraph, crossGraph, osmData, rawOsmData, bbox }, gsiSegments);
+        result = searchWithWidths(reqCtx, { begin, end, parameters, profile, osmData, rawOsmData, bbox, session }, gsiSegments);
         if (!result.found) break;
 
         const coords = result.coords;
@@ -421,23 +442,23 @@ export async function doPathFind(
  */
 export const MAX_GSI_PASSES = 3;
 
+type SharedSession = {
+    osmGraph: App.OSMGraph;
+    crossGraph: App.CrossConvertedGraph;
+    mapData: App.SearchGraph;
+    /** pathFind が書き換える前の探索用グラフのエッジ (毎パスここから戻す) */
+    frozenEdges: App.SearchGraph["edges"];
+    beginNodeId: App.NodeId;
+    endNodeId: App.NodeId;
+};
+
 type SearchContext = {
     begin: App.Coordinate;
     end: App.Coordinate;
     parameters: App.SearchParameters;
     profile: ModeProfile | undefined;
-    /**
-     * モードで絞り込んだ地図データから作ったグラフ。
-     * 幅員で道を除去するモード (大型トラック) はループの中で作り直すため undefined になる。
-     * 幅員の補完をやり直すときの OSM の値の出どころでもある (パス間で共有しても壊さない)。
-     */
-    osmGraph: App.OSMGraph | undefined;
-    /**
-     * 交差点変換済みのグラフ。
-     * 幅員で道を除去するモード (大型トラック) はループの中で作るため undefined になる。
-     * それ以外のモードは 1 回だけ作ってパス間で共有する。
-     */
-    crossGraph: App.CrossConvertedGraph | undefined;
+    /** 幅員で道を除去しないモードでパス間共有する、変換済みのグラフ一式 (大型トラックは undefined) */
+    session: SharedSession | undefined;
     /** モードで絞り込んだ地図データ (大型トラックのグラフをループの中で作り直すのに使う) */
     osmData: App.OSMData;
     /** 絞り込む前の地図データ (急カーブの交差点の判定に使う) */
@@ -445,33 +466,62 @@ type SearchContext = {
     bbox: ReturnType<typeof getBoundaryBox>;
 };
 
+/** 交差点変換グラフの幅員を OSM の値に戻す (幅員で道は除去しないのでトポロジは変わらない) */
+function resetCrossGraphWidths(crossGraph: App.CrossConvertedGraph, osmGraph: App.OSMGraph): void {
+    for (const edge of Object.values(crossGraph.edges)) {
+        if (edge.type === "MapVCrossEdge") {
+            continue;
+        }
+        edge.width = osmGraph.edges[edge.id]?.width ?? null;
+    }
+}
+
+/** 探索用グラフのセグメントに、交差点変換グラフの今の幅員を映す */
+function updateSegmentWidths(edges: App.SearchGraph["edges"], crossGraph: App.CrossConvertedGraph): void {
+    for (const edge of Object.values(edges)) {
+        if (edge.type === "MapVCrossEdge") {
+            continue;
+        }
+        for (const segment of edge.segments) {
+            const sourceId = segment.source_edge_id;
+            if (sourceId === undefined) {
+                continue;
+            }
+            const source = crossGraph.edges[sourceId];
+            segment.width = source !== undefined && source.type !== "MapVCrossEdge" ? source.width : null;
+        }
+    }
+}
+
 /**
  * 国土地理院の幅員を補った地図で 1 回探索する
  *
- * 幅員で道を除去しないモードでは、交差点変換まで済ませたグラフ (crossGraph) を共有して受け取る。
- * 交差点変換は座標と次数にだけ依存するので、作り直す必要はない。
- * ただし幅員の補完は、タイルが増えるとより近い区間が見つかって値が変わりうる。
- * そこで共有する場合も、まず OSM の値に戻してから補完し直す (毎回作り直した場合と同じ結果にするため)。
+ * 幅員で道を除去しないモードでは、変換済みのグラフ一式 (session) を受け取る。
+ * 変換は座標と次数にだけ依存するので作り直す必要がない。
+ * 幅員の補完だけは、タイルが増えるとより近い区間が見つかって値が変わりうる。
+ * そこで毎回 OSM の値に戻してから補完し直し、作り直した場合と同じ結果にする。
  */
 function searchWithWidths(
     reqCtx: RequestContext,
-    { begin, end, parameters, profile, crossGraph: sharedCrossGraph, osmGraph, osmData, rawOsmData, bbox }: SearchContext,
+    { begin, end, parameters, profile, osmData, rawOsmData, bbox, session }: SearchContext,
     gsiSegments: GsiRoadSegment[],
 ): PathFindResult {
-    let crossGraph: App.CrossConvertedGraph;
-    if (sharedCrossGraph && osmGraph) {
-        // 前のパスで補完した幅員を OSM の値に戻す (幅員で道は除去しないので、トポロジは変わらない)
-        for (const edge of Object.values(sharedCrossGraph.edges)) {
-            if (edge.type === "MapVCrossEdge") {
-                continue;
-            }
-            edge.width = osmGraph.edges[edge.id]?.width ?? null;
-        }
-        // 現在のタイル集合で幅員を補完し直す (単調に埋めるのではなく、毎回この時点の最良の対応を採る)
-        reqCtx.measure("gsiWidths", () => applyGsiWidths(sharedCrossGraph, new GsiRoadIndex(gsiSegments)));
-        crossGraph = sharedCrossGraph;
+    let mapData: App.SearchGraph;
+    let beginNodeId: App.NodeId;
+    let endNodeId: App.NodeId;
+
+    if (session) {
+        // 共有している交差点変換グラフに、現在のタイル集合で幅員を補完し直す
+        resetCrossGraphWidths(session.crossGraph, session.osmGraph);
+        reqCtx.measure("gsiWidths", () => applyGsiWidths(session.crossGraph, new GsiRoadIndex(gsiSegments)));
+        // 探索用グラフのセグメントに幅員を映し、pathFind が書き換える前のエッジに戻す
+        updateSegmentWidths(session.frozenEdges, session.crossGraph);
+        session.mapData.edges = { ...session.frozenEdges };
+        mapData = session.mapData;
+        beginNodeId = session.beginNodeId;
+        endNodeId = session.endNodeId;
     } else {
-        // 大型トラックは幅員で道を除去するので、幅員を入れてから交差点変換する (毎パス作り直す)
+        // 大型トラックは幅員で道を除去するので、グラフを毎パス作り直す
         const graph = reqCtx.measure("transform", () => transformOSMMapToOSMGraph(osmData));
         // 国土地理院の幅員区分で、幅が分からない車道の幅を補う (取得できなかったタイルは幅なしのまま続行する)
         reqCtx.measure("gsiWidths", () => applyGsiWidths(graph, new GsiRoadIndex(gsiSegments)));
@@ -480,28 +530,26 @@ function searchWithWidths(
         if (minRoadWidth) {
             reqCtx.measure("narrowEdges", () => removeNarrowEdges(graph, minRoadWidth));
         }
-        const converted = reqCtx.measure("crossConvert", () => CrossConvert(graph));
-        if (converted instanceof Error) {
-            throw converted;
+        const crossGraph = reqCtx.measure("crossConvert", () => CrossConvert(graph));
+        if (crossGraph instanceof Error) {
+            throw crossGraph;
         }
-        crossGraph = converted;
+        const folded = reqCtx.measure("fold2deg", () => fold2DegreeEdges(crossGraph));
+        if (folded instanceof Error) {
+            throw folded;
+        }
+        if (Object.keys(folded.edges).length === 0) {
+            throw new Error("地図データを読み込み中です。少し待って再度お試しください");
+        }
+        mapData = folded;
+        // 孤立した小さな道路網 (敷地内の道など) に吸着すると経路が見つからないため、
+        // 最大連結成分のエッジだけを吸着の候補にする
+        const mainEdges = reqCtx.measure("component", () => largestComponentEdges(mapData));
+        ({ beginNodeId, endNodeId } = reqCtx.measure("split", () => ({
+            beginNodeId: transientSplit(mapData, begin, mainEdges),
+            endNodeId: transientSplit(mapData, end, mainEdges),
+        })));
     }
-
-    const mapData = reqCtx.measure("fold2deg", () => fold2DegreeEdges(crossGraph));
-    if (mapData instanceof Error) {
-        throw mapData;
-    }
-    if (Object.keys(mapData.edges).length === 0) {
-        throw new Error("地図データを読み込み中です。少し待って再度お試しください");
-    }
-
-    // 孤立した小さな道路網 (敷地内の道など) に吸着すると経路が見つからないため、
-    // 最大連結成分のエッジだけを吸着の候補にする
-    const mainEdges = reqCtx.measure("component", () => largestComponentEdges(mapData));
-    const { beginNodeId, endNodeId } = reqCtx.measure("split", () => ({
-        beginNodeId: transientSplit(mapData, begin, mainEdges),
-        endNodeId: transientSplit(mapData, end, mainEdges),
-    }));
 
     // 吸着先が遠すぎる場合 (近くの道が道路網から切り離されている場合など) は、間違った経路を返さず「到達できない」とする
     const snapDistance = {

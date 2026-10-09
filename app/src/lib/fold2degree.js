@@ -45,8 +45,8 @@ export function fold2DegreeEdges(graph) {
             highway: edge.highway,
             width: edge.width,
             sidewalk: edge.sidewalk,
-            maxspeed: edge.maxspeed ?? null,
-            lanes: edge.lanes ?? null,
+            // 幅員をパスごとに入れ直すとき、元のエッジの幅を見るために控える
+            source_edge_id: edge.id,
           },
         ],
       };

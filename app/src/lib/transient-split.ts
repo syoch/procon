@@ -148,6 +148,7 @@ export function transientSplit(graph: App.SearchGraph, point: App.Coordinate, al
     sidewalk: segmentToSplit.sidewalk,
     maxspeed: segmentToSplit.maxspeed,
     lanes: segmentToSplit.lanes,
+    source_edge_id: segmentToSplit.source_edge_id,
   };
   const newSegment2: App.Segment = {
     begin_coordinate: projection,
@@ -157,6 +158,7 @@ export function transientSplit(graph: App.SearchGraph, point: App.Coordinate, al
     sidewalk: segmentToSplit.sidewalk,
     maxspeed: segmentToSplit.maxspeed,
     lanes: segmentToSplit.lanes,
+    source_edge_id: segmentToSplit.source_edge_id,
   };
 
   const newEdge1 = {
