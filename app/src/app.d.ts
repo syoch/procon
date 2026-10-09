@@ -124,6 +124,11 @@ declare global {
 			maxspeed?: number | null,
 			/** OSM の lanes タグ (車線数)。無ければ null */
 			lanes?: number | null,
+			/**
+			 * このセグメントの元になった交差点変換後のエッジの id。
+			 * 幅員をパスごとに入れ直すとき、どのエッジの幅を見るかの手がかりになる。
+			 */
+			source_edge_id?: EdgeId,
 		}
 
 		/**
