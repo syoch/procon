@@ -52,7 +52,7 @@
   });
 
   onMount(() => {
-    map = L.map("map")
+    map = L.map("map", { zoomControl: false })
       .setView([37.4379, 138.8795], 18)
       .on("click", function (e) {
         const lat = e.latlng.lat;
