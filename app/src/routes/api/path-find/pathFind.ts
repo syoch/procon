@@ -338,6 +338,22 @@ export async function doPathFind(
     const osmData = profile
         ? reqCtx.measure("trim", () => trimOSMDataByMode(rawOsmData, profile))
         : reqCtx.measure("trim", () => trimOSMDataByWayHighway(rawOsmData, wayHighway));
+    // 幅員で道を除去しないモードでは、地図グラフと交差点変換を 1 回だけ作ってパス間で共有する。
+    // 交差点変換は座標と次数にだけ依存し、幅員では変わらない。
+    // 幅員の補完は、タイルが増えるとより近い区間が見つかって幅が変わりうる。
+    // そのため共有する場合もパスごとに OSM の値へ戻してから補完し直す (searchWithWidths)。
+    // 大型トラックは removeNarrowEdges を交差点変換より先に掛ける必要があるため、ループの中で作り直す。
+    let osmGraph: App.OSMGraph | undefined;
+    let crossGraph: App.CrossConvertedGraph | undefined;
+    if (profile?.minRoadWidth === undefined) {
+        const graph = reqCtx.measure("transform", () => transformOSMMapToOSMGraph(osmData));
+        const converted = reqCtx.measure("crossConvert", () => CrossConvert(graph));
+        if (converted instanceof Error) {
+            throw converted;
+        }
+        osmGraph = graph;
+        crossGraph = converted;
+    }
     // 国土地理院の幅員は、探索範囲全体ではなく経路の周りのタイルだけ使う (長い経路でタイル数の上限を超えないようにするため)。
     // 1. 始点・終点の周りのタイルで探索する
     // 2. 見つかった経路の周りのタイルを足して、もう一度探索する (経路が変わったら、その周りのタイルも足して繰り返す)
@@ -360,7 +376,7 @@ export async function doPathFind(
                 budgetMs: Math.max(0, deadline - Date.now()),
             }),
         );
-        result = searchWithWidths(reqCtx, { begin, end, parameters, profile, osmData, rawOsmData, bbox }, gsiSegments);
+        result = searchWithWidths(reqCtx, { begin, end, parameters, profile, osmGraph, crossGraph, osmData, rawOsmData, bbox }, gsiSegments);
         if (!result.found) break;
 
         const coords = result.coords;
@@ -410,7 +426,19 @@ type SearchContext = {
     end: App.Coordinate;
     parameters: App.SearchParameters;
     profile: ModeProfile | undefined;
-    /** モードで絞り込んだ地図データ */
+    /**
+     * モードで絞り込んだ地図データから作ったグラフ。
+     * 幅員で道を除去するモード (大型トラック) はループの中で作り直すため undefined になる。
+     * 幅員の補完をやり直すときの OSM の値の出どころでもある (パス間で共有しても壊さない)。
+     */
+    osmGraph: App.OSMGraph | undefined;
+    /**
+     * 交差点変換済みのグラフ。
+     * 幅員で道を除去するモード (大型トラック) はループの中で作るため undefined になる。
+     * それ以外のモードは 1 回だけ作ってパス間で共有する。
+     */
+    crossGraph: App.CrossConvertedGraph | undefined;
+    /** モードで絞り込んだ地図データ (大型トラックのグラフをループの中で作り直すのに使う) */
     osmData: App.OSMData;
     /** 絞り込む前の地図データ (急カーブの交差点の判定に使う) */
     rawOsmData: App.OSMData;
@@ -419,28 +447,47 @@ type SearchContext = {
 
 /**
  * 国土地理院の幅員を補った地図で 1 回探索する
- * (幅員の補完・狭い道の除去でグラフを書き換えるため、毎回 osmData からグラフを作り直す)
+ *
+ * 幅員で道を除去しないモードでは、交差点変換まで済ませたグラフ (crossGraph) を共有して受け取る。
+ * 交差点変換は座標と次数にだけ依存するので、作り直す必要はない。
+ * ただし幅員の補完は、タイルが増えるとより近い区間が見つかって値が変わりうる。
+ * そこで共有する場合も、まず OSM の値に戻してから補完し直す (毎回作り直した場合と同じ結果にするため)。
  */
 function searchWithWidths(
     reqCtx: RequestContext,
-    { begin, end, parameters, profile, osmData, rawOsmData, bbox }: SearchContext,
+    { begin, end, parameters, profile, crossGraph: sharedCrossGraph, osmGraph, osmData, rawOsmData, bbox }: SearchContext,
     gsiSegments: GsiRoadSegment[],
 ): PathFindResult {
-    const osmGraph = reqCtx.measure("transform", () => transformOSMMapToOSMGraph(osmData));
-
-    // 国土地理院の幅員区分で、幅が分からない車道の幅を補う (取得できなかったタイルは幅なしのまま続行する)
-    reqCtx.measure("gsiWidths", () => applyGsiWidths(osmGraph, new GsiRoadIndex(gsiSegments)));
-    // 大型トラックなど、幅の下限があるモードでは狭すぎる道を取り除く (幅が分からない道は残す)
-    const minRoadWidth = profile?.minRoadWidth;
-    if (minRoadWidth) {
-        reqCtx.measure("narrowEdges", () => removeNarrowEdges(osmGraph, minRoadWidth));
+    let crossGraph: App.CrossConvertedGraph;
+    if (sharedCrossGraph && osmGraph) {
+        // 前のパスで補完した幅員を OSM の値に戻す (幅員で道は除去しないので、トポロジは変わらない)
+        for (const edge of Object.values(sharedCrossGraph.edges)) {
+            if (edge.type === "MapVCrossEdge") {
+                continue;
+            }
+            edge.width = osmGraph.edges[edge.id]?.width ?? null;
+        }
+        // 現在のタイル集合で幅員を補完し直す (単調に埋めるのではなく、毎回この時点の最良の対応を採る)
+        reqCtx.measure("gsiWidths", () => applyGsiWidths(sharedCrossGraph, new GsiRoadIndex(gsiSegments)));
+        crossGraph = sharedCrossGraph;
+    } else {
+        // 大型トラックは幅員で道を除去するので、幅員を入れてから交差点変換する (毎パス作り直す)
+        const graph = reqCtx.measure("transform", () => transformOSMMapToOSMGraph(osmData));
+        // 国土地理院の幅員区分で、幅が分からない車道の幅を補う (取得できなかったタイルは幅なしのまま続行する)
+        reqCtx.measure("gsiWidths", () => applyGsiWidths(graph, new GsiRoadIndex(gsiSegments)));
+        // 大型トラックなど、幅の下限があるモードでは狭すぎる道を取り除く (幅が分からない道は残す)
+        const minRoadWidth = profile?.minRoadWidth;
+        if (minRoadWidth) {
+            reqCtx.measure("narrowEdges", () => removeNarrowEdges(graph, minRoadWidth));
+        }
+        const converted = reqCtx.measure("crossConvert", () => CrossConvert(graph));
+        if (converted instanceof Error) {
+            throw converted;
+        }
+        crossGraph = converted;
     }
 
-    const ccGraph = reqCtx.measure("crossConvert", () => CrossConvert(osmGraph));
-    if (ccGraph instanceof Error) {
-        throw ccGraph;
-    }
-    const mapData = reqCtx.measure("fold2deg", () => fold2DegreeEdges(ccGraph));
+    const mapData = reqCtx.measure("fold2deg", () => fold2DegreeEdges(crossGraph));
     if (mapData instanceof Error) {
         throw mapData;
     }
