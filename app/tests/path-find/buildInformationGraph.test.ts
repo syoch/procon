@@ -29,7 +29,7 @@ function rotate([x, y]: Pt, k: number): Pt {
 }
 
 /** 折れ線の道 (way) の並びから OSMGraph を作る。同じ座標の点は同じノードになる */
-function makeOsmGraph(ways: Pt[][]): App.OSMGraph {
+function makeOsmGraph(ways: Pt[][], wayTags?: Record<string, string>[]): App.OSMGraph {
 	const nodes: Record<string, any> = {};
 	const edges: Record<string, any> = {};
 
@@ -40,6 +40,9 @@ function makeOsmGraph(ways: Pt[][]): App.OSMGraph {
 	};
 
 	ways.forEach((way, w) => {
+		// 現在の way (w番目) に対応するタグを取得。渡されていなければ空のオブジェクト {} にする
+		const currentTags = wayTags && wayTags[w] ? wayTags[w] : {};
+
 		for (let i = 0; i + 1 < way.length; i++) {
 			const b = nodeId(way[i]);
 			const e = nodeId(way[i + 1]);
@@ -59,9 +62,10 @@ function makeOsmGraph(ways: Pt[][]): App.OSMGraph {
 						highway: "residential",
 						width: 3,
 						sidewalk: "both",
+						tags: { ...currentTags }, // ← ここにタグを追加（テスト対象の関数がここを見にくるため）
 					},
 				],
-				tags: {}
+				tags: { ...currentTags } // ← ここも空の {} から書き換え
 			};
 			nodes[b].edges.push(id);
 			nodes[e].edges.push(id);
@@ -101,25 +105,25 @@ function shortestPathEdges(g: App.SearchGraph, begin: App.NodeId, end: App.NodeI
 }
 
 /** 道路網と始点・終点から、案内情報 (buildInformationGraph) を作る */
-function guidance(ways: Pt[][], begin: Pt, end: Pt) {
-	const cc = CrossConvert(makeOsmGraph(ways));
-	if (cc instanceof Error) throw cc;
-	const g = fold2DegreeEdges(cc);
-	if (g instanceof Error) throw g;
+function guidance(ways: Pt[][], begin: Pt, end: Pt, wayTags?: Record<string, string>[]) {
+// wayTags を makeOsmGraph に渡す (makeOsmGraph 側も修正が必要)
+    const cc = CrossConvert(makeOsmGraph(ways, wayTags)); 
+    
+    if (cc instanceof Error) throw cc;
+    const g = fold2DegreeEdges(cc);
+    if (g instanceof Error) throw g;
 
-	const beginNode = transientSplit(g, toCoord(begin));
-	const endNode = transientSplit(g, toCoord(end));
-	const edgeIds = shortestPathEdges(g, beginNode, endNode);
+    const beginNode = transientSplit(g, toCoord(begin));
+    const endNode = transientSplit(g, toCoord(end));
+    const edgeIds = shortestPathEdges(g, beginNode, endNode);
 
-	// 本番では pathFind が探索した辺を ComputedEdge に書き換える（MapVCrossEdge はそのまま）。
-	// 案内は書き換え後のグラフで作るので、テストでも同じ状態にする
-	for (const id of edgeIds) {
-		if (g.edges[id].type === "MapVCrossEdge") continue;
-		g.edges[id] = { ...g.edges[id], type: "ComputedEdge", view_score: 1, width_score: 1, mix_score: 1 } as App.ComputedEdge;
-	}
+    for (const id of edgeIds) {
+        if (g.edges[id].type === "MapVCrossEdge") continue;
+        g.edges[id] = { ...g.edges[id], type: "ComputedEdge", view_score: 1, width_score: 1, mix_score: 1 } as App.ComputedEdge;
+    }
 
-	return { g, beginNode, edgeIds, info: buildInformationGraph(g, edgeIds, beginNode) };
-}
+    return { g, beginNode, edgeIds, info: buildInformationGraph(g, edgeIds, beginNode) };
+};
 
 /** 案内の種別のうち、交差点での判定（直進・右折・左折・Uターン）だけを取り出す */
 function turnsOf(info: App.InformationGraph) {

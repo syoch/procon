@@ -232,14 +232,14 @@ function buildGraphFromWays(rawNodes, rawWays) {
         existing.sidewalk = mergeSidewalk(existing.sidewalk, tags.sidewalk ?? null);
 
        // 既存のエッジに name がなく、新しく見つけた方のタグに name がある場合のみ引き継ぐ
-if (!existing.tags.name && tags.name) {
-  existing.tags.name = tags.name;
-}
+      if (!existing.tags.name && tags.name) {
+        existing.tags.name = tags.name;
+      }
 
-// ref も同様に引き継ぐ
-if (!existing.tags.ref && tags.ref) {
-  existing.tags.ref = tags.ref;
-}
+      // ref も同様に引き継ぐ
+      if (!existing.tags.ref && tags.ref) {
+        existing.tags.ref = tags.ref;
+      }
         continue;
       }
 

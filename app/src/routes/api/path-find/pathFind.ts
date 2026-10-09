@@ -313,7 +313,7 @@ function getCrossingRoadName(mapData: App.SearchGraph, edge: App.MapVCrossEdge):
                 .find(neighborEdge => neighborEdge.type !== "MapVCrossEdge")
             if (neighborEdge === undefined) return;
 
-            const tagsIndex = neighborEdge.begin === vCrossNodeId ? neighborEdge.segments.length - 1 : 0;
+            const tagsIndex = neighborEdge.begin === vCrossNodeId ? 0 : neighborEdge.segments.length - 1;
             const tags = neighborEdge.segments[tagsIndex].tags
             return tags.name
         })
