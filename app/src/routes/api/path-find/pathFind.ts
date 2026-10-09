@@ -301,10 +301,11 @@ export function getCrossingRoadName(mapData: App.SearchGraph, edge: App.MapVCros
         .map(edgeId => mapData.edges[edgeId])
         .find(e => e.type !== "MapVCrossEdge");
     
-    let entryRoadName: string | undefined = undefined;
+    let entryRoadName: string | null = null;
     if (entryRoadEdge) {
         const tagsIndex = entryRoadEdge.begin === edge.begin ? 0 : entryRoadEdge.segments.length - 1;
-        entryRoadName = entryRoadEdge.segments[tagsIndex].tags.name ?? null;
+        // ★ 修正1: tags?.name とすることで tags が undefined でもエラーにならない
+        entryRoadName = entryRoadEdge.segments[tagsIndex].tags?.name ?? null;
     }
     // ------------------------------------------------------------
 
@@ -315,7 +316,7 @@ export function getCrossingRoadName(mapData: App.SearchGraph, edge: App.MapVCros
         .map(internalEdge => internalEdge.begin === edge.begin ? internalEdge.end : internalEdge.begin)
         .filter(nodeId => nodeId !== edge.end);
         
-    if (groupNodes.length < 2) {
+    if (groupNodes.length < 1) {
         return null;
     }
 
@@ -328,13 +329,13 @@ export function getCrossingRoadName(mapData: App.SearchGraph, edge: App.MapVCros
             if (neighborEdge === undefined) return undefined;
 
             const tagsIndex = neighborEdge.begin === vCrossNodeId ? 0 : neighborEdge.segments.length - 1;
-            const tags = neighborEdge.segments[tagsIndex].tags ?? null;
-            return tags.name;
+            // ★ 修正2: こちらも tags?.name にしてエラーを防ぎ、無ければ null にする
+            return neighborEdge.segments[tagsIndex].tags?.name ?? null;
         })
-        //undefined だけでなく、進入元と同じ道路名のものも除外する
-        .find(name => name !== undefined && name !== entryRoadName); 
+        // ★ 修正3: name が undefined や null ではなく、かつ進入元と違うものを探す
+        .find(name => name != null && name !== entryRoadName); 
     
-    if (crossingEdgeName === undefined) {
+    if (crossingEdgeName === undefined || crossingEdgeName === null) {
         return null;
     }
 
