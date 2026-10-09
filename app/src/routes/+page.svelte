@@ -249,8 +249,9 @@
 			}
 			return true;
 		} finally {
-			if (!isLatest()) return true;
-			isSearching = false;
+			if (isLatest()) {
+				isSearching = false;
+			}
 		}
 	}
 
