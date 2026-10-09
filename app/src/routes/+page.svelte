@@ -440,6 +440,7 @@
 					const next_name = informationGraph.tags[i + 1]?.name ?? "";
 					const crossingRoad = informationGraph.crossingRoadNames[i] ?? "";
 					const prev_crossingRoad = informationGraph.crossingRoadNames[i-2] ?? "";
+					let isCrossMinusDone = false;
 
 					accumDist += distance;
 					distFromPrevCross += distance;
@@ -454,24 +455,38 @@
 						continue;
 					}
 
-					/*名前タグのない道路でd<21mだとUターンにしてしまうのを防ぐ処理*/
-					/*実際に同じ道でUターンする場合は，informationGraphの段階でtype="uturn"となっていることを考慮している*/
-					if(isUTurn===1&&accumDist<21&&type==="right"&&next_name===""){
-						isUTurn=0;
+					/* Uターンキャンセル・中央分離帯右折の補正処理 */
+        			if (isUTurn === 1 && accumDist < 21) {
+            			if (type === "right") {
+                		// 小さい道路（名前なし）で右折が2回続いた場合は、誤ったUターン判定を防ぐ
+                			if (next_name === "") {
+                    			isUTurn = 0;
+                			}
+            			} else {
+                			// 右折の直後に「直進(straight)」が来た場合のみ相殺する
+                			if (type === "straight" && name !== "") {
+                    			accumCross--;
+                    			isCrossMinusDone = true; //マイナスしたことを記録する
+                			}
+                		isUTurn = 0; 
+            			}
+        			}
+
+					
+        			/* 中央分離帯の交差点マイナス処理 */
+        			// 条件追加：上でまだマイナスされていない時(!isCrossMinusDone)だけ実行する
+        			if (distFromPrevCross < 21 && !isCrossMinusDone) {
+            			if (crossingRoad !== "" && prev_crossingRoad !== "" && isSameCrossing(crossingRoad, prev_crossingRoad)) {
+                			accumCross--;
+            			}
+					}
+					/*普通の道路から中央分離帯のある道路で右折したとき*/
+					if(distFromPrevCross<21 && type==="right" && isUTurn===0){
+						if(prev_crossingRoad!== "" && crossingRoad !== ""){
+							accumCross--;
+						}
 					}
 
-					/*中央分離帯のある道路から右折したとき，交差点数が+1されてしまう問題を解決する処理*/
-					if(isUTurn===1 && accumDist<21 && type!=="right" && name!==""){
-						accumCross--;
-						isUTurn=0;
-					}
-
-					/*中央分離帯のある道路を横切るとき，交差点が+1されてしまうのを防ぐ処理(21m以下の小さい道路の交差点を配慮)*/
-					if(distFromPrevCross<21){
-						if (crossingRoad!=="" && prev_crossingRoad!=="" && isSameCrossing(crossingRoad, prev_crossingRoad) ) {
-                            accumCross--;
-                        }
-					}
 
 					if (type === "straight") {
 						distFromPrevCross=0;
@@ -487,7 +502,7 @@
 									nextname: next_name,
 								});
 
-								if(distFromPrevCross<21){
+								if(informationGraph.distance[i+1]<21 && (informationGraph.type[i+2]==="straight" || informationGraph.type[i+2]==="segments")){
 								aggregated.push({
 									type: type,
 									distance: 0,
@@ -501,7 +516,7 @@
 									distance: 0,
 									cross: accumCross + 1,
 									name: name,
-									nextname: informationGraph.tags[i + 1]?.name ?? "",/*中央分離帯がある可能性を考慮*/
+									nextname: informationGraph.tags[i + 1]?.name ?? "",
 								});
 							}
 								
