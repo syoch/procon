@@ -428,9 +428,8 @@
 				const aggregated = [];
 				let accumDist = 0;
 				let accumCross = 0;
-				/*Uターン判定用*/
-				let isUTurn = 0;
-				let prev_n = "";
+				let isUTurn = 0;/*Uターン判定用*/
+				let prev_name = "";
 				let distFromPrevCross = 999;
 
 				for (let i = 0; i < informationGraph.type.length; i++) {
@@ -440,13 +439,14 @@
 					const next_name = informationGraph.tags[i + 1]?.name ?? "";
 					const crossingRoad = informationGraph.crossingRoadNames[i] ?? "";
 					const prev_crossingRoad = informationGraph.crossingRoadNames[i-2] ?? "";
+					const threshold=21;/*道路の幅が3.5m，最大片側6車線としたとき，中央分離帯のある道路同士の距離を仮定している*/
 					let isCrossMinusDone = false;
 
 					accumDist += distance;
 					distFromPrevCross += distance;
 
-					//走行距離(accumDist)が21m以上になったら、Uターン待ちを解除
-    				if (isUTurn === 1 && accumDist > 21) {
+					//走行距離(accumDist)がしきい値以上になったら、Uターン待ちを解除
+    				if (isUTurn === 1 && accumDist > threshold) {
 						accumCross=0;
         				isUTurn = 0;
     				}
@@ -456,7 +456,7 @@
 					}
 
 					/* Uターンキャンセル・中央分離帯右折の補正処理 */
-        			if (isUTurn === 1 && accumDist < 21) {
+        			if (isUTurn === 1 && accumDist < threshold) {
             			if (type === "right") {
                 		// 小さい道路（名前なし）で右折が2回続いた場合は、誤ったUターン判定を防ぐ
                 			if (next_name === "") {
@@ -475,13 +475,13 @@
 					
         			/* 中央分離帯の交差点マイナス処理 */
         			// 条件追加：上でまだマイナスされていない時(!isCrossMinusDone)だけ実行する
-        			if (distFromPrevCross < 21 && !isCrossMinusDone) {
+        			if (distFromPrevCross < threshold && !isCrossMinusDone) {
             			if (crossingRoad !== "" && prev_crossingRoad !== "" && isSameCrossing(crossingRoad, prev_crossingRoad) && type !=="right") {
                 			accumCross--;
             			}
 					}
 					/*普通の道路から中央分離帯のある道路で右折したとき*/
-					if(distFromPrevCross<21 && type==="right" && isUTurn===0){
+					if(distFromPrevCross<threshold && type==="right" && isUTurn===0){
 						if(prev_crossingRoad!== "" && crossingRoad !== ""){
 							accumCross--;
 						}
@@ -502,7 +502,7 @@
 									nextname: next_name,
 								});
 
-								if(informationGraph.distance[i+1]<21 && (informationGraph.type[i+2]==="straight" || informationGraph.type[i+2]==="segments")){
+								if(informationGraph.distance[i+1]<threshold && (informationGraph.type[i+2]==="straight" || informationGraph.type[i+2]==="segments")){
 								aggregated.push({
 									type: type,
 									distance: 0,
@@ -533,10 +533,10 @@
 							accumCross = 0;
 							distFromPrevCross=0;
 							isUTurn++;
-							prev_n=informationGraph.tags[i - 1]?.name ?? "";
+							prev_name=informationGraph.tags[i - 1]?.name ?? "";
 						}else if(isUTurn===1){
 							/*同じ名前の交差点で2回右折かつ距離が短い場合はUターンと判定*/
-							if(prev_n===next_name&&accumDist<21){
+							if(prev_name===next_name&&accumDist<threshold){
 								/*前に入れた右折を削除*/
 								const targetItem = aggregated[aggregated.length - 1];
 								const uturn_crossCount: number = targetItem.cross;

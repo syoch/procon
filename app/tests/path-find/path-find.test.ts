@@ -1,4 +1,4 @@
-import { describe, expect, test, vi } from "vitest";
+import { describe, expect, test, vi, it } from "vitest";
 
 // 地図データの取得 (キャッシュ・Overpass) はモックし、テストごとに用意した地図を返す
 let mapData: App.OSMData = { elements: [] };
@@ -224,4 +224,84 @@ describe("doPathFind: 国土地理院のタイルは経路の周りだけ使う"
     const all = tilesForBoundary(getBoundaryBox(begin, end));
     expect(requestedTiles[requestedTiles.length - 1].length).toBeLessThan(all.length);
   });
+});
+
+import {getCrossingRoadName} from "../../src/routes/api/path-find/pathFind";
+describe('getCrossingRoadName', () => {
+    
+    /**
+     * テスト用の交差点データを生成するヘルパー関数
+     * 南から進入し、南北に「本通り」、東西に「クロス通り」が走っている十字路をモック化
+     * 
+     * @param straightIsFirst trueの場合、わざと配列の先頭に「直進（本通り）」が来るように悪意のある並びにする
+     */
+    function createMockMapData(straightIsFirst: boolean): any {
+        return {
+            nodes: {
+                node_s: { // 進入ノード (南)
+                    id: 'node_s',
+                    type: 'MapVCrossNode',
+                    // 直進(n)のデータが配列の先頭に来るパターンと、来ないパターンを切り替える
+                    edges: straightIsFirst 
+                        ? ['edge_s_to_n', 'edge_s_to_w', 'edge_s_to_e', 'road_s']
+                        : ['edge_s_to_w', 'edge_s_to_n', 'edge_s_to_e', 'road_s']
+                },
+                node_n: { id: 'node_n', type: 'MapVCrossNode', edges: ['road_n'] }, // 直進先
+                node_e: { id: 'node_e', type: 'MapVCrossNode', edges: ['road_e'] }, // 右折先
+                node_w: { id: 'node_w', type: 'MapVCrossNode', edges: ['road_w'] }  // 左折先
+            },
+            edges: {
+                // 外部の道路（交差点の外の道）
+                road_s: {
+                    id: 'road_s', type: 'NormalEdge', begin: 'out_s', end: 'node_s',
+                    segments: [{ tags: { name: '本通り' } }]
+                },
+                road_n: {
+                    id: 'road_n', type: 'NormalEdge', begin: 'node_n', end: 'out_n',
+                    segments: [{ tags: { name: '本通り' } }]
+                },
+                road_e: {
+                    id: 'road_e', type: 'NormalEdge', begin: 'node_e', end: 'out_e',
+                    segments: [{ tags: { name: 'クロス通り' } }]
+                },
+                road_w: {
+                    id: 'road_w', type: 'NormalEdge', begin: 'node_w', end: 'out_w',
+                    segments: [{ tags: { name: 'クロス通り' } }]
+                },
+                // 交差点内部の進行ルート（MapVCrossEdge）
+                edge_s_to_n: { id: 'edge_s_to_n', type: 'MapVCrossEdge', begin: 'node_s', end: 'node_n' },
+                edge_s_to_e: { id: 'edge_s_to_e', type: 'MapVCrossEdge', begin: 'node_s', end: 'node_e' },
+                edge_s_to_w: { id: 'edge_s_to_w', type: 'MapVCrossEdge', begin: 'node_s', end: 'node_w' }
+            }
+        };
+    }
+
+    it('直進する場合、交差する左右の道路名（クロス通り）を返すこと', () => {
+        const mapData = createMockMapData(false);
+        const straightEdge = mapData.edges.edge_s_to_n; // 直進エッジ
+
+        const result = getCrossingRoadName(mapData, straightEdge);
+        
+        expect(result).toBe('クロス通り');
+    });
+
+    it('右折する場合でも、本通りを除外して交差する道路名（クロス通り）を返すこと', () => {
+        const mapData = createMockMapData(false);
+        const turnRightEdge = mapData.edges.edge_s_to_e; // 右折エッジ
+
+        const result = getCrossingRoadName(mapData, turnRightEdge);
+        
+        expect(result).toBe('クロス通り');
+    });
+
+    it('【重要】内部のデータ配列順序が変わっても、常に本通りを除外してクロス通りを返すこと', () => {
+        // わざと「直進(本通り)」が配列の先頭に来るようにしたデータを使う
+        const mapData = createMockMapData(true); 
+        const turnRightEdge = mapData.edges.edge_s_to_e; // 右折エッジ
+
+        const result = getCrossingRoadName(mapData, turnRightEdge);
+        
+        // 修正前はここで先頭の「本通り」を拾ってしまっていたが、修正後は「クロス通り」になる
+        expect(result).toBe('クロス通り');
+    });
 });

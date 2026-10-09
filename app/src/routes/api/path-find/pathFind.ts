@@ -290,11 +290,23 @@ function getRoadTags(edge: App.SearchGraph['edges'][App.EdgeId], reversed: boole
 /** buildInformationGraph の内部の作業用タグ (API には出さない) */
 type EdgeKind = "segments" | "turn";
 
-function getCrossingRoadName(mapData: App.SearchGraph, edge: App.MapVCrossEdge): string | null {
+export function getCrossingRoadName(mapData: App.SearchGraph, edge: App.MapVCrossEdge): string | null {
     const intersectionNode = mapData.nodes[edge.begin];
     if (intersectionNode.type !== "MapVCrossNode") {
-        throw new Error("MapVCrossEdge の始点は MapVCrossNode であるはずです")
+        throw new Error("MapVCrossEdge の始点は MapVCrossNode であるはずです");
     }
+
+    // 進入元（自分が走ってきた道路）の名前を取得する
+    const entryRoadEdge = intersectionNode.edges
+        .map(edgeId => mapData.edges[edgeId])
+        .find(e => e.type !== "MapVCrossEdge");
+    
+    let entryRoadName: string | undefined = undefined;
+    if (entryRoadEdge) {
+        const tagsIndex = entryRoadEdge.begin === edge.begin ? 0 : entryRoadEdge.segments.length - 1;
+        entryRoadName = entryRoadEdge.segments[tagsIndex].tags.name;
+    }
+    // ------------------------------------------------------------
 
     const groupNodes = intersectionNode.edges
         .map(edgeId => mapData.edges[edgeId])
@@ -302,22 +314,25 @@ function getCrossingRoadName(mapData: App.SearchGraph, edge: App.MapVCrossEdge):
         // 交差点内で edge.begin, edge.end のどちらでもないノードに絞って Id をリストする
         .map(internalEdge => internalEdge.begin === edge.begin ? internalEdge.end : internalEdge.begin)
         .filter(nodeId => nodeId !== edge.end);
+        
     if (groupNodes.length < 2) {
-        return null
+        return null;
     }
 
     const crossingEdgeName = groupNodes
         .map(vCrossNodeId => {
             const neighborEdge = mapData.nodes[vCrossNodeId].edges
                 .map(neighborEdgeId => mapData.edges[neighborEdgeId])
-                .find(neighborEdge => neighborEdge.type !== "MapVCrossEdge")
-            if (neighborEdge === undefined) return;
+                .find(neighborEdge => neighborEdge.type !== "MapVCrossEdge");
+            
+            if (neighborEdge === undefined) return undefined;
 
             const tagsIndex = neighborEdge.begin === vCrossNodeId ? 0 : neighborEdge.segments.length - 1;
-            const tags = neighborEdge.segments[tagsIndex].tags
-            return tags.name
+            const tags = neighborEdge.segments[tagsIndex].tags;
+            return tags.name;
         })
-        .find(x => x !== undefined)
+        //undefined だけでなく、進入元と同じ道路名のものも除外する
+        .find(name => name !== undefined && name !== entryRoadName); 
     
     if (crossingEdgeName === undefined) {
         return null;
@@ -348,7 +363,7 @@ export function buildInformationGraph(
     graphData.tags.push(null);
     graphData.crossingRoadNames.push(null);
 
-    // ★ 1. 各エッジを通ったときの「進行方向のベクトル」を全エッジ分あらかじめ記録するキャッシュ
+    //1. 各エッジを通ったときの「進行方向のベクトル」を全エッジ分あらかじめ記録するキャッシュ
     const vectorCache: EdgeVectors[] = [];
     const stepDataList: { edgeType: EdgeKind; dist: number; tags: Record<string, string> | null, crossingRoadName: string | null }[] = [];
 
@@ -362,7 +377,7 @@ export function buildInformationGraph(
             throw new Error(`Node ${nextNodeId} not found in mapData`);
         }
 
-        // ★ 2. 進行方向のベクトルを作る (入口側・出口側の向きは、辺の折れ線の区間から求める)
+        //2. 進行方向のベクトルを作る (入口側・出口側の向きは、辺の折れ線の区間から求める)
         vectorCache.push(getEdgeVectors(mapData, edge, reversed, current, nextNodeId));
 
         const dist = getEdgeDistance(mapData, edge, reversed, current, nextNodeId);
@@ -377,7 +392,7 @@ export function buildInformationGraph(
         current = nextNodeId;
     }
 
-    // ★ 3. キャッシュされたベクトルを使って、交差点の辺の部分で角度・左右判定を行う
+    //3. キャッシュされたベクトルを使って、交差点の辺の部分で角度・左右判定を行う
     for (let i = 0; i < stepDataList.length; i++) {
         const step = stepDataList[i];
 
