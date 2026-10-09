@@ -338,6 +338,9 @@ export async function doPathFind(
     const osmData = profile
         ? reqCtx.measure("trim", () => trimOSMDataByMode(rawOsmData, profile))
         : reqCtx.measure("trim", () => trimOSMDataByWayHighway(rawOsmData, wayHighway));
+    // グラフ変換の入力は osmData だけで、GSI タイルを増やすループの中では変わらない。
+    // そこでグラフは 1 回だけ作る (幅員の補完と狭い道の除去はこのグラフを直接書き換える)。
+    const osmGraph = reqCtx.measure("transform", () => transformOSMMapToOSMGraph(osmData));
     // 国土地理院の幅員は、探索範囲全体ではなく経路の周りのタイルだけ使う (長い経路でタイル数の上限を超えないようにするため)。
     // 1. 始点・終点の周りのタイルで探索する
     // 2. 見つかった経路の周りのタイルを足して、もう一度探索する (経路が変わったら、その周りのタイルも足して繰り返す)
@@ -360,7 +363,7 @@ export async function doPathFind(
                 budgetMs: Math.max(0, deadline - Date.now()),
             }),
         );
-        result = searchWithWidths(reqCtx, { begin, end, parameters, profile, osmData, rawOsmData, bbox }, gsiSegments);
+        result = searchWithWidths(reqCtx, { begin, end, parameters, profile, osmGraph, rawOsmData, bbox }, gsiSegments);
         if (!result.found) break;
 
         const coords = result.coords;
@@ -410,8 +413,8 @@ type SearchContext = {
     end: App.Coordinate;
     parameters: App.SearchParameters;
     profile: ModeProfile | undefined;
-    /** モードで絞り込んだ地図データ */
-    osmData: App.OSMData;
+    /** モードで絞り込んだ地図データから作ったグラフ (ループのパス間で共有する) */
+    osmGraph: App.OSMGraph;
     /** 絞り込む前の地図データ (急カーブの交差点の判定に使う) */
     rawOsmData: App.OSMData;
     bbox: ReturnType<typeof getBoundaryBox>;
@@ -419,15 +422,17 @@ type SearchContext = {
 
 /**
  * 国土地理院の幅員を補った地図で 1 回探索する
- * (幅員の補完・狭い道の除去でグラフを書き換えるため、毎回 osmData からグラフを作り直す)
+ *
+ * 幅員の補完と狭い道の除去は osmGraph を直接書き換える。
+ * osmGraph は呼び出し元で 1 回だけ作られ、パス間で共有される。
+ * 幅員の補完は単調 (幅が分かった区間は触らず、タイルが増えるほど埋まる区間も増える) なので、
+ * 共有しても結果は毎回 osmData から作り直した場合と同じになる。
  */
 function searchWithWidths(
     reqCtx: RequestContext,
-    { begin, end, parameters, profile, osmData, rawOsmData, bbox }: SearchContext,
+    { begin, end, parameters, profile, osmGraph, rawOsmData, bbox }: SearchContext,
     gsiSegments: GsiRoadSegment[],
 ): PathFindResult {
-    const osmGraph = reqCtx.measure("transform", () => transformOSMMapToOSMGraph(osmData));
-
     // 国土地理院の幅員区分で、幅が分からない車道の幅を補う (取得できなかったタイルは幅なしのまま続行する)
     reqCtx.measure("gsiWidths", () => applyGsiWidths(osmGraph, new GsiRoadIndex(gsiSegments)));
     // 大型トラックなど、幅の下限があるモードでは狭すぎる道を取り除く (幅が分からない道は残す)
