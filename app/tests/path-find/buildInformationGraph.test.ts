@@ -362,7 +362,13 @@ test("実パイプラインを通して、直進時に交差道路名(crossingRo
     // 3. 南 [0, -0.5] から 北 [0, 0.5] へ直進するルートで guidance を実行
     const { info } = guidance(ways, [0, -0.5], [0, 0.5], wayTags);
 
-    // 4. 検証: info の中に「クロス通り」という文字が抽出されているか確認
-    const stringifiedInfo = JSON.stringify(info);
-    expect(stringifiedInfo).toContain('クロス通り');
+    // 4. 検証: 交差道路名が正しい添字 (交差点の位置) に入っていること
+    //    部分一致では、誤った添字に入っても通ってしまうため添字まで見る
+    const named = info.crossingRoadNames
+        .map((name, index) => ({ name, index }))
+        .filter((entry) => entry.name !== null && entry.name !== "");
+    expect(named.length).toBe(1);
+    expect(named[0].name).toBe('クロス通り');
+    // 交差点 (turn) の位置に入る。segments の位置ではない
+    expect(info.type[named[0].index]).not.toBe("segments");
 });
