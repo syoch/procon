@@ -11,7 +11,7 @@ import { setTimeout as sleep } from "node:timers/promises";
 
 import { requireOSMData } from "../../src/lib/osm/index";
 import { cacheManager } from "../../src/lib/osm/fs-cache-manager";
-import { fetchOverpassData } from "../../src/lib/osm/osm-fetcher";
+import { overpassFetcher } from "../../src/lib/osm/osm-fetcher";
 import { divideBoundary, type Boundary } from "../../src/lib/osm/boundary";
 import { RequestContext } from "../../src/lib/tracing/requestContext";
 import { readFixtureStats } from "../lib/data";
@@ -66,7 +66,7 @@ async function missingCells(cells: Boundary[]): Promise<Boundary[]> {
 async function fetchFixture(cells: Boundary[]): Promise<void> {
   for (let attempt = 1; ; attempt++) {
     try {
-      await requireOSMData(new RequestContext(new Date(), "POST", "/bench"), BOUNDARY, cacheManager, fetchOverpassData);
+      await requireOSMData(new RequestContext(new Date(), "POST", "/bench"), BOUNDARY, cacheManager, overpassFetcher);
       return;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);

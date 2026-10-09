@@ -4,7 +4,7 @@ import { describe, expect, test, vi } from "vitest";
 let mapData: App.OSMData = { elements: [] };
 vi.mock("../../src/lib/osm", () => ({ requireOSMData: vi.fn(async () => structuredClone(mapData)) }));
 vi.mock("../../src/lib/osm/fs-cache-manager", () => ({ cacheManager: {} }));
-vi.mock("../../src/lib/osm/osm-fetcher", () => ({ fetchOverpassData: vi.fn() }));
+vi.mock("../../src/lib/osm/osm-fetcher", () => ({ overpassFetcher: vi.fn() }));
 // 国土地理院の幅員も同様にモックし、テストごとに用意した区間を返す
 let gsiSegments: GsiRoadSegment[] = [];
 // (タイルの選び方 (tilesAlongPath など) は本物を使い、取得だけを差し替える。requestedTiles に要求されたタイルを記録する)

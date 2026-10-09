@@ -120,15 +120,40 @@ HEAD ハッシュを取得できない場合は `no-git` として扱われる�
 `3000` は `procon-app` が使うため `3001` にしている。
 `localhost` にだけ束縛するので外からは見えない。
 
-`procon-app` に使わせるには `/etc/procon.env` の `OVERPASS_ENDPOINT` を次に変える。
-アプリが読むのは `OVERPASS_ENDPOINT` だけである（`osm-fetcher.ts`）。
+アプリはセル単位で自前と外部ミラーを振り分ける（`osm-fetcher.ts`）。
+
+| 環境変数 | 役割 |
+|---|---|
+| `OVERPASS_ENDPOINT` | 外部ミラー。**カバレッジの外のセルはここへ送る**。必須 |
+| `OSM_SELF_HOSTED_ENDPOINT` | 自前。**未設定なら `OVERPASS_ENDPOINT` だけを使う**（後方互換） |
+| `OSM_SELF_HOSTED_COVERAGE` | 自前が持つ範囲。`minLat,minLng,maxLat,maxLng` のカンマ区切り |
 
 ```
-OVERPASS_ENDPOINT=http://127.0.0.1:3001/api/interpreter
+OVERPASS_ENDPOINT=https://overpass.openstreetmap.fr/api/interpreter
+OSM_SELF_HOSTED_ENDPOINT=http://127.0.0.1:3001/api/interpreter
+OSM_SELF_HOSTED_COVERAGE=23.984375,122.875,45.625,154.015625
 ```
 
-**`OSM_SELF_HOSTED_ENDPOINT` / `OSM_FALLBACK_ENDPOINT` / `OSM_SELF_HOSTED_COVERAGE` は未実装である。**
-これは自前と外部ミラーをセル単位で振り分ける将来の設計であり、アプリはまだ読まない。
+**`OVERPASS_ENDPOINT` を自前へ書き換えない。** 書き換えると自前が唯一の取得元になり、
+DB の外のセルで空が返り、その空がキャッシュに書かれる。
+
+振り分けは**座標**で決める。
+**空の応答では判定しない。**
+
+| セル | 送り先 | キャッシュ |
+|---|---|---|
+| 完全にカバレッジ内 | 自前 | しない |
+| 完全に外 | 外部 | する |
+| カバレッジを跨ぐ | 外部（丸ごと） | する |
+
+**セルは分割しない。** 跨ぐセルは丸ごと外部へ回す。
+部分的な取得が起きないので、部分セルが保存される余地がない。
+
+自前が 5xx / タイムアウト / `remark` を返したときだけ、そのグループを外部へ再送する。
+カバレッジ内から返った空は「本当に道が無い」なので、そのまま返して再送しない。
+
+`OSM_SELF_HOSTED_COVERAGE` は**セル境界（1/64°）に揃える**のが望ましい。
+揃っていなくても跨ぐセルは外部へ回るので壊れない。
 
 ### 実測値（日本全体）
 

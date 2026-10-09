@@ -1,4 +1,5 @@
 import { simplifyBoundaries, type Boundary } from "./boundary";
+import { isSelfHostedBoundary } from "./endpoint-routing";
 import { isOSMData, trimOSMData } from "./osm-data";
 import type { OSMFetcher } from "./types";
 import { MAX_OSM_CELLS } from "./limits";
@@ -94,9 +95,16 @@ export async function refreshExpiredOSMCache(
         return result;
     }
 
+    // 自前 Overpass が担当するセル (完全にカバレッジ内) はキャッシュしない。
+    // 更新対象から外す。レガシーの内側セルはここで触らないので残る
+    const refreshable = expired.filter((cell) => isSelfHostedBoundary(cell.bound) === false);
+    if (refreshable.length === 0) {
+        return result;
+    }
+
     // 1 回のクエリのデータ量を抑える。残りは次回の実行に回す
-    const batch = expired.slice(0, MAX_OSM_CELLS);
-    result.deferred = expired.length - batch.length;
+    const batch = refreshable.slice(0, MAX_OSM_CELLS);
+    result.deferred = refreshable.length - batch.length;
 
     const queries = simplifyBoundaries(batch.map((cell) => cell.bound));
     result.regions = queries.length;
