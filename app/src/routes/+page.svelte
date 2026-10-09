@@ -213,6 +213,7 @@
 							},
 				),
 			});
+			if (!isLatest()) return true;
 
 			if (!res.ok) {
 				// 上限超過などは応答の message をそのまま表示する
