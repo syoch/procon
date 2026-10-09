@@ -2,6 +2,7 @@
 import { type OSMCacheManager, type OSMFetcher } from './types';
 import { mergeOSMData, SplitOSMData, trimOSMData } from './osm-data';
 import { divideBoundary, simplifyBoundaries, type Boundary } from './boundary';
+import { isSelfHostedBoundary } from './endpoint-routing';
 import type { RequestContext } from '$lib/tracing/requestContext';
 import { MAX_OSM_CELLS } from './limits';
 
@@ -161,10 +162,17 @@ export async function requireOSMData(
 
     const saveCacheMeasurement = reqCtx.begin("saveCache");
     const splittedGrids = SplitOSMData(fetchedData);
-    // セルを並列に書き込む。saveCache は tmp ファイル名が pid と連番で一意なので衝突しない
     const subDatas = missing.map((b) => splittedGrids[`${b.minLat},${b.minLng}`] ?? { elements: [] });
+    // 自前 Overpass が担当するセル (完全にカバレッジ内) はキャッシュしない。
+    // 跨ぐセルと外のセルは外部の結果なのでキャッシュする。
+    // 判定は provenance ではなく coverage で行う。完全に内で自前が失敗して
+    // 外部へ再送した場合もキャッシュしない
+    const toSave = missing
+      .map((b, i) => ({ b, data: subDatas[i] }))
+      .filter(({ b }) => isSelfHostedBoundary(b) === false);
+    // セルを並列に書き込む。saveCache は tmp ファイル名が pid と連番で一意なので衝突しない
     const saved = await Promise.allSettled(
-      missing.map((b, i) => saveCache(b, subDatas[i])),
+      toSave.map(({ b, data }) => saveCache(b, data)),
     );
     // 書込みが終わる前に throw すると、書きかけの tmp ファイルが残る
     const failed = saved.find((r): r is PromiseRejectedResult => r.status === "rejected");

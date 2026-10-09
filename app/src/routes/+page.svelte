@@ -186,63 +186,68 @@
 		const { lambda, mix_score_weight, view_score_weight, width_score_weight } = params;
 		const parameters = { lambda, mix_score_weight, view_score_weight, width_score_weight };
 		const mode = ctx.searchMode;
-		const res = await fetch("/api/path-find", {
-			method: "POST",
-			headers: { "Content-Type": "application/json" },
-			// モードがあるプリセットは mode で (通れる道はサーバー側のモード定義で決まる)、
-			// 無いプリセットは従来どおり wayHighway で探索する
-			body: JSON.stringify(
-				mode
-					? { begin, end, parameters, mode }
-					: {
-							begin,
-							end,
-							parameters,
-							wayHighway: [
-								"motorway",
-								"trunk",
-								"primary",
-								"secondary",
-								"tertiary",
-								"unclassified",
-								"residential",
-							],
-						},
-			),
-		});
-		// 待っている間に次の検索が始まっていたら、この応答は反映しない (失敗ではないので true)
-		if (!isLatest()) return true;
-
-		if (!res.ok) {
-			// 上限超過などは応答の message をそのまま表示する
-			const body: { message?: unknown } = await res.json().catch(() => ({}));
-			error = typeof body.message === "string" ? body.message : `/api/path-find API エラー: ${res.status}`;
-			return false;
-		}
-
+		// 検索中はスピナーを出す。応答でもエラーでも finally で必ず消す
+		isSearching = true;
 		try {
-			const resObj: PathFindResult = await res.json();
+			const res = await fetch("/api/path-find", {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				// モードがあるプリセットは mode で (通れる道はサーバー側のモード定義で決まる)、
+				// 無いプリセットは従来どおり wayHighway で探索する
+				body: JSON.stringify(
+					mode
+						? { begin, end, parameters, mode }
+						: {
+								begin,
+								end,
+								parameters,
+								wayHighway: [
+									"motorway",
+									"trunk",
+									"primary",
+									"secondary",
+									"tertiary",
+									"unclassified",
+									"residential",
+								],
+							},
+				),
+			});
+			// 待っている間に次の検索が始まっていたら、この応答は反映しない (失敗ではないので true)
 			if (!isLatest()) return true;
 
-			if (!resObj.found) {
-				// 到達できない理由 (目的地の近くに通れる道が無い など) をそのまま表示する
-				error = resObj.message ?? "経路が見つかりませんでした。";
+			if (!res.ok) {
+				// 上限超過などは応答の message をそのまま表示する
+				const body: { message?: unknown } = await res.json().catch(() => ({}));
+				error = typeof body.message === "string" ? body.message : `/api/path-find API エラー: ${res.status}`;
 				return false;
 			}
 
-			pathResult = resObj.coords;
-			totalDistance = resObj.totalDistance;
-			totalIntersections = resObj.totalIntersections;
-			totalTime = resObj.totalTime;
-			widthCoverage = resObj.widthCoverage;
-			sharpTurns = resObj.sharpTurns ?? [];
-			informationGraph = resObj.infoGraph;
-			ctx.state.appState = "menu-result";
-		} catch (e) {
-			error = "サーバー応答の読み取りエラーが発生しました";
-			return false;
+			try {
+				const resObj: PathFindResult = await res.json();
+
+				if (!resObj.found) {
+					// 到達できない理由 (目的地の近くに通れる道が無い など) をそのまま表示する
+					error = resObj.message ?? "経路が見つかりませんでした。";
+					return false;
+				}
+
+				pathResult = resObj.coords;
+				totalDistance = resObj.totalDistance;
+				totalIntersections = resObj.totalIntersections;
+				totalTime = resObj.totalTime;
+				widthCoverage = resObj.widthCoverage;
+				sharpTurns = resObj.sharpTurns ?? [];
+				informationGraph = resObj.infoGraph;
+				ctx.state.appState = "menu-result";
+			} catch (e) {
+				error = "サーバー応答の読み取りエラーが発生しました";
+				return false;
+			}
+			return true;
+		} finally {
+			isSearching = false;
 		}
-		return true;
 	}
 
 	// 起動演出。booted が立つまで appState は "boot" を返すので、
@@ -283,6 +288,8 @@
 	});
 
 	let showSliders = $state(false);
+	/** /api/path-find の応答を待っている間 true。スピナーを出す */
+	let isSearching = $state(false);
 	//スライダー初期値
 	let slider1 = $state(50);
     let slider2 = $state(50);
@@ -606,6 +613,10 @@
 			in:fly={{ delay: 500, y: -600, duration: 958, easing: backOut }}
 		/>
 	</button>
+{/if}
+
+{#if isSearching}
+	<SearchingOverlay />
 {/if}
 
 {#if error}
