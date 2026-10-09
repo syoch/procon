@@ -16,8 +16,10 @@ export function fold2DegreeEdges(graph) {
   // -------------------------------------------------------------
   // 【ステップ1】初期処理（ベースの生成）
   // -------------------------------------------------------------
+  // ノードは複製する。この関数はノードの edges を書き換えるため、入力を破壊しない。
+  // 交差点変換したグラフをパス間で共有して、幅員を入れ直すだけで使い回せるようにするため。
   let searchGraph = transformGraph(graph,
-    (node) => node,
+    (node) => ({ ...node, edges: [...node.edges] }),
     (edge) => {
       if (edge.type === "MapVCrossEdge") {
         return edge;

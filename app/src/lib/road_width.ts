@@ -125,16 +125,27 @@ function distancePointToSegment(px: number, py: number, ax: number, ay: number, 
 }
 
 /**
+ * 幅員を補う対象のグラフ。
+ * OSMGraph のほか、交差点変換後のグラフ (幅員に依存しない部分を 1 回だけ作って共有する) も渡せる。
+ * 交差点内部のエッジは highway を持たないため、補完の対象から外れる。
+ */
+export type WidthApplicableGraph = {
+  nodes: Record<string, { coordinate: App.Coordinate } | undefined>;
+  edges: Record<string, { begin: App.NodeId; end: App.NodeId; highway?: string; width?: number | null }>;
+};
+
+/**
  * OSM グラフの車道のうち、幅が分からない区間に国土地理院の幅員を補う (graph を直接書き換える)
  *
  * @returns 幅を補った区間の数
  */
-export function applyGsiWidths(graph: App.OSMGraph, index: GsiRoadIndex): number {
+export function applyGsiWidths(graph: WidthApplicableGraph, index: GsiRoadIndex): number {
   let applied = 0;
   for (const edge of Object.values(graph.edges)) {
     // OSM の width タグがある道はそちらを優先する
     if (isKnownWidth(edge.width)) continue;
-    if (!MATCH_HIGHWAYS.has(edge.highway)) continue;
+    // 交差点内部のエッジなど、highway を持たない区間は対象外
+    if (edge.highway === undefined || !MATCH_HIGHWAYS.has(edge.highway)) continue;
     const begin = graph.nodes[edge.begin]?.coordinate;
     const end = graph.nodes[edge.end]?.coordinate;
     if (!begin || !end) continue;
