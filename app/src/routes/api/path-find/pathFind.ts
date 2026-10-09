@@ -304,7 +304,7 @@ export function getCrossingRoadName(mapData: App.SearchGraph, edge: App.MapVCros
     let entryRoadName: string | undefined = undefined;
     if (entryRoadEdge) {
         const tagsIndex = entryRoadEdge.begin === edge.begin ? 0 : entryRoadEdge.segments.length - 1;
-        entryRoadName = entryRoadEdge.segments[tagsIndex].tags.name;
+        entryRoadName = entryRoadEdge.segments[tagsIndex].tags.name ?? null;
     }
     // ------------------------------------------------------------
 
@@ -328,7 +328,7 @@ export function getCrossingRoadName(mapData: App.SearchGraph, edge: App.MapVCros
             if (neighborEdge === undefined) return undefined;
 
             const tagsIndex = neighborEdge.begin === vCrossNodeId ? 0 : neighborEdge.segments.length - 1;
-            const tags = neighborEdge.segments[tagsIndex].tags;
+            const tags = neighborEdge.segments[tagsIndex].tags ?? null;
             return tags.name;
         })
         //undefined だけでなく、進入元と同じ道路名のものも除外する

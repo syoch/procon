@@ -345,3 +345,24 @@ test("出る道が引き返す向き (約 179°) で始まるなら、先で別�
 
 	expect(turnsOf(info)).toEqual(["uturn"]);
 });
+
+test("実パイプラインを通して、直進時に交差道路名(crossingRoadNames)が取得できること", () => {
+    // 1. [0, 0] で交差するシンプルな十字路の座標データ
+    const ways: Pt[][] = [
+        [[0, -1], [0, 0], [0, 1]], // [0] 南北の道（本通り）
+        [[-1, 0], [0, 0], [1, 0]]  // [1] 東西の道（クロス通り）
+    ];
+
+    // 2. 4つ目の引数として渡す wayTags（道路名）
+    const wayTags = [
+        { name: '本通り' },     // ways[0] の道に付与
+        { name: 'クロス通り' }   // ways[1] の道に付与
+    ];
+
+    // 3. 南 [0, -0.5] から 北 [0, 0.5] へ直進するルートで guidance を実行
+    const { info } = guidance(ways, [0, -0.5], [0, 0.5], wayTags);
+
+    // 4. 検証: info の中に「クロス通り」という文字が抽出されているか確認
+    const stringifiedInfo = JSON.stringify(info);
+    expect(stringifiedInfo).toContain('クロス通り');
+});

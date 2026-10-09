@@ -439,7 +439,7 @@
 					const next_name = informationGraph.tags[i + 1]?.name ?? "";
 					const crossingRoad = informationGraph.crossingRoadNames[i] ?? "";
 					const prev_crossingRoad = informationGraph.crossingRoadNames[i-2] ?? "";
-					const threshold=21;/*道路の幅が3.5m，最大片側6車線としたとき，中央分離帯のある道路同士の距離を仮定している*/
+					const threshold=21;
 					let isCrossMinusDone = false;
 
 					accumDist += distance;
