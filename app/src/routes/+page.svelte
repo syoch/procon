@@ -213,8 +213,6 @@
 							},
 				),
 			});
-			// 待っている間に次の検索が始まっていたら、この応答は反映しない (失敗ではないので true)
-			if (!isLatest()) return true;
 
 			if (!res.ok) {
 				// 上限超過などは応答の message をそのまま表示する
@@ -231,7 +229,9 @@
 					error = resObj.message ?? "経路が見つかりませんでした。";
 					return false;
 				}
-
+				
+				// 待っている間に次の検索が始まっていたら、この応答は反映しない (失敗ではないので true)
+				if (!isLatest()) return true;
 				pathResult = resObj.coords;
 				totalDistance = resObj.totalDistance;
 				totalIntersections = resObj.totalIntersections;
