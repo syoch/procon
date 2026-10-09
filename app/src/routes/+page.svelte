@@ -501,6 +501,8 @@
 				let isUTurn = 0;/*Uターン判定用*/
 				let prev_name = "";
 				let distFromPrevCross = 999;
+				/* 直前の交差点の横断道路名。配列の添字 (i-2) に依存しないよう変数で持つ */
+				let prevCrossingRoad = "";
 
 				for (let i = 0; i < informationGraph.type.length; i++) {
 					const type = informationGraph.type[i];
@@ -508,7 +510,7 @@
 					const name = informationGraph.tags[i - 1]?.name ?? "";
 					const next_name = informationGraph.tags[i + 1]?.name ?? "";
 					const crossingRoad = informationGraph.crossingRoadNames[i] ?? "";
-					const prev_crossingRoad = informationGraph.crossingRoadNames[i-2] ?? "";
+					const prev_crossingRoad = prevCrossingRoad;
 					const threshold=21;
 					let isCrossMinusDone = false;
 
@@ -556,6 +558,9 @@
 							accumCross--;
 						}
 					}
+
+					// 直前の交差点の横断道路名を覚える (次の交差点の判定で prev_crossingRoad として使う)
+					if (crossingRoad !== "") prevCrossingRoad = crossingRoad;
 
 
 					if (type === "straight") {
