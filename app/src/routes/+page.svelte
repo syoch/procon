@@ -417,9 +417,11 @@
 					<span style="position: absolute; white-space: nowrap; left: 32.8px; top: 360px;">
 						総走行距離: {((totalDistance ?? 0) / 1000).toFixed(2)} km
 					</span>
+					<!---
 					<span style="position: absolute; white-space: nowrap; left: 32.8px; top: 390px;">
 						総通過交差点数: {totalIntersections ?? 0} 個
 					</span>
+					-->
 					{#if totalTime != null}
 						<span style="position: absolute; white-space: nowrap; left: 32.8px; top: 420px;">
 							所要時間の目安: {formatDuration(totalTime)} <span class="summary-note">(信号・渋滞を除く)</span>
