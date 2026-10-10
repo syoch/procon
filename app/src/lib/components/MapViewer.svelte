@@ -53,7 +53,7 @@
 
   onMount(() => {
     map = L.map("map", { zoomControl: false })
-      .setView([37.4379, 138.8795], 18)
+      .setView([34.350683, 134.046939], 18)
       .on("click", function (e) {
         const lat = e.latlng.lat;
         const lng = e.latlng.lng;
