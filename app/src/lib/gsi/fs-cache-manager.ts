@@ -2,7 +2,7 @@ import { join } from "path";
 import { mkdir, readFile, writeFile } from "fs/promises";
 import { existsSync } from "fs";
 import { env } from "$env/dynamic/private";
-import type { GsiRoadSegment } from "$lib/road_width";
+import type { GsiRoadSegment } from "./parse";
 import { GSI_TILE_ZOOM, type GsiCacheManager, type GsiTile } from ".";
 
 /** OSM のキャッシュと同じディレクトリの下の gsi/ に保存する */

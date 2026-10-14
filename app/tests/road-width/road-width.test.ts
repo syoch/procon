@@ -1,6 +1,7 @@
 import { describe, expect, test, vi } from "vitest";
-import { applyGsiWidths, GsiRoadIndex, isKnownWidth, MATCH_HIGHWAYS, measureWidthCoverage, parseGsiRoadTile, removeNarrowEdges, widthClassToMeters } from "../../src/lib/road_width";
-import { coordinateToTile, requireGsiRoadSegments, requireGsiRoadSegmentsForTiles, tileKey, tilesAlongPath, tilesForBoundary } from "../../src/routes/api/gsi";
+import { applyGsiWidths, GsiRoadIndex, isKnownWidth, MATCH_HIGHWAYS, measureWidthCoverage, removeNarrowEdges } from "../../src/lib/road_width";
+import { parseGsiRoadTile, widthClassToMeters } from "../../src/lib/gsi/parse";
+import { coordinateToTile, requireGsiRoadSegments, requireGsiRoadSegmentsForTiles, tileKey, tilesAlongPath, tilesForBoundary } from "../../src/lib/gsi";
 
 const feature = (coords: number[][], props: Record<string, unknown>) => ({
   type: "Feature", geometry: { type: "LineString", coordinates: coords }, properties: props,

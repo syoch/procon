@@ -2,27 +2,28 @@ import { describe, expect, test, vi, it } from "vitest";
 
 // 地図データの取得 (キャッシュ・Overpass) はモックし、テストごとに用意した地図を返す
 let mapData: App.OSMData = { elements: [] };
-vi.mock("../../src/routes/api/osm", () => ({ requireOSMData: vi.fn(async () => structuredClone(mapData)) }));
-vi.mock("../../src/routes/api/osm/fs-cache-manager", () => ({ cacheManager: {} }));
-vi.mock("../../src/routes/api/osm/osm-fetcher", () => ({ fetchOverpassData: vi.fn() }));
+vi.mock("../../src/lib/osm", () => ({ requireOSMData: vi.fn(async () => structuredClone(mapData)) }));
+vi.mock("../../src/lib/osm/fs-cache-manager", () => ({ cacheManager: {} }));
+vi.mock("../../src/lib/osm/osm-fetcher", () => ({ overpassFetcher: vi.fn() }));
 // 国土地理院の幅員も同様にモックし、テストごとに用意した区間を返す
 let gsiSegments: GsiRoadSegment[] = [];
 // (タイルの選び方 (tilesAlongPath など) は本物を使い、取得だけを差し替える。requestedTiles に要求されたタイルを記録する)
 let requestedTiles: { x: number; y: number }[][] = [];
-vi.mock("../../src/routes/api/gsi", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("../../src/routes/api/gsi")>()),
+vi.mock("../../src/lib/gsi", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../src/lib/gsi")>()),
   requireGsiRoadSegmentsForTiles: vi.fn(async (tiles: { x: number; y: number }[]) => {
     requestedTiles.push(tiles);
     return gsiSegments;
   }),
 }));
-vi.mock("../../src/routes/api/gsi/fs-cache-manager", () => ({ gsiCacheManager: {} }));
-vi.mock("../../src/routes/api/gsi/gsi-fetcher", () => ({ fetchGsiRoadTile: vi.fn() }));
+vi.mock("../../src/lib/gsi/fs-cache-manager", () => ({ gsiCacheManager: {} }));
+vi.mock("../../src/lib/gsi/gsi-fetcher", () => ({ fetchGsiRoadTile: vi.fn() }));
 
-import { doPathFind, getBoundaryBox, MAX_SNAP_DISTANCE_M } from "../../src/routes/api/path-find/pathFind";
-import { tilesAlongPath, tilesForBoundary } from "../../src/routes/api/gsi";
+import { doPathFind, MAX_SNAP_DISTANCE_M } from "../../src/routes/api/path-find/pathFind";
+import { getBoundaryBox } from "../../src/lib/osm/path-boundary";
+import { tilesAlongPath, tilesForBoundary } from "../../src/lib/gsi";
 import { MODE_PROFILES } from "../../src/lib/mode_profiles";
-import type { GsiRoadSegment } from "../../src/lib/road_width";
+import type { GsiRoadSegment } from "../../src/lib/gsi/parse";
 import { RequestContext } from "$lib/tracing/requestContext";
 
 const CELL = 0.015625;
@@ -55,7 +56,7 @@ describe("doPathFind: 到達できない場合のエラー", () => {
 
   test("道のすぐ近くなら経路が出て、吸着のずれも返す", async () => {
     mapData = baseMap();
-    const res = await doPathFind(new RequestContext(), { lat: 0.0001, lng: 0.001 }, { lat: 0.0001, lng: 0.009 }, car, [], "car");
+    const res = await doPathFind(new RequestContext(new Date(), "POST", "/test"), { lat: 0.0001, lng: 0.001 }, { lat: 0.0001, lng: 0.009 }, car, [], "car");
     if (!res.found) throw new Error(res.message);
     expect(res.coords.length).toBeGreaterThan(0);
     expect(res.snapDistance.begin).toBeLessThan(20);
@@ -65,13 +66,13 @@ describe("doPathFind: 到達できない場合のエラー", () => {
   test("目的地が道路網から切り離された道の上なら、遠くの道に黙って吸着せず「到達できない」を返す", async () => {
     mapData = baseMap();
     // 終点は孤立した道 (lat 0.009) の上。最大の道路網 (lat 0) までは約 1km
-    const res = await doPathFind(new RequestContext(), { lat: 0, lng: 0.001 }, { lat: 0.009, lng: 0.005 }, car, [], "car");
+    const res = await doPathFind(new RequestContext(new Date(), "POST", "/test"), { lat: 0, lng: 0.001 }, { lat: 0.009, lng: 0.005 }, car, [], "car");
     expect(res).toMatchObject({ found: false, reason: "END_UNREACHABLE" });
   });
 
   test(`出発地の ${MAX_SNAP_DISTANCE_M}m 以内に通れる道が無ければ「到達できない」を返す`, async () => {
     mapData = baseMap();
-    const res = await doPathFind(new RequestContext(), { lat: -0.005, lng: 0.005 }, { lat: 0, lng: 0.009 }, car, [], "car");
+    const res = await doPathFind(new RequestContext(new Date(), "POST", "/test"), { lat: -0.005, lng: 0.005 }, { lat: 0, lng: 0.009 }, car, [], "car");
     expect(res).toMatchObject({ found: false, reason: "BEGIN_UNREACHABLE" });
   });
 
@@ -83,7 +84,7 @@ describe("doPathFind: 到達できない場合のエラー", () => {
       ],
     };
     // 一方通行 (西 → 東) を東から西へ向かう
-    const res = await doPathFind(new RequestContext(), { lat: 0, lng: 0.009 }, { lat: 0, lng: 0.001 }, car, [], "car");
+    const res = await doPathFind(new RequestContext(new Date(), "POST", "/test"), { lat: 0, lng: 0.009 }, { lat: 0, lng: 0.001 }, car, [], "car");
     expect(res).toMatchObject({ found: false, reason: "NO_ROUTE" });
   });
 
@@ -95,8 +96,8 @@ describe("doPathFind: 到達できない場合のエラー", () => {
       ],
     };
     const bicycle = MODE_PROFILES.bicycle.defaultParameters;
-    expect(await doPathFind(new RequestContext(), { lat: 0, lng: 0.009 }, { lat: 0, lng: 0.001 }, bicycle, [], "bicycle")).toMatchObject({ found: true });
-    expect(await doPathFind(new RequestContext(), { lat: 0, lng: 0.009 }, { lat: 0, lng: 0.001 }, car, [], "car")).toMatchObject({ found: false });
+    expect(await doPathFind(new RequestContext(new Date(), "POST", "/test"), { lat: 0, lng: 0.009 }, { lat: 0, lng: 0.001 }, bicycle, [], "bicycle")).toMatchObject({ found: true });
+    expect(await doPathFind(new RequestContext(new Date(), "POST", "/test"), { lat: 0, lng: 0.009 }, { lat: 0, lng: 0.001 }, car, [], "car")).toMatchObject({ found: false });
   });
 
   test("車は舗装された track の先にある目的地 (展望台など) にも行ける", async () => {
@@ -107,7 +108,7 @@ describe("doPathFind: 到達できない場合のエラー", () => {
         node(1, 0, 0), node(2, 0, 0.005), node(3, 0.004, 0.009),
       ],
     };
-    const res = await doPathFind(new RequestContext(), { lat: 0, lng: 0.001 }, { lat: 0.004, lng: 0.009 }, car, [], "car");
+    const res = await doPathFind(new RequestContext(new Date(), "POST", "/test"), { lat: 0, lng: 0.001 }, { lat: 0.004, lng: 0.009 }, car, [], "car");
     expect(res).toMatchObject({ found: true });
   });
 
@@ -125,16 +126,17 @@ describe("doPathFind: 到達できない場合のエラー", () => {
     const maxLat = (res: Awaited<ReturnType<typeof doPathFind>>) =>
       res.found ? Math.max(...res.coords.map((c) => c.lat)) : NaN;
     const begin = { lat: 0, lng: -0.0015 }, end = { lat: 0, lng: 0.0115 };
-    expect(maxLat(await doPathFind(new RequestContext(), begin, end, car, [], "car"))).toBeGreaterThan(0.0019);
-    expect(maxLat(await doPathFind(new RequestContext(), begin, end, MODE_PROFILES.walk.defaultParameters, [], "walk"))).toBeLessThan(0.0001);
+    expect(maxLat(await doPathFind(new RequestContext(new Date(), "POST", "/test"), begin, end, car, [], "car"))).toBeGreaterThan(0.0019);
+    expect(maxLat(await doPathFind(new RequestContext(new Date(), "POST", "/test"), begin, end, MODE_PROFILES.walk.defaultParameters, [], "walk"))).toBeLessThan(0.0001);
   });
 
   describe("国土地理院の幅員", () => {
     // 西 (0,0) と東 (0,0.01) を結ぶ 2 本の道: 直進の residential と、北に膨らむ tertiary
+    // 直進の residential と、北へ回り道する residential (どちらも幅が分からなければ中央線なし = 30 km/h で、速さは同じ)
     const twoRoads = (): App.OSMData => ({
       elements: [
         { type: "way", id: 1, nodes: [1, 2], tags: { highway: "residential" } },
-        { type: "way", id: 2, nodes: [1, 3, 2], tags: { highway: "tertiary" } },
+        { type: "way", id: 2, nodes: [1, 3, 2], tags: { highway: "residential" } },
         { type: "way", id: 3, nodes: [4, 1], tags: { highway: "tertiary" } },
         { type: "way", id: 4, nodes: [2, 5], tags: { highway: "tertiary" } },
         node(1, 0, 0), node(2, 0, 0.01), node(3, 0.003, 0.005), node(4, 0, -0.002), node(5, 0, 0.012),
@@ -149,25 +151,25 @@ describe("doPathFind: 到達できない場合のエラー", () => {
       mapData = twoRoads();
       // 直進の residential は 3m-5.5m (代表値 4m)
       gsiSegments = [{ begin: { lat: 0, lng: 0 }, end: { lat: 0, lng: 0.01 }, width: 4 }];
-      expect(maxLat(await doPathFind(new RequestContext(), begin, end, truck, [], "truck"))).toBeGreaterThan(0.0029);
-      expect(maxLat(await doPathFind(new RequestContext(), begin, end, car, [], "car"))).toBeLessThan(0.0001);
+      expect(maxLat(await doPathFind(new RequestContext(new Date(), "POST", "/test"), begin, end, truck, [], "truck"))).toBeGreaterThan(0.0029);
+      expect(maxLat(await doPathFind(new RequestContext(new Date(), "POST", "/test"), begin, end, car, [], "car"))).toBeLessThan(0.0001);
     });
 
     test("幅が十分なら大型トラックも通る", async () => {
       mapData = twoRoads();
       gsiSegments = [{ begin: { lat: 0, lng: 0 }, end: { lat: 0, lng: 0.01 }, width: 8 }];
-      expect(maxLat(await doPathFind(new RequestContext(), begin, end, truck, [], "truck"))).toBeLessThan(0.0001);
+      expect(maxLat(await doPathFind(new RequestContext(new Date(), "POST", "/test"), begin, end, truck, [], "truck"))).toBeLessThan(0.0001);
     });
 
     test("幅員の網羅率を応答に含める (国土地理院のデータが無ければ 0)", async () => {
       mapData = twoRoads();
       gsiSegments = [{ begin: { lat: 0, lng: 0 }, end: { lat: 0, lng: 0.01 }, width: 8 }];
-      const withGsi = await doPathFind(new RequestContext(), begin, end, truck, [], "truck");
+      const withGsi = await doPathFind(new RequestContext(new Date(), "POST", "/test"), begin, end, truck, [], "truck");
       expect(withGsi.found && withGsi.widthCoverage.known).toBe(1);
       expect(withGsi.found && withGsi.widthCoverage.ratio).toBeGreaterThan(0);
 
       gsiSegments = [];
-      const withoutGsi = await doPathFind(new RequestContext(), begin, end, truck, [], "truck");
+      const withoutGsi = await doPathFind(new RequestContext(new Date(), "POST", "/test"), begin, end, truck, [], "truck");
       expect(withoutGsi.found && withoutGsi.widthCoverage.ratio).toBe(0);
     });
 
@@ -183,7 +185,7 @@ describe("doPathFind: 到達できない場合のエラー", () => {
         ],
       };
       gsiSegments = [{ begin: { lat: 0, lng: 0 }, end: { lat: 0, lng: 0.01 }, width: 8 }];
-      expect(maxLat(await doPathFind(new RequestContext(), begin, end, car, [], "car"))).toBeLessThan(0.0001);
+      expect(maxLat(await doPathFind(new RequestContext(new Date(), "POST", "/test"), begin, end, car, [], "car"))).toBeLessThan(0.0001);
       gsiSegments = [];
     });
   });
@@ -203,7 +205,7 @@ describe("doPathFind: 国土地理院のタイルは経路の周りだけ使う"
     mapData = longRoad();
     gsiSegments = [];
     requestedTiles = [];
-    const res = await doPathFind(new RequestContext(), begin, end, car, [], "car");
+    const res = await doPathFind(new RequestContext(new Date(), "POST", "/test"), begin, end, car, [], "car");
     expect(res.found).toBe(true);
     expect(requestedTiles).toHaveLength(2);
 
@@ -220,12 +222,43 @@ describe("doPathFind: 国土地理院のタイルは経路の周りだけ使う"
     mapData = longRoad();
     gsiSegments = [];
     requestedTiles = [];
-    await doPathFind(new RequestContext(), begin, end, car, [], "car");
+    await doPathFind(new RequestContext(new Date(), "POST", "/test"), begin, end, car, [], "car");
     const all = tilesForBoundary(getBoundaryBox(begin, end));
     expect(requestedTiles[requestedTiles.length - 1].length).toBeLessThan(all.length);
   });
 });
 
+<<<<<<< HEAD
+=======
+describe("doPathFind: 所要時間", () => {
+  // 東西にまっすぐ約 1.1km の住宅地の道 (幅不明 = 中央線なし = 30 km/h)
+  const road = (): App.OSMData => ({
+    elements: [
+      { type: "way", id: 1, nodes: [1, 2], tags: { highway: "residential" } },
+      node(1, 0, 0), node(2, 0, 0.01),
+    ],
+  });
+  const begin = { lat: 0, lng: 0 }, end = { lat: 0, lng: 0.01 };
+
+  test("mode 指定時は想定速度から所要時間 [秒] を返す", async () => {
+    mapData = road();
+    gsiSegments = [];
+    const res = await doPathFind(new RequestContext(new Date(), "POST", "/test"), begin, end, car, [], "car");
+    expect(res.found).toBe(true);
+    if (!res.found) return;
+    // 約 1112m を 30 km/h で約 133 秒
+    expect(res.totalTime).toBeGreaterThan(125);
+    expect(res.totalTime).toBeLessThan(140);
+  });
+  test("mode なし (従来の形式) は null", async () => {
+    mapData = road();
+    gsiSegments = [];
+    const res = await doPathFind(new RequestContext(new Date(), "POST", "/test"), begin, end, car, ["residential"]);
+    expect(res.found && res.totalTime).toBeNull();
+  });
+});
+
+>>>>>>> 1bc1565dd005c119a8746fcb46734f5077eb9330
 import {getCrossingRoadName} from "../../src/routes/api/path-find/pathFind";
 describe('getCrossingRoadName', () => {
     
@@ -304,4 +337,8 @@ describe('getCrossingRoadName', () => {
         // 修正前はここで先頭の「本通り」を拾ってしまっていたが、修正後は「クロス通り」になる
         expect(result).toBe('クロス通り');
     });
+<<<<<<< HEAD
 });
+=======
+});
+>>>>>>> 1bc1565dd005c119a8746fcb46734f5077eb9330

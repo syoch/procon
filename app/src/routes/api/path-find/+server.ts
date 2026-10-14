@@ -3,7 +3,9 @@ import type { RequestHandler } from './$types';
 
 import { z } from 'zod';
 import { doPathFind } from './pathFind';
-import { MODE_IDS, MODE_PROFILES, type ModeId } from '$lib/mode_profiles';
+import { MODE_IDS, MODE_PROFILES } from '$lib/mode_profiles';
+import type { ModeId } from '$lib/mode_rules';
+import { OSMCellLimitError } from '$lib/osm';
 import { RequestContext } from '$lib/tracing/requestContext';
 
 
@@ -16,7 +18,8 @@ const paramsSchema = z.object({
     mix_score_weight: z.number(),
     view_score_weight: z.number(),
     width_score_weight: z.number(),
-    lambda: z.number(),
+    // 安全をどれだけ重視するか (0 で最短。負の値は「危ない道ほど得」になるので許さない)
+    lambda: z.number().min(0),
 });
 // 通れる道の指定は mode と wayHighway のどちらか一方 (両方指定するとどちらが優先か曖昧なので 400 にする)。
 // - mode を指定する形式: 通れる道はモードのルールで決まる。parameters は省略でき、省略時はモードの既定値
@@ -36,9 +39,25 @@ const legacyRequestSchema = z.strictObject({
 });
 const requestSchema = z.union([modeRequestSchema, legacyRequestSchema]);
 
+// トレースに残すフィールドを明示する。スキーマに機微な値が増えても保存しない。
+function describeRequest(req: z.infer<typeof requestSchema>): string {
+    const fields = [
+        `begin=${JSON.stringify(req.begin)}`,
+        `end=${JSON.stringify(req.end)}`,
+        `parameters=${JSON.stringify(req.parameters)}`,
+    ];
+    if ("mode" in req) {
+        fields.push(`mode=${req.mode}`);
+    }
+    if ("wayHighway" in req) {
+        fields.push(`wayHighway=${JSON.stringify(req.wayHighway)}`);
+    }
+    return fields.join(" ");
+}
+
 export const POST: RequestHandler = async ({ request }) => {
     const requestedAt = new Date();
-    const perfCtx = new RequestContext();
+    const perfCtx = new RequestContext(requestedAt, "POST", request.url);
     try {
         const body = await request.json();
         const query = requestSchema.safeParse(body);
@@ -46,6 +65,7 @@ export const POST: RequestHandler = async ({ request }) => {
             return json({ error: 'Invalid request body', details: query.error.issues }, { status: 400 });
         }
         const req = query.data;
+        perfCtx.log(`request: ${describeRequest(req)}`);
 
         const res = "mode" in req
             ? await doPathFind(perfCtx, req.begin, req.end, req.parameters ?? MODE_PROFILES[req.mode].defaultParameters, [], req.mode)
@@ -53,7 +73,18 @@ export const POST: RequestHandler = async ({ request }) => {
 
 
         return json(res)
+    } catch (error) {
+        perfCtx.logError(error);
+        // 範囲が広すぎるのは利用者の入力で直せる。500 ではなく 422 で理由を返す
+        if (error instanceof OSMCellLimitError) {
+            return json({
+                found: false,
+                reason: "NO_ROUTE",
+                message: `経路が長すぎます。始点と終点を近づけてください (取得対象セル ${error.cells} 枚 > 上限 ${error.limit} 枚)`,
+            }, { status: 422 });
+        }
+        throw error;
     } finally {
-        perfCtx.endMeasurement(requestedAt, "POST", request.url);
+        perfCtx.endMeasurement();
     }
 };

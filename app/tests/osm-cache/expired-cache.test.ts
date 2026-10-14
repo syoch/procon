@@ -1,12 +1,19 @@
 import { expect, test, vi } from "vitest";
-import type { Boundary } from "../../src/routes/api/osm/boundary";
-import { divideBoundary, simplifyBoundaries } from "../../src/routes/api/osm/boundary";
+import type { Boundary } from "../../src/lib/osm/boundary";
+import { divideBoundary, simplifyBoundaries } from "../../src/lib/osm/boundary";
+
+const { env } = vi.hoisted(() => ({
+  env: {} as Record<string, string | undefined>,
+}));
+
+vi.mock("$env/dynamic/private", () => ({ env }));
 import {
   DEFAULT_TTL_DAYS,
   refreshExpiredOSMCache,
   ttlMs,
   type CachedCell,
-} from "../../src/routes/api/osm/expired-cache";
+} from "../../src/lib/osm/expired-cache";
+import { MAX_OSM_CELLS } from "../../src/lib/osm/limits";
 
 const D = 1 / 64;
 const NOW = 1_800_000_000_000;
@@ -237,6 +244,7 @@ test("キャッシュが空でも例外にならない", async () => {
     refreshed: 0,
     failed: 0,
     regions: 0,
+    deferred: 0,
   });
   expect(fetchOSM).not.toHaveBeenCalled();
 });
@@ -400,3 +408,70 @@ test("取得応答の要素が null 混在でも走査全体が落ちない", as
   warn.mockRestore();
 });
 
+
+test("1 回に処理する失効セルは上限までで、残りは次回に回す (#117)", async () => {
+  const all = Array.from({ length: MAX_OSM_CELLS + 1 }, (_, i) => cell(0, i));
+  const fetchOSM = vi.fn().mockResolvedValue(osmDataFor(all));
+  const saveCache = vi.fn().mockResolvedValue(undefined);
+
+  const result = await refreshExpiredOSMCache(
+    async () => all.map((b) => cached(b, 40 * DAY)),
+    fetchOSM,
+    saveCache,
+    { now: NOW, ttlMs: 30 * DAY },
+  );
+
+  expect(result.expired).toBe(MAX_OSM_CELLS + 1);
+  expect(result.deferred).toBe(1);
+  expect(result.refreshed).toBe(MAX_OSM_CELLS);
+  expect(saveCache).toHaveBeenCalledTimes(MAX_OSM_CELLS);
+  expect(fetchOSM).toHaveBeenCalledTimes(1);
+});
+
+
+test("完全にカバレッジ内の失効セルは saveCache しない (自前の結果はキャッシュしない方針)", async () => {
+  env.OSM_SELF_HOSTED_ENDPOINT = "http://127.0.0.1:3001/api/interpreter";
+  // cell(0,0) を完全に含む
+  env.OSM_SELF_HOSTED_COVERAGE = "0,0,50,180";
+
+  const c = cell(0, 0);
+  const fetchOSM = vi.fn().mockResolvedValue(osmDataFor([c]));
+  const saveCache = vi.fn().mockResolvedValue(undefined);
+
+  const result = await refreshExpiredOSMCache(
+    async () => [cached(c, 40 * DAY)],
+    fetchOSM,
+    saveCache,
+    { now: NOW, ttlMs: 30 * DAY },
+  );
+
+  expect(result.expired).toBe(1);
+  expect(result.refreshed).toBe(0);
+  expect(saveCache).not.toHaveBeenCalled();
+
+  delete env.OSM_SELF_HOSTED_ENDPOINT;
+  delete env.OSM_SELF_HOSTED_COVERAGE;
+});
+
+test("カバレッジ外の失効セルは saveCache する", async () => {
+  env.OSM_SELF_HOSTED_ENDPOINT = "http://127.0.0.1:3001/api/interpreter";
+  // cell(0,0) を含まない
+  env.OSM_SELF_HOSTED_COVERAGE = "0,0,10,10";
+
+  const c = cell(0, 0);
+  const fetchOSM = vi.fn().mockResolvedValue(osmDataFor([c]));
+  const saveCache = vi.fn().mockResolvedValue(undefined);
+
+  const result = await refreshExpiredOSMCache(
+    async () => [cached(c, 40 * DAY)],
+    fetchOSM,
+    saveCache,
+    { now: NOW, ttlMs: 30 * DAY },
+  );
+
+  expect(result.refreshed).toBe(1);
+  expect(saveCache).toHaveBeenCalledTimes(1);
+
+  delete env.OSM_SELF_HOSTED_ENDPOINT;
+  delete env.OSM_SELF_HOSTED_COVERAGE;
+});

@@ -43,6 +43,11 @@ export function fold2DegreeEdges(graph) {
             highway: edge.highway,
             width: edge.width,
             sidewalk: edge.sidewalk,
+<<<<<<< HEAD
+=======
+            maxspeed: edge.maxspeed ?? null,
+            lanes: edge.lanes ?? null,
+>>>>>>> 1bc1565dd005c119a8746fcb46734f5077eb9330
             tags: edge.tags,
           },
         ],

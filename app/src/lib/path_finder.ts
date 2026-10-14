@@ -3,18 +3,20 @@ import { canTraverseBackward, canTraverseForward } from "./utils/direction";
 import { distanceOf } from "./utils/haversine";
 import { isKnownWidth } from "./road_width";
 import type { ScoringProfile } from "./mode_scoring";
+import { travelTimeFactor, type SpeedProfile } from "./travel_speed";
 import { PriorityQueue } from "./utils/priorityQueue";
 
 /**
  * エッジの長さ [m]。highwayCostFactor を指定した場合は、幅が分からない区間に highway 種別の倍率を掛けた「実質的な長さ」を返す
  * (幅が分かる区間は、幅員スコアで評価できるので倍率を掛けない)
+ * speed に車系モードの想定速度を指定した場合は、所要時間に比例する「時間換算の距離」にする (travel_speed.ts の travelTimeFactor)
  */
-function calculateEdgeLength(edge: App.ComputedEdge, highwayCostFactor?: Readonly<Record<string, number>>) {
+function calculateEdgeLength(edge: App.ComputedEdge, highwayCostFactor?: Readonly<Record<string, number>>, speed?: SpeedProfile) {
   return edge.segments
     .map(x => {
       const widthUnknown = !isKnownWidth(x.width);
       const factor = widthUnknown ? (highwayCostFactor?.[x.highway] ?? 1) : 1;
-      return distanceOf(x.begin_coordinate, x.end_coordinate) * factor;
+      return distanceOf(x.begin_coordinate, x.end_coordinate) * factor * travelTimeFactor(speed, x);
     })
     .reduce((prev, acc) => acc + prev, 0);
 }
@@ -23,7 +25,7 @@ function calculateEdgeCost(edge: App.ComputedEdge | App.MapVCrossEdge, params: A
   let view_score = edge.type === "ComputedEdge" ? edge.view_score : edge.type === "MapVCrossEdge" ? edge.view_score : 0;
   let width_score = edge.type === "ComputedEdge" ? edge.width_score : edge.type === "MapVCrossEdge" ? 0 : 0;
   let mix_score = edge.type === "ComputedEdge" ? edge.mix_score : edge.type === "MapVCrossEdge" ? 0 : 0;
-  let distance = edge.type === "ComputedEdge" ? calculateEdgeLength(edge, options.highwayCostFactor) : 10;
+  let distance = edge.type === "ComputedEdge" ? calculateEdgeLength(edge, options.highwayCostFactor, options.speed) : 10;
 
   const lambda = params.lambda;
   const a1 = params.view_score_weight;
@@ -54,6 +56,11 @@ export type PathFindOptions = {
   highwayCostFactor?: Readonly<Record<string, number>>;
   /** 移動モードごとのスコアの定義 (mode_scoring.ts)。省略時は全モード共通の計算 */
   scoring?: ScoringProfile;
+  /**
+   * 想定速度 (travel_speed.ts)。車系モードを指定すると、距離の代わりに所要時間でコストを測る。
+   * 省略時と速度一定のモード (徒歩・自転車) は距離のまま
+   */
+  speed?: SpeedProfile;
 };
 
 function traversable(edge: App.SearchGraph["edges"][string], node: App.NodeId, options: PathFindOptions = {}) {

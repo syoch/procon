@@ -1,19 +1,20 @@
 import { CrossConvert } from "../../src/lib/cross_transform";
 import { fold2DegreeEdges } from "../../src/lib/fold2degree";
 import { largestComponentEdges } from "../../src/lib/utils/graph";
-import { transformOSMMapToOSMGraph } from "../../src/lib/map_loader/osm";
+import { transformOSMMapToOSMGraph } from "../../src/lib/osm/graph";
 import { transientSplit } from "../../src/lib/transient-split";
 import { pathFind } from "../../src/lib/path_finder";
 import { collectRoadJunctions, detectSharpTurnsOnPath } from "../../src/lib/sharp_turn";
 import { measureSegmentsWidthCoverage } from "../../src/lib/road_width";
-import { MODE_PROFILES, type ModeId } from "../../src/lib/mode_profiles";
+import { MODE_PROFILES } from "../../src/lib/mode_profiles";
+import type { ModeId } from "../../src/lib/mode_rules";
 import {
   SplitOSMData,
   mergeOSMData,
   trimOSMData,
   trimOSMDataByMode,
-} from "../../src/routes/api/osm/osm-data";
-import { divideBoundary, simplifyBoundaries } from "../../src/routes/api/osm/boundary";
+} from "../../src/lib/osm/osm-data";
+import { divideBoundary, simplifyBoundaries } from "../../src/lib/osm/boundary";
 import { clone, fixtureBoundary, loadFixture, pickEndpointsOnMainComponent } from "../lib/data";
 import { StageRecorder } from "../lib/harness";
 import type { Scenario } from "./types";
@@ -100,6 +101,7 @@ export function pipelineScenario(mode: ModeId): Scenario {
           ignoreOneway: profile.ignoreOneway,
           highwayCostFactor: profile.highwayCostFactor,
           scoring: profile.scoring,
+          speed: profile.speed,
         });
         recorder.mark("pathFind");
 

@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
-import { isAccessible, MODE_PROFILES, parseDimension, resolveModeOneway } from "../../src/lib/mode_profiles";
-import { trimOSMDataByMode } from "../../src/routes/api/osm/osm-data";
+import { MODE_PROFILES } from "../../src/lib/mode_profiles";
+import { isAccessible, parseDimension, resolveModeOneway } from "../../src/lib/mode_rules";
+import { trimOSMDataByMode } from "../../src/lib/osm/osm-data";
 import { pathFind } from "../../src/lib/path_finder";
 
 const { walk, bicycle, car, motorcycle, truck } = MODE_PROFILES;

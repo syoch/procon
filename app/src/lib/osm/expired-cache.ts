@@ -1,6 +1,8 @@
 import { simplifyBoundaries, type Boundary } from "./boundary";
+import { isSelfHostedBoundary } from "./endpoint-routing";
 import { isOSMData, trimOSMData } from "./osm-data";
 import type { OSMFetcher } from "./types";
+import { MAX_OSM_CELLS } from "./limits";
 
 export type CachedCell = {
     bound: Boundary;
@@ -45,6 +47,8 @@ export type RefreshResult = {
     failed: number;
     /** 1 クエリに含まれた bbox 句の数。HTTP リクエストは常に 1 回 */
     regions: number;
+    /** セル数の上限により次回以降に回した失効セル */
+    deferred: number;
 };
 
 function isCoveredBy(cell: Boundary, query: Boundary): boolean {
@@ -60,6 +64,7 @@ function isCoveredBy(cell: Boundary, query: Boundary): boolean {
  * 失効セルを `simplifyBoundaries` でまとめてから 1 回だけ問い合わせる。
  * `simplifyBoundaries` はリクエスト数ではなく取得データ量の重複を減らすので、
  * 散在セルでは bbox 句（`regions`）が増えても HTTP リクエストは 1 回のまま。
+ * 1 回で処理するセルは `MAX_OSM_CELLS` 枚までにし、残りは次回に回す。
  *
  */
 export async function refreshExpiredOSMCache(
@@ -78,6 +83,7 @@ export async function refreshExpiredOSMCache(
         refreshed: 0,
         failed: 0,
         regions: 0,
+        deferred: 0,
     };
 
     // 古い順に処理して、1 回の実行で得られる成果が最大になる
@@ -89,7 +95,18 @@ export async function refreshExpiredOSMCache(
         return result;
     }
 
-    const queries = simplifyBoundaries(expired.map((cell) => cell.bound));
+    // 自前 Overpass が担当するセル (完全にカバレッジ内) はキャッシュしない。
+    // 更新対象から外す。レガシーの内側セルはここで触らないので残る
+    const refreshable = expired.filter((cell) => isSelfHostedBoundary(cell.bound) === false);
+    if (refreshable.length === 0) {
+        return result;
+    }
+
+    // 1 回のクエリのデータ量を抑える。残りは次回の実行に回す
+    const batch = refreshable.slice(0, MAX_OSM_CELLS);
+    result.deferred = refreshable.length - batch.length;
+
+    const queries = simplifyBoundaries(batch.map((cell) => cell.bound));
     result.regions = queries.length;
 
     let fetched: App.OSMData;
@@ -97,7 +114,7 @@ export async function refreshExpiredOSMCache(
         fetched = await fetchOSM(queries);
     } catch (e) {
         console.warn(`OSM キャッシュの更新に失敗しました (${queries.length} 領域)`, e);
-        result.failed = expired.length;
+        result.failed = batch.length;
         return result;
     }
 
@@ -105,11 +122,11 @@ export async function refreshExpiredOSMCache(
     // 走査全体が落ちる。まとめて検証しておく
     if (!isOSMData(fetched)) {
         console.warn(`OSM キャッシュの更新に失敗しました: 応答の形式が想定と異なります (${queries.length} 領域)`);
-        result.failed = expired.length;
+        result.failed = batch.length;
         return result;
     }
 
-    for (const cell of expired) {
+    for (const cell of batch) {
         // simplifyBoundaries の出力は必ず入力セルを内包するので、ここに外れるのは
         // キャッシュディレクトリに手作りのファイルが混ざった場合だけ
         if (!queries.some((query) => isCoveredBy(cell.bound, query))) {

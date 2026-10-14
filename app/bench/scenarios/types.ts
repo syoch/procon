@@ -1,4 +1,4 @@
-import type { ModeId } from "../../src/lib/mode_profiles";
+import type { ModeId } from "../../src/lib/mode_rules";
 import type { Samples } from "../lib/harness";
 
 export type ScenarioContext = {

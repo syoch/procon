@@ -104,8 +104,8 @@ test("副作用のある操作は POST のみ export する", () => {
 
 
 test("更新に失敗したセルがあれば非 2xx を返す (systemd 上では失敗として見える)", async () => {
-  vi.doMock("../../src/routes/api/osm/osm-fetcher", () => ({
-    fetchOverpassData: vi.fn().mockRejectedValue(new Error("Overpass API エラー: 429")),
+  vi.doMock("../../src/lib/osm/osm-fetcher", () => ({
+    overpassFetcher: vi.fn().mockRejectedValue(new Error("Overpass API エラー: 429")),
   }));
   vi.resetModules();
   const m = await import("../../src/routes/api/cache-refresh/+server");
@@ -135,8 +135,8 @@ test("更新に失敗したセルがあれば非 2xx を返す (systemd 上で�
 });
 
 test("更新対象が無ければ 2xx", async () => {
-  vi.doMock("../../src/routes/api/osm/osm-fetcher", () => ({
-    fetchOverpassData: vi.fn().mockResolvedValue({ elements: [] }),
+  vi.doMock("../../src/lib/osm/osm-fetcher", () => ({
+    overpassFetcher: vi.fn().mockResolvedValue({ elements: [] }),
   }));
   vi.resetModules();
   const m = await import("../../src/routes/api/cache-refresh/+server");

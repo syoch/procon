@@ -63,6 +63,13 @@ declare global {
 			width: number | null;
 			/** OSM 上の歩道情報 */
 			sidewalk: string | null;
+<<<<<<< HEAD
+=======
+			/** OSM の maxspeed タグ (道路標識による最高速度) [km/h]。無ければ null */
+			maxspeed?: number | null;
+			/** OSM の lanes タグ (車線数)。無ければ null */
+			lanes?: number | null;
+>>>>>>> 1bc1565dd005c119a8746fcb46734f5077eb9330
 			/** OSM 上の tags */
 			tags: Record<string, string>;
 			/** 通行可能な向き */
@@ -118,6 +125,13 @@ declare global {
 			width: number | null,
 			/** OSM 上の歩道情報 */
 			sidewalk: string | null,
+<<<<<<< HEAD
+=======
+			/** OSM の maxspeed タグ (道路標識による最高速度) [km/h]。無ければ null */
+			maxspeed?: number | null,
+			/** OSM の lanes タグ (車線数)。無ければ null */
+			lanes?: number | null,
+>>>>>>> 1bc1565dd005c119a8746fcb46734f5077eb9330
 			/** OSM 上の tags */
 			tags: Record<string, string>
 		}

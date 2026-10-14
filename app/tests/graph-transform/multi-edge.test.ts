@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { transformOSMMapToOSMGraph } from "../../src/lib/map_loader/osm";
+import { transformOSMMapToOSMGraph } from "../../src/lib/osm/graph";
 import { CrossConvert } from "../../src/lib/cross_transform";
 import { fold2DegreeEdges } from "../../src/lib/fold2degree";
 

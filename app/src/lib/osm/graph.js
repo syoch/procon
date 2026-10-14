@@ -1,22 +1,10 @@
 /**
- * @file osm.js
- * @brief OSM(Overpass API)からデータを読み込み、OSM Graph を構築する
+ * @file graph.js
+ * @brief Overpass API の返答を OSM Graph へ変換する
  */
 
 import { canTraverseBackward, canTraverseForward, flipDirection } from "../utils/direction";
-
-/**
- * @brief OSM データを読み込み、OSM Graph を作成する
- * @param {number} minLat - 最小緯度
- * @param {number} minLon - 最小経度
- * @param {number} maxLat - 最大緯度
- * @param {number} maxLon - 最大経度
- * @returns {Promise<App.OSMGraph>} OSM Graph
- */
-export async function loadOSMMap(minLat, minLon, maxLat, maxLon) {
-  const data = await fetchOverpassData(minLat, minLon, maxLat, maxLon);
-  return transformOSMMapToOSMGraph(data);
-}
+import { parseLanes, parseMaxspeed } from "../travel_speed";
 
 /**
  * @brief OSM の返答情報を OSMGraph 型へ変換する
@@ -25,42 +13,6 @@ export async function loadOSMMap(minLat, minLon, maxLat, maxLon) {
 export function transformOSMMapToOSMGraph(osmMap) {
   const { rawNodes, rawWays } = splitElements(osmMap);
   return buildGraphFromWays(rawNodes, rawWays);
-}
-
-/**
- * @brief Overpass API へ bbox 内の highway 付き way を問い合わせる
- * @param {number} minLat
- * @param {number} minLon
- * @param {number} maxLat
- * @param {number} maxLon
- * @returns {Promise<App.OSMData>}
- */
-async function fetchOverpassData(minLat, minLon, maxLat, maxLon) {
-  const res = await fetch("/api/osm", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      minLat,
-      minLng: minLon,
-      maxLat,
-      maxLng: maxLon,
-      wayHighway: [
-        "motorway",
-        "trunk",
-        "primary",
-        "secondary",
-        "tertiary",
-        "unclassified",
-        "residential",
-      ]
-    }),
-  });
-
-  if (!res.ok) {
-    throw new Error(`/api/osm API エラー: ${res.status}`);
-  }
-
-  return res.json();
 }
 
 /**
@@ -142,6 +94,18 @@ function mergeWidth(a, b) {
 }
 
 /**
+ * @brief 多重辺の数値のタグ (maxspeed / lanes) を合成する (分かっている方の大きい値を採る)
+ * @param {number | null | undefined} a
+ * @param {number | null | undefined} b
+ * @returns {number | null}
+ */
+function mergeMax(a, b) {
+  if (a === null || a === undefined) return b ?? null;
+  if (b === null || b === undefined) return a;
+  return Math.max(a, b);
+}
+
+/**
  * @brief 多重辺の歩道情報を合成する (歩道がある方を優先し、左右が揃えば両側とする)
  * @param {string | null} a
  * @param {string | null} b
@@ -205,6 +169,9 @@ function buildGraphFromWays(rawNodes, rawWays) {
     // parseFloat は不正な値(例: "約5m")で NaN を返すことがあるので、有限数のときだけ採用する
     const parsedWidth = parseFloat(tags.width);
     const width = Number.isFinite(parsedWidth) ? parsedWidth : null;
+    // 所要時間の計算に使う (travel_speed.ts)。読めない値は null
+    const maxspeed = parseMaxspeed(tags.maxspeed) ?? null;
+    const lanes = parseLanes(tags.lanes) ?? null;
     const direction = resolveDirection(tags);
 
     for (let i = 0; i < nodeIds.length - 1; i++) {
@@ -230,6 +197,7 @@ function buildGraphFromWays(rawNodes, rawWays) {
         existing.highway = mergeHighway(existing.highway, tags.highway ?? "");
         existing.width = mergeWidth(existing.width, width);
         existing.sidewalk = mergeSidewalk(existing.sidewalk, tags.sidewalk ?? null);
+<<<<<<< HEAD:app/src/lib/map_loader/osm.js
 
        // 既存のエッジに name がなく、新しく見つけた方のタグに name がある場合のみ引き継ぐ
       if (!existing.tags.name && tags.name) {
@@ -240,6 +208,13 @@ function buildGraphFromWays(rawNodes, rawWays) {
       if (!existing.tags.ref && tags.ref) {
         existing.tags.ref = tags.ref;
       }
+=======
+        existing.maxspeed = mergeMax(existing.maxspeed, maxspeed);
+        existing.lanes = mergeMax(existing.lanes, lanes);
+        // name / ref は既存に無く、今回の way にあるときだけ引き継ぐ
+        if (!existing.tags.name && tags.name) existing.tags.name = tags.name;
+        if (!existing.tags.ref && tags.ref) existing.tags.ref = tags.ref;
+>>>>>>> 1bc1565dd005c119a8746fcb46734f5077eb9330:app/src/lib/osm/graph.js
         continue;
       }
 
@@ -256,8 +231,16 @@ function buildGraphFromWays(rawNodes, rawWays) {
         highway: tags.highway ?? "",
         width,
         sidewalk: tags.sidewalk ?? null,
+        maxspeed,
+        lanes,
         direction,
+<<<<<<< HEAD:app/src/lib/map_loader/osm.js
         tags: { ...tags }
+=======
+        // 1 本の way の各エッジで同じオブジェクトを共有しないようコピーする
+        // (共有すると、1 区間の name を書き換えたときに他の区間へ伝染する)
+        tags: { ...tags },
+>>>>>>> 1bc1565dd005c119a8746fcb46734f5077eb9330:app/src/lib/osm/graph.js
       };
 
       edges[edgeId] = edge;

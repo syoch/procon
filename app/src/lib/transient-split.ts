@@ -146,6 +146,11 @@ export function transientSplit(graph: App.SearchGraph, point: App.Coordinate, al
     highway: segmentToSplit.highway,
     width: segmentToSplit.width,
     sidewalk: segmentToSplit.sidewalk,
+<<<<<<< HEAD
+=======
+    maxspeed: segmentToSplit.maxspeed,
+    lanes: segmentToSplit.lanes,
+>>>>>>> 1bc1565dd005c119a8746fcb46734f5077eb9330
     tags: segmentToSplit.tags,
   };
   const newSegment2: App.Segment = {
@@ -154,6 +159,11 @@ export function transientSplit(graph: App.SearchGraph, point: App.Coordinate, al
     highway: segmentToSplit.highway,
     width: segmentToSplit.width,
     sidewalk: segmentToSplit.sidewalk,
+<<<<<<< HEAD
+=======
+    maxspeed: segmentToSplit.maxspeed,
+    lanes: segmentToSplit.lanes,
+>>>>>>> 1bc1565dd005c119a8746fcb46734f5077eb9330
     tags: segmentToSplit.tags,
   };
 

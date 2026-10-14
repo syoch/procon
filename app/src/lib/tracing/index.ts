@@ -52,6 +52,18 @@ export type BootRecord = {
     bootedAt: Date
 };
 
+export type LogLine = {
+    loggedAt: number
+    log: string
+};
+export function isLogLine(info: any): info is LogLine {
+    if (typeof info !== "object") return false;
+    if (typeof info.loggedAt !== "number") return false;
+    if (typeof info.log !== "string") return false;
+
+    return true;
+}
+
 export type RawRequestRecord = {
     id: string
     requestedAt: number
@@ -59,6 +71,7 @@ export type RawRequestRecord = {
     method: string
     url: string
     perf: PerfMeasurement
+    logs: LogLine[]
 };
 export function isRawRequestRecord(info: any): info is RawRequestRecord {
     if (typeof info !== "object") return false;
@@ -69,6 +82,10 @@ export function isRawRequestRecord(info: any): info is RawRequestRecord {
     if (typeof info.method !== "string") return false;
     if (typeof info.url !== "string") return false;
     if (!isPerfMeasurement(info.perf)) return false;
+    if (!(info.logs instanceof Array)) return false;
+    for (const log of info.logs) {
+        if (!isLogLine(log)) return false;
+    }
 
     return true;
 }
@@ -80,4 +97,5 @@ export type RequestRecord = {
     method: string
     url: string
     perf: PerfMeasurement
+    logs: LogLine[]
 };

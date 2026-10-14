@@ -2,7 +2,7 @@ import { getContext, setContext } from "svelte";
 import L from "leaflet";
 import { queryParameters, ssp } from "sveltekit-search-params";
 import type { Readable, Writable } from "svelte/store";
-import type { ModeId } from "$lib/mode_profiles";
+import type { ModeId } from "$lib/mode_rules";
 
 export interface LocationCandidate {
   /** 短い表示名(例: "長岡駅") */
@@ -43,7 +43,7 @@ export type ParameterVariant = {
   /** 道幅スコアの重み */
   width_score_weight: number;
   /**
-   * 移動モード (mode_profiles.ts)。指定すると、通れる道・一方通行・急カーブの基準がサーバー側でモードごとに決まる。
+   * 移動モード (mode_rules.ts)。指定すると、通れる道・一方通行・急カーブの基準がサーバー側でモードごとに決まる。
    * 未指定のプリセットは従来どおり wayHighway で探索する
    */
   mode?: ModeId;
@@ -189,8 +189,9 @@ export class AppState {
    *
    * 書き戻しは Leaflet のイベントハンドラから呼ぶため、この effect が
    * URL 状態に依存しても連鎖しない。
+   * 戻り値は listener を破棄する。
    */
-  bindMap(map: L.Map, onMoveEnd: () => void) {
+  bindMap(map: L.Map): () => void {
     // 復元（共有リンク・リロード・戻る/進む）
     $effect(() => {
       const center = this.#url.viewport.c;
@@ -218,14 +219,12 @@ export class AppState {
         this.#url.viewport.c = { lat: center.lat, lng: center.lng };
         this.#url.viewport.z = zoom;
       }
-      onMoveEnd();
     };
-    // whenReady には書き戻さない。地図が既に ready なら同期実行され、
-    // 復元 effect より先に URL を既定値で上書きし、さらに呼び出し元
-    // の effect に URL 状態を依存させてしまう。初期の書き戻しは復元
-    // effect の setView/setZoom が moveend を発火して起こる。
-    map.whenReady(onMoveEnd);
     map.on("moveend", save);
+
+    return () => {
+      map.off("moveend", save);
+    };
   }
 }
 
